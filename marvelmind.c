@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 #ifdef WIN32
 #include <windows.h>
 #include <process.h>
@@ -8,7 +9,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
-#include <pthread.h>
+//#include <pthread.h>
 #endif // WIN32
 #include "marvelmind.h"
 
