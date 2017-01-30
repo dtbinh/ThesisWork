@@ -1,0 +1,3 @@
+gcc -Wall -c -std=c99 "%f"
+
+gcc -Wall -lm -o  "%e" -std=c99  -lwiringPi "%f" 
