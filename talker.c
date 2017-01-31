@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
 {
         int fd_socket;
         struct sockaddr_in their_addr;
-        socklen_t fromlen;
+        //socklen_t fromlen;
         int broadcast=1;
         int numbytes;
 
@@ -46,16 +46,18 @@ int main(int argc, char *argv[])
 		perror("setup");
 		exit(1);
 	}
-
-        
-        
-        strncpy(writeBuff,"THIS IS A BROADCAST TEST",BUFFER_LENGTH);
-        if ((numbytes=sendto(fd_socket, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &their_addr, sizeof(their_addr))) == -1){
-        perror("write");
-        exit(1);
-        }
+	
+	strncpy(writeBuff,"THIS IS A BROADCAST TEST",BUFFER_LENGTH);
+	
+	while(1){
+	if ((numbytes=sendto(fd_socket, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &their_addr, sizeof(their_addr))) == -1){
+	perror("write");
+	exit(1);
+	}
         
 	printf("talker: sent %d bytes. Message: %s\n", numbytes, writeBuff);
+	sleep(1);
+	}
 	close(fd_socket);
 
 	return 0;

@@ -15,8 +15,8 @@
 #include <arpa/inet.h>
 #include <string.h>
 
-#define SERVERPORT 5000
-#define BUFFER_LENGTH 25
+#define SERVERPORT 4950
+#define BUFFER_LENGTH 100
 
 #define SUPERVISOR "A0"
 #define AGENT1 "A1"
@@ -33,8 +33,8 @@ float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
 float constraints[] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
 float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
 
-int fd_socket;
-struct sockaddr_in their_addr;
+int fdsocket_read, fdsocket_write;
+struct sockaddr_in addr_read, addr_write;
 socklen_t fromlen;
 int broadcast=1;
 char readBuff[BUFFER_LENGTH];
@@ -50,29 +50,41 @@ void messageDecode(char *input);
 // *******************MAIN FUNCTION*******************
 int main(int argc, char **argv)
 {
-	// Create socket. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
-	fd_socket = socket(AF_INET, SOCK_DGRAM, 0);
-	
-	if (fd_socket == -1){
-		perror("socket");
+	// Create sockets. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
+	fdsocket_read = socket(AF_INET, SOCK_DGRAM, 0);
+	fdsocket_write = socket(AF_INET, SOCK_DGRAM, 0);	
+	if (fdsocket_read == -1){
+		perror("socket read");
 		exit(1);
+	}
+	if (fdsocket_write == -1){
+	perror("socket write");
+	exit(1);
 	}
 	
 	// Activate UDP broadcasting
-	if (setsockopt(fd_socket, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
-		perror("setup");
+	if (setsockopt(fdsocket_read, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
+		perror("setup read");
 		exit(1);
+	}
+	if (setsockopt(fdsocket_write, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
+	perror("setup write");
+	exit(1);
 	}
 	
 	// Socket settings
-	their_addr.sin_family = AF_INET;
-	their_addr.sin_port = htons(SERVERPORT);
-	their_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	memset(their_addr.sin_zero, '\0',sizeof(their_addr.sin_zero));
+	addr_read.sin_family = AF_INET;
+	addr_read.sin_port = htons(SERVERPORT);
+	addr_read.sin_addr.s_addr = htonl(INADDR_ANY); // INADDR_ANY = 0.0.0.0 (allows the socket to bind to port)
+	memset(addr_read.sin_zero, '\0',sizeof(addr_read.sin_zero));
+	addr_write.sin_family = AF_INET;
+	addr_write.sin_port = htons(SERVERPORT);
+	addr_write.sin_addr.s_addr = htonl(INADDR_BROADCAST); // INADDR_BROADCAST = 255.255.255.255 (cannot be binded to)
+	memset(addr_write.sin_zero, '\0',sizeof(addr_write.sin_zero));
 	
 	// Bind socket to port
-	if (bind(fd_socket, (struct sockaddr*)&their_addr, sizeof(their_addr)) == -1){
-		perror("bind");
+	if (bind(fdsocket_read, (struct sockaddr*)&addr_read, sizeof(addr_read)) == -1){
+		perror("bind read");
 	}
 	
 	// Create threads
@@ -95,10 +107,10 @@ int main(int argc, char **argv)
 // UDP read thread
 void *threadUdpRead()
 {
-	fromlen = sizeof(their_addr);
+	fromlen = sizeof(addr_read);
 	// Loop forever reading/waiting for data
 	while(1){
-		if (recvfrom(fd_socket, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &their_addr, &fromlen) == -1){
+		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
 			perror("read");
 		}
 		else{
@@ -124,14 +136,15 @@ void *threadUdpWrite()
 		//strncpy(writeBuff,"A0A1ST1",BUFFER_LENGTH);
 		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
 		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
-		strncpy(writeBuff,"A3A6DA21.00,55.10,10.99",BUFFER_LENGTH);
+		strncpy(writeBuff,"A1A6DA21.00,55.10,10.99",BUFFER_LENGTH);
 		
 		delay(2000);
 		//pthread_mutex_lock(&mutexData);
 		//sprintf(writeBuff,"%f",data2++);
 		//pthread_mutex_unlock(&mutexData);
+		
 		if (stream){
-			if (sendto(fd_socket, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &their_addr, sizeof(their_addr)) == -1){
+			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
 				perror("write");
 			}
 			else{
