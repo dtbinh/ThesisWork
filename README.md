@@ -11,6 +11,13 @@ http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html
 http://ozzmaker.com/guide-to-interfacing-a-gyro-and-accelerometer-with-a-raspberry-pi/
 
 
+
+
+
+
+
+
+
 Files are under construction.
 
 CURRENTLY WORKING FILES TESTED IN RPI:
