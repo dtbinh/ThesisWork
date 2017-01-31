@@ -8,8 +8,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <wiringPiI2C.h>
-#include <wiringPi.h>
 #include <errno.h>
 #include <math.h>
 #include <arpa/inet.h>
@@ -122,7 +120,7 @@ void *threadUdpRead()
 			//printf("Data read: %s\n\n", readBuff);
 			//pthread_mutex_unlock(&mutexData);
 		}
-	delay(1000);
+	sleep(1);
 	}
 }
 
@@ -136,9 +134,9 @@ void *threadUdpWrite()
 		//strncpy(writeBuff,"A0A1ST1",BUFFER_LENGTH);
 		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
 		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
-		strncpy(writeBuff,"A1A6DA21.00,55.10,10.99",BUFFER_LENGTH);
+		strncpy(writeBuff,"A1A6DA01.00,01.00,01.00",BUFFER_LENGTH);
 		
-		delay(2000);
+		sleep(2);
 		//pthread_mutex_lock(&mutexData);
 		//sprintf(writeBuff,"%f",data2++);
 		//pthread_mutex_unlock(&mutexData);
@@ -148,9 +146,9 @@ void *threadUdpWrite()
 				perror("write");
 			}
 			else{
-				pthread_mutex_lock(&mutexData);
-				printf("Data sent: %s\n", writeBuff);
-				pthread_mutex_unlock(&mutexData);
+				//pthread_mutex_lock(&mutexData);
+				//printf("Data sent: %s\n", writeBuff);
+				//pthread_mutex_unlock(&mutexData);
 				memset(&writeBuff[0], 0, sizeof(writeBuff));
 			}
 		}
