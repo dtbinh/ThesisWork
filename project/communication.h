@@ -2,7 +2,6 @@
 #define _COMMUNICATION_
 
 #define PIPE_BUFFER_SIZE 1
-#define _BSD_SOURCE // for usleep();
 #define SERVERPORT 4950
 #define BUFFER_LENGTH 100
 
@@ -17,6 +16,5 @@
 #define TUNING "TU"
 
 extern void startCommunication(void*, void*);
-extern void openSocketCommunication(void);
 
 #endif

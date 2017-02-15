@@ -20,11 +20,28 @@
 #include <string.h>
 
 /******************************************************************/
-/****************************VARIABLES*****************************/
+/*******************VARIABLES & PREDECLARATIONS********************/
 /******************************************************************/
 
-// Static variables for threads
+// Predeclarations
+static void *threadPipeSensorToController(void*);
+static void *threadPipeCommToController(void*);
+static void *threadPipeControllerToComm(void*);
+static void *intController(void);
 
+// Static variables for threads
+static float sensorData[6]={0,0,0,0,0,0};
+static float constraintData[6]={0,0,0,0,0,0};
+
+static float position[3];
+static float angle[3];
+static float constraints[6];
+static float controller[9];
+static int flagController=1;
+
+static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexConstraintData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
 
 
 /******************************************************************/
@@ -32,18 +49,18 @@
 /******************************************************************/
 
 // Function to start the sensor process threads
-void startController(void *pipeSensToCtrl, void *pipeComCtrl){
+void startController(void *arg1, void *arg2){
 	// Create threads
-	pthread_t threadPipeSensToCtrl, threadPipeCommToCtrl, intCtrl;
+	pthread_t threadPipeSensToCtrl, threadPipeCommToCtrl, threadPipeCtrlToComm;
 	int res1, res2, res3;
 	
-	res1=pthread_create(&threadPipeSensToCtrl, NULL, &threadPipeSensorToController, pipeSensToCtrl);
-	res2=pthread_create(&threadPipeCommToCtrl, NULL, &threadPipeCommToController, pipeComCtrl);
-	res3=pthread_create(&intCtrl, NULL, &intController, NULL);
+	res1=pthread_create(&threadPipeSensToCtrl, NULL, &threadPipeSensorToController, arg1);
+	res2=pthread_create(&threadPipeCommToCtrl, NULL, &threadPipeCommToController, arg2);
+	res3=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg2);
 	
 	if (!res1) pthread_join( threadPipeSensToCtrl, NULL);
 	if (!res2) pthread_join( threadPipeCommToCtrl, NULL);
-	if (!res3) pthread_join( intCtrl, NULL);
+	if (!res3) pthread_join( threadPipeCtrlToComm, NULL);
 }
 
 
@@ -55,35 +72,99 @@ void startController(void *pipeSensToCtrl, void *pipeComCtrl){
 // Thread - Pipe Sensor to Controller read
 void *threadPipeSensorToController(void *arg)
 {
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float sensorDataBuffer[6]={0,0,0,0,0,0};
+	
 	// Loop forever reading/waiting for data
 	while(1){
+		// Read data from sensor process
+		if(read(ptrPipe->child[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in Controller from Sensor\n");
+		else printf("Controller ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
 		
-		usleep(100);
+		// Put new data in to global variable in controller.c
+		pthread_mutex_lock(&mutexSensorData);
+		memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
+		pthread_mutex_unlock(&mutexSensorData);
+		
+		sleep(1);
 	}
 	return NULL;
 }
 
 // Thread - Pipe Communication to Controller read
 void *threadPipeCommToController(void *arg)
-{		
+{	
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float constraintDataBuffer[6] = {0,0,0,0,0,0};
+	
 	// Loop forever streaming data
 	while(1){
+		// Read data from communication process
+		if(read(ptrPipe->child[0], constraintDataBuffer, sizeof(constraintDataBuffer)) == -1) printf("read error in controller from communication\n");
+		else printf("Controller ID: %d, Recieved Communication data: %f\n", (int)getpid(), constraintDataBuffer[0]);
+		
+		// Put new data in to global variable in controller.c
+		pthread_mutex_lock(&mutexConstraintData);
+		memcpy(constraintData, constraintDataBuffer, sizeof(constraintDataBuffer));
+		pthread_mutex_unlock(&mutexConstraintData);
+		
 		sleep(1);
 	}
 	
 	return NULL;
 }
 
-// Interrupt - Controller algorithm
-void *intController(void *arg)
-{		
-	// Loop forever streaming data (will be ticked by interrupt with given sampling time)
+// Thread - Pipe Controller to Communication write
+void *threadPipeControllerToComm(void *arg)
+{	
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float controllerDataBuffer[9];
+	
+	// Loop forever streaming data
 	while(1){
-		usleep(100);
-		
-		
-		
+		// Check flag to see if new controller data available
+		if (flagController==1){
+			// Get new computed controller data
+			pthread_mutex_lock(&mutexControllerData);
+			memcpy(controllerDataBuffer, controller, sizeof(controller));
+			pthread_mutex_unlock(&mutexControllerData);
+			
+			// Write data to communication process
+			if (write(ptrPipe->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+			else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+		}
+		sleep(1);
 	}
+
+	return NULL;
+}
+
+
+// Interrupt - Controller algorithm
+void *intController()
+{
+	// Update sensor measurements and constraints
+	pthread_mutex_lock(&mutexSensorData);
+	memcpy(position, sensorData, 3);
+	memcpy(angle, sensorData+3,3);
+	pthread_mutex_unlock(&mutexSensorData);
+	pthread_mutex_lock(&mutexConstraintData);
+	memcpy(constraints, constraintData, sizeof(constraintData));
+	pthread_mutex_unlock(&mutexConstraintData);
+	
+	
+	// Compute control signal
+	sleep(10);
+	float controllerData[9] = {1,2,3,4,5,6,7,8,9};
+	
+	// Flag pipe write to communication process
+	flagController=1;
+	pthread_mutex_lock(&mutexControllerData);
+	memcpy(controller, controllerData, sizeof(controllerData));
+	pthread_mutex_unlock(&mutexControllerData);
 	
 	return NULL;
 }

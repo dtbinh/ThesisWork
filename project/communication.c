@@ -23,22 +23,33 @@
 /*******************VARIABLES & PREDECLARATIONS********************/
 /******************************************************************/
 
+// Predeclarations
+static void *threadPipeControllerToComm(void*);
+static void *threadPipeSensorToCommunication(void*);
+static void *threadUdpRead(void*);
+static void *threadUdpWrite();
+static void openSocketCommunication(void);
+
+
 // Static variables for threads
-static initState initStateComm=STARTUP;
-static int stream=1;/*
+static float controllerData[9]={0,0,0,0,0,0,0,0,0};
+static float sensorData[6]={0,0,0,0,0,0};
+
+
+static int socketReady=0;
+/*
 static float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
 static float constraints[] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
 static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
 */
 static int fdsocket_read, fdsocket_write;
 static struct sockaddr_in addr_read, addr_write;
-static socklen_t fromlen;
 static int broadcast=1;
 static char readBuff[BUFFER_LENGTH];
 static char writeBuff[BUFFER_LENGTH];
 
-pthread_mutex_t mutexPrint = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 
 //static void messageDecode(char*);
 
@@ -48,150 +59,148 @@ pthread_mutex_t mutexData = PTHREAD_MUTEX_INITIALIZER;
 /******************************************************************/
 
 // Function to start the sensor process threads
-void startCommunication(void *pipeSensToCom, void *pipeComToCtrl){
+void startCommunication(void *arg1, void *arg2)
+{
 	// Create thread
-	pthread_t threadProcessCom, threadUdpR, threadUdpW;
-	int res1, res2, res3;
+	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm;
+	int res1, res2;
 	
-	res1=pthread_create(&threadProcessCom, NULL, &threadProcessCommunication, (void*) pipe);
-	if (!res1) pthread_join( threadProcessCom, NULL);
+	res1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, &arg1);
+	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, &arg2);
+	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
+	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
 	
-	res2=pthread_create(&threadUdpR, NULL, &threadUdpRead, NULL);
-	res3=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
-	if (!res2) pthread_join( threadUdpR, NULL);
-	if (!res3) pthread_join( threadUdpW, NULL);
+	// Create thread
+	pthread_t threadUdpR, threadUdpW;
+	int res3, res4;
+	
+	res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &arg1);
+	res4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	if (!res3) pthread_join( threadUdpR, NULL);
+	if (!res4) pthread_join( threadUdpW, NULL);
 }
-
-
-
-
-
 
 
 /******************************************************************/
 /*****************************THREADS******************************/
 /******************************************************************/
 
-// UDP read thread
-static void *threadUdpRead()
+// Thread - Pipe Communication from Controller read
+static void *threadPipeControllerToComm(void *arg)
 {
-	fromlen = sizeof(addr_read);
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float controllerDataBuffer[9];
+	
 	// Loop forever reading/waiting for data
 	while(1){
-		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
-			perror("read");
-		}
-		else{
-			//printf("Data read: %s\n\n", readBuff);
+		// Read data from controller process
+		if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
+		else printf("Controller ID: %d, Recieved sensor data: %f\n", (int)getpid(), controllerDataBuffer[0]);
+		
+		// Put new data in to global variable in communication.c
+		pthread_mutex_lock(&mutexControllerData);
+		memcpy(controllerData, controllerDataBuffer, sizeof(controllerDataBuffer));
+		pthread_mutex_unlock(&mutexControllerData);
+		
+		sleep(1);
+	}
+	return NULL;
+}
+
+
+// Thread - Pipe Communication from Sensor read
+static void *threadPipeSensorToCommunication(void *arg)
+{
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float sensorDataBuffer[6];
+	
+	// Loop forever reading/waiting for data
+	while(1){
+		// Read data from sensor process
+		if(read(ptrPipe->child[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in communication from sensor\n");
+		else printf("In controller ID: %d, Recieved sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
+		
+		// Put new data in to global variable in communication.c
+		pthread_mutex_lock(&mutexSensorData);
+		memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
+		pthread_mutex_unlock(&mutexSensorData);
+		
+		//sleep(1);
+	}
+	return NULL;
+}
+
+
+// UDP read thread
+static void *threadUdpRead(void *arg)
+{
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float udpDataBuffer[6]={2,2,2,2,2,2};
+	//static socklen_t fromlen = sizeof(addr_read);
+	
+	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
+	while(1){
+		//if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
+		//	perror("read");
+		//}
+		//else{
+			// Call messageDecode
 			//messageDecode(readBuff);
-			memset(&readBuff[0], 0, sizeof(readBuff));
-			//pthread_mutex_lock(&mutexData);
-			//sprintf(writeBuff,"%f",data);
-			//printf("Data read: %s\n\n", readBuff);
-			//pthread_mutex_unlock(&mutexData);
-		}
-	sleep(1);
+			/*
+			// Write data to communication process
+			if (write(ptrPipe->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
+			else printf("Communication ID: %d, Sent: %f to sensor process\n", (int)getpid(), udpDataBuffer[0]);
+			*/
+			// Clear readBuffer
+		//	memset(&readBuff[0], 0, sizeof(readBuff));	
+		//}
+		
+		// Write data to communication process
+		if (write(ptrPipe->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
+		else printf("Communication ID: %d, Sent: %f to sensor process\n", (int)getpid(), udpDataBuffer[0]);
+
 	}
 	
 	return NULL;
 }
+
 
 // UDP write thread
 static void *threadUdpWrite()
-{		
-	//float data2=1.0;
+{
+	// Local variables
+	float agentData[15];
+	
 	// Loop forever streaming data
 	while(1){
-		//strncpy(writeBuff,"A1A1S201.00,055.10,10.99",BUFFER_LENGTH);
-		//strncpy(writeBuff,"A0A1ST1",BUFFER_LENGTH);
-		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
-		//strncpy(writeBuff,"A0A1TU10000,10000,10000",BUFFER_LENGTH);
-		strncpy(writeBuff,"A1A6DA01.00,01.00,01.00",BUFFER_LENGTH);
-		
-		sleep(10);
-		//pthread_mutex_lock(&mutexData);
-		//sprintf(writeBuff,"%f",data2++);
-		//pthread_mutex_unlock(&mutexData);
-		
-		if (stream){
+		// Check if socket has been opened
+		if (socketReady){
+			// Get sensor and controller data from global variables in communication.c
+			pthread_mutex_lock(&mutexSensorData);
+			memcpy(agentData, sensorData, sizeof(sensorData));
+			pthread_mutex_unlock(&mutexSensorData);
+			pthread_mutex_lock(&mutexControllerData);
+			memcpy(agentData+sizeof(sensorData), controllerData, sizeof(controllerData));
+			pthread_mutex_unlock(&mutexControllerData);
+			
+			strncpy(writeBuff,"A1A6DA01.00,01.00,01.00",BUFFER_LENGTH);
+			
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
 				perror("write");
 			}
-			else{
-				//pthread_mutex_lock(&mutexData);
-				//printf("Data sent: %s\n", writeBuff);
-				//pthread_mutex_unlock(&mutexData);
-				memset(&writeBuff[0], 0, sizeof(writeBuff));
-			}
 		}
+		else printf("UDP socket not ready...\n");
+		
+		sleep(10);
 	}
-	
 	return NULL;
 }
-
-// Thread for process communication
-static void *threadProcessCommunication (void *pipe){
-	structPipe *ptrPipeComm = pipe;
-	float dataBuffer[6]={0,0,0,0,0,0};
-	uint8_t initBuffer[PIPE_BUFFER_SIZE];
-	
-	
-	printf("Communication process ID %d starting sending data\n", (int)getpid()); 
-	initBuffer[0]=0;
-	while(1){
-		switch (initStateComm)
-		{
-			// STARTUP procedure to make sure all child processes are communicating
-			case STARTUP:
-			if(read(ptrPipeComm->parent[0], initBuffer, sizeof(initBuffer)) == -1) printf("read error in child\n");
-			else printf("In child ID: %d, Recieved: %d\n", (int)getpid(), initBuffer[0]);
-			// If recieved value 1 the child process sends 1 back to indicate communication working
-			if (initBuffer[0]==1){
-				if (write(ptrPipeComm->child[1], initBuffer, sizeof(initBuffer)) != sizeof(initBuffer)) printf("write error in child\n");
-				else printf("In child ID: %d, Sent: %d\n", (int)getpid(), initBuffer[0]);
-			}
-			// If recieved value 2 the parent process has got all child processes running and the tasks can start
-			else if (initBuffer[0]==2){
-				initStateComm=WAITING;
-			}
-			break;
-			
-			// WAITING procedure to make sure that the sensor fusion has started
-			case WAITING:
-				printf("threadProcessCommunication waiting for first communication data\n");
-				initStateComm=READY;
-				usleep(100);
-			break;
-			
-			// READY procedure for sending sensor fusion data to controller
-			case READY:
-				// Put sensor data in to dataBuffer
-				/*pthread_mutex_lock(&mutexAngle);
-				for(int i=0;i<3;i++){
-					dataBuffer[i]=angles[i];
-				}
-				pthread_mutex_unlock(&mutexAngle);
-				pthread_mutex_lock(&mutexPosition);
-				for(int i=0;i<3;i++){
-					dataBuffer[i+3]=position[i];
-				}
-				pthread_mutex_unlock(&mutexPosition);*/
-				// Write dataBuffer to pipe
-				if (write(ptrPipeComm->child[1], &dataBuffer, sizeof(dataBuffer)) != sizeof(dataBuffer)) printf("write error in child\n");
-				else printf("In child ID: %d, Sent: %.1f - %.1f - %.1f - %.1f - %.1f - %.1f\n", (int)getpid(), dataBuffer[0], dataBuffer[1], dataBuffer[2], dataBuffer[3], dataBuffer[4], dataBuffer[5]);
-			break;
-		}
-		sleep(1);
-	}
-
-	return NULL;
-}
-
-
-
 
 /******************************************************************/
 /****************************FUNCTIONS*****************************/

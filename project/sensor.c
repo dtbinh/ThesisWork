@@ -8,203 +8,140 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <string.h>
 
-typedef struct _structPipeArray{
-	structPipe *pipeToCtrl;
-	structPipe *pipeToComm;
-} structPipeArray;
+
+/******************************************************************/
+/*******************VARIABLES & PREDECLARATIONS********************/
+/******************************************************************/
+
+// Predeclarations
+static void *threadPipeSensorToController (void*);
+static void *threadPipeSensorToComm (void*);
+static void *threadSensorFusionPosition (void*);
+static void *threadSensorFusionAngles (void*);
+
+
+// Static variables for threads
+static float position[3]={1.0f,1.0f,1.0f};
+static float angles[3]={2.0f, 2.0f, 2.0f};
+
+static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 
 /******************************************************************/
 /*************************START PROCESS****************************/
 /******************************************************************/
 
 // Function to start the sensor process threads
-void startSensors(void *pipeSensToCtrl, void *pipeSensToComm){
-	// Put pipes in to array for passing on as argument to pthread_create
-	structPipeArray pipeArray = {.pipeToCtrl=pipeSensToCtrl, .pipeToComm=pipeSensToComm};	
-	
+void startSensors(void *arg1, void *arg2){
 	// Create thread
-	pthread_t threadPipeSensToCtrlAndComm, threadAngles, threadPosition;
-	int res1, res2, res3;
+	pthread_t threadPipeSensToCtrl, threadPipeSensToComm, threadAngles, threadPosition;
+	int res1, res2, res3 ,res4;
 	
-	res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArray);
-	res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
-	res3=pthread_create(&threadPosition, NULL, &threadSensorFusionPosition, NULL);	
+	res1=pthread_create(&threadPipeSensToCtrl, NULL, &threadPipeSensorToController, arg1);
+	res2=pthread_create(&threadPipeSensToComm, NULL, &threadPipeSensorToComm, arg2);
+	res3=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
+	res4=pthread_create(&threadPosition, NULL, &threadSensorFusionPosition, NULL);	
 	
-	if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
-	if (!res2) pthread_join( threadAngles, NULL);
-	if (!res3) pthread_join( threadPosition, NULL);
+	if (!res1) pthread_join( threadPipeSensToCtrl, NULL);
+	if (!res2) pthread_join( threadPipeSensToComm, NULL);
+	if (!res3) pthread_join( threadAngles, NULL);
+	if (!res4) pthread_join( threadPosition, NULL);
 }
-
 
 
 /******************************************************************/
 /*****************************THREADS******************************/
 /******************************************************************/
 
-// Static variables for threads
-static initState initStateSensor=STARTUP;
-static int flagAngles=0;
-static int flagPosition=0;
-static float position[3]={1.0f,1.0f,1.0f};
-static float angles[3]={2.0f, 2.0f, 2.0f};
-static pthread_mutex_t mutexPosition = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexAngle = PTHREAD_MUTEX_INITIALIZER;
+
+// Thread - Pipe Sensor to Controller process write
+void *threadPipeSensorToController (void *arg){
+	// Get pipe and define local variables
+	structPipe *ptrPipeToCtrl = arg;
+	float sensorDataBuffer[6];
+	
+	//printf("Sensor process ID %d starting sending data\n", (int)getpid()); 
+	
+	// Loop forever sending data to controller and communication processes
+	while(1){
+		// Get angle and position data from global variables in sensor.c
+		pthread_mutex_lock(&mutexAngleData);
+		memcpy(sensorDataBuffer, angles, sizeof(angles));
+		pthread_mutex_unlock(&mutexAngleData);
+		pthread_mutex_lock(&mutexPositionData);
+		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
+		pthread_mutex_unlock(&mutexPositionData);
+		
+		// Write to Controller process
+		if (write(ptrPipeToCtrl->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
+		else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
+		sleep(3);
+	}
+	
+	return NULL;
+}
+
+
+// Thread - Pipe Sensor to Communication process write
+void *threadPipeSensorToComm (void *arg){
+	// Get pipe and define local variables
+	structPipe *ptrPipeToComm = arg;
+	float sensorDataBuffer[6];
+	
+	//printf("Sensor process ID %d starting sending data\n", (int)getpid()); 
+	
+	// Loop forever sending data to controller and communication processes
+	while(1){
+		// Get angle and position data from global variables in sensor.c
+		pthread_mutex_lock(&mutexAngleData);
+		memcpy(sensorDataBuffer, angles, sizeof(angles));
+		pthread_mutex_unlock(&mutexAngleData);
+		pthread_mutex_lock(&mutexPositionData);
+		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
+		pthread_mutex_unlock(&mutexPositionData);
+		
+		// Write to Communication process
+		if (write(ptrPipeToComm->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error to communicaiont in sensors\n");
+		else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
+		sleep(3);
+	}
+	
+	return NULL;
+}
+
 
 // Thread - Sensor Fusion Position
 void *threadSensorFusionPosition (void *arg){
 	// Loop for ever
-	while(1){
-		switch (initStateSensor)
-		{
-			case STARTUP:
-				// Wait for process communication to get initialized
-				printf("threadSensorFusionPosition waiting for process communication to get ready...\n");
-				sleep(2);
-			break;
-			
-			default:
-				/* 
-				 * Call Sensor fusion function for position
-				 */
-				 
-				// Write data to local variables using mutex
-				pthread_mutex_lock(&mutexPosition);
-				for(int i=0;i<3;i++){
-					position[i]+=0.1;
-				}
-				usleep(200);
-				pthread_mutex_unlock(&mutexPosition);
-				
-				 // After running the sensor fusion first time, set initStateSensor ready
-				flagPosition=1;
-				if (initStateSensor==WAITING && flagAngles==1 && flagPosition==1) initStateSensor=READY;
-				//sleep(1);
-			break;
-		}
+	while(1){				 
+		// Write data to local variables using mutex
+		pthread_mutex_lock(&mutexPositionData);
+		usleep(100);
+		float newPosition[3]={1,2,3};
+		memcpy(position, newPosition, sizeof(newPosition));	
+		pthread_mutex_unlock(&mutexPositionData);	
 	}
 	return NULL;
 }
+
 
 // Thread - Sensor Fusion Angles
 void *threadSensorFusionAngles (void *arg){
 	// Loop for ever
-	while(1){
-		switch (initStateSensor)
-		{
-			case STARTUP:
-				// Wait for process communication to get initialized
-				printf("threadSensorFusionPosition waiting for process communication to get ready...\n");
-				sleep(2);
-			break;
-			
-			default:
-				/* 
-				 * Call Sensor fusion function for angles
-				 */
-				 
-				// Write data to local variables using mutex
-				pthread_mutex_lock(&mutexAngle);
-				for(int i=0;i<3;i++){
-					angles[i]+=0.1;
-				}
-				usleep(200);
-				pthread_mutex_unlock(&mutexAngle);
-				
-				 // After running the sensor fusion first time, set initStateSensor ready
-				 flagAngles=1;
-				 if (initStateSensor==WAITING && flagAngles==1 && flagPosition==1) initStateSensor=READY;
-				 //sleep(1);
-			break;
-		}
-			
+	while(1){				 
+		// Write data to local variables using mutex
+		pthread_mutex_lock(&mutexAngleData);
+		usleep(100);
+		float newAngles[3]={1,2,3};
+		memcpy(angles, newAngles, sizeof(newAngles));	
+		pthread_mutex_unlock(&mutexAngleData);	
 	}
 	return NULL;
 }
 
-// Thread - Pipe Sensor to Controller write
-void *threadPipeSensorToControllerAndComm (void *pipeArray){
-	structPipeArray *ptrPipeArray = pipeArray;
-	structPipe *ptrPipeToCtrl = ptrPipeArray->pipeToCtrl;
-	structPipe *ptrPipeToComm = ptrPipeArray->pipeToComm;
-	
-	float dataBuffer[6];
-	//uint8_t initBuffer[PIPE_BUFFER_SIZE];
-	
-	printf("Communication process ID %d starting sending data\n", (int)getpid()); 
-	
-	while(1){
-		// Put sensor data in to dataBuffer
-		pthread_mutex_lock(&mutexAngle);
-		for(int i=0;i<3;i++){
-		dataBuffer[i]=angles[i];
-		}
-		pthread_mutex_unlock(&mutexAngle);
-		pthread_mutex_lock(&mutexPosition);
-		for(int i=0;i<3;i++){
-		dataBuffer[i+3]=position[i];
-		}
-		pthread_mutex_unlock(&mutexPosition);
-		
-		// Write to Controller process
-		if (write(ptrPipeToCtrl->child[1], dataBuffer, sizeof(dataBuffer)) != sizeof(dataBuffer)) printf("write error in child\n");
-		else printf("In child ID: %d, Sent: %f\n", (int)getpid(), dataBuffer[0]);
-		// Write to Communication process
-		if (write(ptrPipeToComm->child[1], dataBuffer, sizeof(dataBuffer)) != sizeof(dataBuffer)) printf("write error in child\n");
-		else printf("In child ID: %d, Sent: %f\n", (int)getpid(), dataBuffer[0]);
 
-		sleep(1);
-	}
-	
-	/*
-	initBuffer[0]=0;
-	while(1){
-		switch (initStateSensor)
-		{
-			// STARTUP procedure to make sure all child processes are communicating
-			case STARTUP:
-			if(read(newPipe->parent[0], initBuffer, sizeof(initBuffer)) == -1) printf("read error in child\n");
-			else printf("In child ID: %d, Recieved: %d\n", (int)getpid(), initBuffer[0]);
-			// If recieved value 1 the child process sends 1 back to indicate communication working
-			if (initBuffer[0]==1){
-				if (write(newPipe->child[1], initBuffer, sizeof(initBuffer)) != sizeof(initBuffer)) printf("write error in child\n");
-				else printf("In child ID: %d, Sent: %d\n", (int)getpid(), initBuffer[0]);
-			}
-			// If recieved value 2 the parent process has got all child processes running and the tasks can start
-			else if (initBuffer[0]==2){
-				initStateSensor=WAITING;
-			}
-			break;
-			
-			// WAITING procedure to make sure that the sensor fusion has started
-			case WAITING:
-				printf("threadProcessCommunication waiting for first sensor fusion computations\n");
-				usleep(100);
-			break;
-			
-			// READY procedure for sending sensor fusion data to controller
-			case READY:
-				// Put sensor data in to dataBuffer
-				pthread_mutex_lock(&mutexAngle);
-				for(int i=0;i<3;i++){
-					dataBuffer[i]=angles[i];
-				}
-				pthread_mutex_unlock(&mutexAngle);
-				pthread_mutex_lock(&mutexPosition);
-				for(int i=0;i<3;i++){
-					dataBuffer[i+3]=position[i];
-				}
-				pthread_mutex_unlock(&mutexPosition);
-				
-				if (write(newPipe->child[1], &dataBuffer, sizeof(dataBuffer)) != sizeof(dataBuffer)) printf("write error in child\n");
-				else printf("In child ID: %d, Sent: %.1f - %.1f - %.1f - %.1f - %.1f - %.1f\n", (int)getpid(), dataBuffer[0], dataBuffer[1], dataBuffer[2], dataBuffer[3], dataBuffer[4], dataBuffer[5]);
-			break;
-		}
-		sleep(1);
-	}
-	*/
-	return NULL;
-}
 
 
 /******************************************************************/

@@ -26,11 +26,11 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include "sensor.h"
-//#include "communication.h"
+#include "communication.h"
 #include "startup.h"
 #include "controller.h"
 
-void startupProcedure(void*,void*);
+void startupProcedure(void*, void*);
 
 /******************************************************************/
 /******************************MAIN********************************/
@@ -50,8 +50,9 @@ int main(int argc, char **argv)
 	if (pipe(pipeCommunicationController.parent)==-1) printf("pipe error comm parent");
 	if (pipe(pipeCommunicationController.child)==-1) printf("pipe error comm child");
 
+	
 	// Create first child process (sensors)
-	printf("Creating first child from main process ID: %d\n", (int)getpid());
+	//printf("Creating first child from main process ID: %d\n", (int)getpid());
 	switch(fork())
 	{
 		// If the fork() failed
@@ -60,27 +61,28 @@ int main(int argc, char **argv)
 		break;
 		
 		case 0:
-			printf("Sensor Fusion child process ID: %d\n", (int)getpid());	
+			printf("Sensor Fusion process ID: %d\n", (int)getpid());	
 			
 			// Close write and read ends insuring no old data present
 			if (close(pipeSensorController.parent[1])==-1) printf("close error - parent to child write\n");
 			if (close(pipeSensorController.child[0])==-1) printf("close error - child to parent read\n");
-			if (close(pipeSensorCommunication.parent[1])==-1) printf("close error - parent to child write\n");
-			if (close(pipeSensorCommunication.child[0])==-1) printf("close error - child to parent read\n");
+			if (close(pipeSensorCommunication.parent[0])==-1) printf("close error - parent to child write\n");
+			if (close(pipeSensorCommunication.child[1])==-1) printf("close error - child to parent read\n");
 			
-			printf("Sensor child pipe ready...\n");
+			//printf("Sensor child pipe ready...\n");
 			
 			// Call Sensor Fusion process
 			startSensors(&pipeSensorController, &pipeSensorCommunication);
 		break;
 		
 		default:
+			printf("Controller process ID: %d\n", (int)getpid());
 		break;
 	}
 	
 	
 	// Create second child process (communication)
-	printf("Parent pipe creating next child...\n");
+	//printf("Parent pipe creating next child...\n");
 	switch(fork())
 	{
 		// If the fork() failed
@@ -89,29 +91,34 @@ int main(int argc, char **argv)
 		break;
 		
 		case 0:	
-			printf("Communication child process ID: %d\n", (int)getpid());
+			printf("Communication process ID: %d\n", (int)getpid());
 			
 			// Close write and read ends insuring no old data present
 			if (close(pipeCommunicationController.parent[1])==-1) printf("close error - parent to child write\n");
 			if (close(pipeCommunicationController.child[0])==-1) printf("close error - child to parent read\n");
-			if (close(pipeSensorCommunication.parent[0])==-1) printf("close error - parent to child write\n");
-			if (close(pipeSensorCommunication.child[1])==-1) printf("close error - child to parent read\n");
+			if (close(pipeSensorCommunication.parent[1])==-1) printf("close error - parent to child write\n");
+			if (close(pipeSensorCommunication.child[0])==-1) printf("close error - child to parent read\n");
 	
 			
-			printf("Communication child pipe ready...\n");
+			//printf("Communication child pipe ready...\n");
 		
 			// Call Sensor Fusion process
-			//startCommunication(&pipeCommunicationController, &pipeSensorCommunication);
+			startCommunication(&pipeCommunicationController, &pipeSensorCommunication);
 		break;
 		
 		default:
-			printf("Starting initialization... from process ID: %d\n", (int)getpid());
+			//printf("Starting initialization... from process ID: %d\n", (int)getpid());
 			
 			// Call startup procedure initializing pipes
 			// startupProcedure(&pipeCommunicationController, &pipeCommunicationController);
 		
 			// Call controller threads
-			startController(&pipeSensorController,&pipeCommunicationController);
+			if (close(pipeSensorController.parent[0])==-1) printf("close error - parent to child write\n");
+			if (close(pipeSensorController.child[1])==-1) printf("close error - child to parent read\n");
+			if (close(pipeCommunicationController.parent[0])==-1) printf("close error - parent to child write\n");
+			if (close(pipeCommunicationController.child[1])==-1) printf("close error - child to parent read\n");
+			
+			startController(&pipeSensorController, &pipeCommunicationController);
 		break;
 	}
 	
