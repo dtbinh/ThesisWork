@@ -75,7 +75,7 @@ void *threadPipeSensorToController (void *arg){
 		
 		// Write to Controller process
 		if (write(ptrPipeToCtrl->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
-		else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
+		//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
 		sleep(5);
 	}
 	
@@ -101,7 +101,7 @@ void *threadPipeSensorToComm (void *arg){
 		
 		// Write to Communication process
 		if (write(ptrPipeToComm->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error to communicaiont in sensors\n");
-		else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
+		//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
 		sleep(5);
 	}
 	

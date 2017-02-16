@@ -109,6 +109,7 @@ int main(int argc, char **argv)
 			if (close(pipeCommunicationController.child[1])==-1) printf("close error - child to parent read\n");
 			
 			startController(&pipeSensorController, &pipeCommunicationController);
+			printf("Controller started...\n");
 		break;
 	}
 	

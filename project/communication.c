@@ -44,8 +44,9 @@ static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
 */
 static int fdsocket_read, fdsocket_write;
 static struct sockaddr_in addr_read, addr_write;
+static socklen_t fromlen = sizeof(addr_read);
 static int broadcast=1;
-//static char readBuff[BUFFER_LENGTH];
+static char readBuff[BUFFER_LENGTH];
 static char writeBuff[BUFFER_LENGTH];
 
 static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
@@ -62,27 +63,20 @@ static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 void startCommunication(void *arg1, void *arg2)
 {
 	// Create thread
-	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm;
-	int res1, res2;
-	
-	res1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
-	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
-	
-	// If threads created successful, start them
-	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
-	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
+	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpR, threadUdpW;
+	int res1, res2, res3, res4;
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
-	
-	// Create thread
-	pthread_t threadUdpR, threadUdpW;
-	int res3, res4;
-	
+
+	res1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
+	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
 	res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, arg1);
 	res4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
 	
 	// If threads created successful, start them
+	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
+	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
 	if (!res3) pthread_join( threadUdpR, NULL);
 	if (!res4) pthread_join( threadUdpW, NULL);
 }
@@ -103,7 +97,7 @@ static void *threadPipeControllerToComm(void *arg)
 	while(1){
 		// Read data from controller process
 		if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
-		else printf("Communication ID: %d, Recieved Controller data: %f\n", (int)getpid(), controllerDataBuffer[0]);
+		//else printf("Communication ID: %d, Recieved Controller data: %f\n", (int)getpid(), controllerDataBuffer[0]);
 		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexControllerData);
@@ -127,7 +121,7 @@ static void *threadPipeSensorToCommunication(void *arg)
 	while(1){
 		// Read data from sensor process
 		if(read(ptrPipe->parent[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in communication from sensor\n");
-		else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
+		//else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
 		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexSensorData);
@@ -144,30 +138,23 @@ static void *threadUdpRead(void *arg)
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
 	float udpDataBuffer[6]={2,2,2,2,2,2};
-	//static socklen_t fromlen = sizeof(addr_read);
 	
 	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
 	while(1){
-		//if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
-		//	perror("read");
-		//}
-		//else{
+		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
+			perror("read");
+		}
+		else{
 			// Call messageDecode
 			//messageDecode(readBuff);
-			/*
+			
 			// Write data to communication process
 			if (write(ptrPipe->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
-			else printf("Communication ID: %d, Sent: %f to sensor process\n", (int)getpid(), udpDataBuffer[0]);
-			*/
+			//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), udpDataBuffer[0]);
+			
 			// Clear readBuffer
-		//	memset(&readBuff[0], 0, sizeof(readBuff));	
-		//}
-		
-		// Write data to communication process
-		sleep(5);
-		if (write(ptrPipe->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
-		else printf("Communication ID: %d, Sent: %f to sensor process\n", (int)getpid(), udpDataBuffer[0]);
-
+			memset(&readBuff[0], 0, sizeof(readBuff));	
+		}
 	}
 	
 	return NULL;
@@ -178,21 +165,40 @@ static void *threadUdpRead(void *arg)
 static void *threadUdpWrite()
 {
 	// Local variables
-	float agentData[15];
+	float agentData[3]={0.0,0.0,0.0};
 	
 	// Loop forever streaming data
 	while(1){
 		// Check if socket has been opened
 		if (socketReady){
 			// Get sensor and controller data from global variables in communication.c
+			/*
 			pthread_mutex_lock(&mutexSensorData);
 			memcpy(agentData, sensorData, sizeof(sensorData));
 			pthread_mutex_unlock(&mutexSensorData);
 			pthread_mutex_lock(&mutexControllerData);
 			memcpy(agentData+sizeof(sensorData), controllerData, sizeof(controllerData));
 			pthread_mutex_unlock(&mutexControllerData);
+				*/	
+			sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0] ,agentData[1] ,agentData[2]);
 			
-			strncpy(writeBuff,"A1A6DA01.00,01.00,01.00",BUFFER_LENGTH);
+			/*
+			float test[2]={1.0,2.0};
+			int i;
+			for (i=0;i<10;i++){
+				printf("%05.2f,%05.2f\n", test[0]++, test[1]++);
+			}
+			return 0;
+	*/
+			agentData[0]=agentData[0]+0.1;
+			agentData[1]=agentData[1]+0.1;
+			agentData[2]=agentData[2]+0.1;
+			
+			//printf("%05.2f,%05.2f,%05.2f\n",agentData[0]+1 ,agentData[1]+1 ,agentData[2]+1);
+			//printf("%i,%i,%i\n",agentData[0]+1 ,agentData[1]+1 ,agentData[2]+1);
+			printf("%s\n", writeBuff);
+			//printf("\n");
+			//strncpy(writeBuff,"A1A6DA00.09,15.10,23.33",BUFFER_LENGTH);
 			
 			// Send data over UDP
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
@@ -200,8 +206,8 @@ static void *threadUdpWrite()
 			}
 		}
 		else printf("UDP socket not ready...\n");
-		
-		sleep(10);
+		//printf("UDP data sent: %s\n", writeBuff);
+		usleep(1000);
 	}
 	return NULL;
 }
@@ -212,7 +218,7 @@ static void *threadUdpWrite()
 
 // Create UDP sockets and bind.
 static void openSocketCommunication(){
-// Create sockets. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
+	// Create sockets. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
 	fdsocket_read = socket(AF_INET, SOCK_DGRAM, 0);
 	fdsocket_write = socket(AF_INET, SOCK_DGRAM, 0);	
 	if (fdsocket_read == -1){
@@ -248,6 +254,8 @@ static void openSocketCommunication(){
 	if (bind(fdsocket_read, (struct sockaddr*)&addr_read, sizeof(addr_read)) == -1){
 		perror("bind read");
 	}
+	printf("Socket ready\n");
+	socketReady=1;
 }
 
 /*

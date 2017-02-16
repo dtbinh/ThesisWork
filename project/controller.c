@@ -81,7 +81,7 @@ void *threadPipeSensorToController(void *arg)
 	while(1){
 		// Read data from sensor process
 		if(read(ptrPipe->child[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in Controller from Sensor\n");
-		else printf("Controller ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
+		//else printf("Controller ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
 		
 		// Put new data in to global variable in controller.c
 		pthread_mutex_lock(&mutexSensorData);
@@ -102,7 +102,7 @@ void *threadPipeCommToController(void *arg)
 	while(1){
 		// Read data from communication process
 		if(read(ptrPipe->child[0], constraintDataBuffer, sizeof(constraintDataBuffer)) == -1) printf("read error in controller from communication\n");
-		else printf("Controller ID: %d, Recieved Communication data: %f\n", (int)getpid(), constraintDataBuffer[0]);
+		//else printf("Controller ID: %d, Recieved Communication data: %f\n", (int)getpid(), constraintDataBuffer[0]);
 		// Put new data in to global variable in controller.c
 		pthread_mutex_lock(&mutexConstraintData);
 		memcpy(constraintData, constraintDataBuffer, sizeof(constraintDataBuffer));
@@ -130,7 +130,7 @@ void *threadPipeControllerToComm(void *arg)
 			
 			// Write data to communication process
 			if (write(ptrPipe->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
-			else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+			//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
 		}
 		sleep(5);
 	}
@@ -155,6 +155,9 @@ void *intController()
 	// Compute control signal
 	sleep(10);
 	float controllerData[9] = {1,2,3,4,5,6,7,8,9};
+	
+	
+	// 
 	
 	// Flag pipe write to communication process
 	flagController=1;
