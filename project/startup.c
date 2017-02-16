@@ -52,7 +52,6 @@ int main(int argc, char **argv)
 
 	
 	// Create first child process (sensors)
-	//printf("Creating first child from main process ID: %d\n", (int)getpid());
 	switch(fork())
 	{
 		// If the fork() failed
@@ -82,7 +81,6 @@ int main(int argc, char **argv)
 	
 	
 	// Create second child process (communication)
-	//printf("Parent pipe creating next child...\n");
 	switch(fork())
 	{
 		// If the fork() failed
@@ -99,20 +97,12 @@ int main(int argc, char **argv)
 			if (close(pipeSensorCommunication.parent[1])==-1) printf("close error - parent to child write\n");
 			if (close(pipeSensorCommunication.child[0])==-1) printf("close error - child to parent read\n");
 	
-			
-			//printf("Communication child pipe ready...\n");
-		
-			// Call Sensor Fusion process
+			// Call Sensor Fusion process within child process
 			startCommunication(&pipeCommunicationController, &pipeSensorCommunication);
 		break;
 		
 		default:
-			//printf("Starting initialization... from process ID: %d\n", (int)getpid());
-			
-			// Call startup procedure initializing pipes
-			// startupProcedure(&pipeCommunicationController, &pipeCommunicationController);
-		
-			// Call controller threads
+			// Call controller threads within main process
 			if (close(pipeSensorController.parent[0])==-1) printf("close error - parent to child write\n");
 			if (close(pipeSensorController.child[1])==-1) printf("close error - child to parent read\n");
 			if (close(pipeCommunicationController.parent[0])==-1) printf("close error - parent to child write\n");

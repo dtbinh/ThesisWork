@@ -58,6 +58,7 @@ void startController(void *arg1, void *arg2){
 	res2=pthread_create(&threadPipeCommToCtrl, NULL, &threadPipeCommToController, arg2);
 	res3=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg2);
 	
+	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeSensToCtrl, NULL);
 	if (!res2) pthread_join( threadPipeCommToCtrl, NULL);
 	if (!res3) pthread_join( threadPipeCtrlToComm, NULL);
@@ -86,8 +87,6 @@ void *threadPipeSensorToController(void *arg)
 		pthread_mutex_lock(&mutexSensorData);
 		memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
 		pthread_mutex_unlock(&mutexSensorData);
-		
-		sleep(1);
 	}
 	return NULL;
 }
@@ -104,13 +103,10 @@ void *threadPipeCommToController(void *arg)
 		// Read data from communication process
 		if(read(ptrPipe->child[0], constraintDataBuffer, sizeof(constraintDataBuffer)) == -1) printf("read error in controller from communication\n");
 		else printf("Controller ID: %d, Recieved Communication data: %f\n", (int)getpid(), constraintDataBuffer[0]);
-		
 		// Put new data in to global variable in controller.c
 		pthread_mutex_lock(&mutexConstraintData);
 		memcpy(constraintData, constraintDataBuffer, sizeof(constraintDataBuffer));
 		pthread_mutex_unlock(&mutexConstraintData);
-		
-		sleep(1);
 	}
 	
 	return NULL;
@@ -136,7 +132,7 @@ void *threadPipeControllerToComm(void *arg)
 			if (write(ptrPipe->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
 			else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
 		}
-		sleep(1);
+		sleep(5);
 	}
 
 	return NULL;
