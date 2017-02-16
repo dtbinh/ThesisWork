@@ -1,4 +1,5 @@
-# ThesisWork
+# ThesisWork (Alexander Waldejer)
+
 The files are a part of a larger master thesis at Chalmers University of Technology.
 
 Keywords: Sensor Fusion, IMU, Kalman Filter
