@@ -33,7 +33,15 @@
 #define BMP180_READTEMPCMD      0x2E
 #define BMP180_READPRESSURECMD  0x34
 
+#define OSS BMP180_STANDARD
+
 //Functions
+void loadCalibration(int);
+float readTemperature(int);
+float readPressure(int);
+float readAltitude(int);
+float readSealevelPressure(int);
+
 
 
 #endif

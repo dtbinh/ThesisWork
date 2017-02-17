@@ -29,6 +29,7 @@
 #include "communication.h"
 #include "startup.h"
 #include "controller.h"
+#include "bmp180.h"
 
 void startupProcedure(void*, void*);
 
