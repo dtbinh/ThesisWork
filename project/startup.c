@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <inttypes.h>
+
 #include "sensor.h"
 #include "communication.h"
 #include "startup.h"

@@ -1,13 +1,9 @@
 #ifndef _L3G_h
 #define _L3G_h
 
-
-
 #define L3GD20_ADDRESS	0x6b
 #define L3GD20_ADDRESS_SA0_HIGH   (0xD6 >> 1)
 #define GYR_ADDRESS   (0x69)
-
-
 
 #define L3G_WHO_AM_I      0x0F
 
@@ -39,5 +35,8 @@
 #define L3G_INT1_THS_ZH   0x36
 #define L3G_INT1_THS_ZL   0x37
 #define L3G_INT1_DURATION 0x38
+
+void enableGyroscope(int);
+void readGyroscope(float*, int);
 
 #endif

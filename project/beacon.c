@@ -16,7 +16,7 @@ int main(int argc, char **argv)
 	//uint8_t data[30];
 	float pos_raw[3];
 		
-	if ((fd = serialOpen("/dev/ttyUSB0",115200)) < 0){
+	if ((fd = serialOpen("/dev/ttyACM1",115200)) < 0){
 		fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
 		return 1;		
 		}
@@ -27,6 +27,7 @@ int main(int argc, char **argv)
 	}
 		
 	while(test < 0){
+		if (serialDataAvail(fd)){
 		/*if ((fd = serialDataAvail(fd)) == -1){
 			fprintf(stderr, "Data not available: %s\n", strerror (errno));
 			return -1;
@@ -63,6 +64,7 @@ int main(int argc, char **argv)
 		pos_raw[2] = (float)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
 		
 		printf("X=%.3f, Y=%.3f, Z=%.3f\n\n", pos_raw[0]/1000, pos_raw[1]/1000, pos_raw[2]/1000);
+	}
 			/*
 			printf("data8[0] is %04x\n", data8[0]);
 			printf("data8[1] is %04x\n", data8[1]);

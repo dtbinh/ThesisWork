@@ -85,5 +85,8 @@
 #define LSM303DLHC_OUT_Z_H_M     0x05
 #define LSM303DLHC_OUT_Z_L_M     0x06
 
-
+void enableAccelerometer(int);
+void enableMagnetometer(int);
+void readAccelerometer(float*, int);
+void readMagnetometer(float*, int); 
 #endif

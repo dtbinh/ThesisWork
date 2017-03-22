@@ -94,7 +94,7 @@ static int readRawPressure(int fd)
 
 
 // Global function for loading factory calibration data from bmp sensor
-void loadCalibration(int fd)
+void enableBMP(int fd)
 {
     AC1 = I2CReadS16(BMP180_CAL_AC1, fd);
     AC2 = I2CReadS16(BMP180_CAL_AC2, fd);
@@ -110,7 +110,7 @@ void loadCalibration(int fd)
 }
 
 // Global function for reading temperature
-float readTemperature(int fd)
+static float readTemperature(int fd)
 {
     float T;
     int UT,X1,X2,B5;
@@ -123,7 +123,7 @@ float readTemperature(int fd)
 }
 
 // Global function for reading pressure
-float readPressure(int fd)
+static float readPressure(int fd)
 {
     int P;
     int UT,UP,X1,X2,X3,B3,B5,B6;
@@ -158,7 +158,7 @@ float readPressure(int fd)
 }
 
 // Global function for reading altitude
-float readAltitude(int fd)
+static float readAltitude(int fd)
 {
     float pressure,altitude;
     float sealevelPa = 101325.0;
@@ -168,11 +168,18 @@ float readAltitude(int fd)
 }
 
 // Global function for reading sea lever pressure
-float readSealevelPressure(int fd)
+static float readSealevelPressure(int fd)
 {
     float altitude_m = 0.0;
     float pressure,p0;
     pressure =(float)readPressure(fd);
     p0 = pressure / pow(1.0 - altitude_m/44330.0,5.255);
     return p0;
+}
+
+// Global function for returning array of data
+void readBMP(float *bmpRaw, int fd){
+	bmpRaw[0]=readTemperature(fd);
+	bmpRaw[1]=readPressure(fd)/100.0;
+	bmpRaw[2]=readAltitude(fd);
 }

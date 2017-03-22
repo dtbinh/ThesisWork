@@ -36,11 +36,8 @@
 #define OSS BMP180_STANDARD
 
 //Functions
-void loadCalibration(int);
-float readTemperature(int);
-float readPressure(int);
-float readAltitude(int);
-float readSealevelPressure(int);
+void enableBMP(int);
+void readBMP(float* ,int);
 
 
 
