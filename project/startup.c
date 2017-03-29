@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 		break;
 		
 		case 0:
-			printf("Sensor Fusion process ID: %d\n", (int)getpid());	
+			printf("Sensor Fusion process ID: %d\n", (int)getpid());
 			
 			// Close write and read ends insuring no old data present
 			if (close(pipeSensorController.parent[1])==-1) printf("close error - parent to child write\n");
