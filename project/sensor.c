@@ -5,12 +5,14 @@
 #include "L3G.h"
 #include "LSM303.h"
 #include "bmp180.h"
+#include "PWM.h"
 #include "MadgwickAHRS.h"
 
 
 #include <unistd.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
@@ -20,6 +22,7 @@
 #include <errno.h>
 #include <math.h>
 #include <errno.h>
+
 
 
 #define PI 3.141592653589793
@@ -39,6 +42,7 @@ static void *threadReadBeacon (void*);
 static void *threadSensorFusion (void*);
 //static void *threadReadBeacon (void*);
 //static void *threadSensorFusion (void*);
+static void *threadPWMControl (void*);
 
 
 // Static variables for threads
@@ -53,6 +57,7 @@ static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 
 
 /******************************************************************/
@@ -65,14 +70,15 @@ void startSensors(void *arg1, void *arg2){
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadPipeSensToCtrlAndComm, threadReadPos, threadSenFus;
-	int res3, res1, res5;
+	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl;
+	int res1, res5, res6;
 	
 	res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArray1);
 	//res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
 	//res3=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
 	//res4=pthread_create(&threadPipeCommToSens, NULL, &threadPipeCommToSensor, arg2);
 	res5=pthread_create(&threadSenFus, NULL, &threadSensorFusion, arg1);
+	res6=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
 	
 	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
@@ -80,6 +86,7 @@ void startSensors(void *arg1, void *arg2){
 	//if (!res3) pthread_join( threadReadPos, NULL);
 	//if (!res4) pthread_join( threadPipeCommToSens, NULL);
 	if (!res5) pthread_join( threadSenFus, NULL);
+	if (!res6) pthread_join( threadPWMCtrl, NULL);
 }
 
 
@@ -209,6 +216,8 @@ static void *threadPipeCommToSensor (void *arg)
 }
 */
 
+
+
 // Thread - Read position values
 void *threadReadBeacon (void *arg){
 	// Define local variables
@@ -297,17 +306,20 @@ static void *threadSensorFusion (void *arg){
 	
 	float eulers[3]; // roll, pitch, yaw;
 	float roll, pitch, yaw;
-	uint32_t desiredPeriod = 10;
+	uint32_t desiredPeriod = 20;
 	uint32_t start=millis();
 	uint32_t start2=start;
+	uint32_t start3;
 	
 	//float mean[3], variance[3], std_deviation[3], accRawCal[3][100], sum[3]={0.0,0.0,0.0}, sum1[3]={0.0,0.0,0.0};
 	
 	// Setup I2C communication
-	int fdAcc=wiringPiI2CSetup(ACC_ADDRESS);
-	int fdMag=wiringPiI2CSetup(MAG_ADDRESS);
-	int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
-	//int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
+	pthread_mutex_lock(&mutexI2CBusy);
+		int fdAcc=wiringPiI2CSetup(ACC_ADDRESS);
+		int fdMag=wiringPiI2CSetup(MAG_ADDRESS);
+		int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
+		//int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
+	pthread_mutex_unlock(&mutexI2CBusy);
 	
 	// Check that the I2C setup was successful
 	//if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
@@ -317,27 +329,32 @@ static void *threadSensorFusion (void *arg){
 	}
 	else
 	{
+		printf("Enabling sensors...\n");
 		// Enable acc, gyr, mag  and bmp sensors
-		enableAccelerometer(fdAcc);
-		enableMagnetometer(fdMag);
-		enableGyroscope(fdGyr);
-		//enableBMP(fdBmp);
+		pthread_mutex_lock(&mutexI2CBusy);
+			enableAccelerometer(fdAcc);
+			enableMagnetometer(fdMag);
+			enableGyroscope(fdGyr);
+			//enableBMP(fdBmp);
+		pthread_mutex_unlock(&mutexI2CBusy);
 
 		printf("Start sensor Calibration...\n");
-		start2=start;
 		int calibrationFlag=0;
 		
+		sleep(10);
 		// Loop for ever
 		while(1){
 			// Timing
-			//printf("Ts: %i\n", millis() - start2);
 			start=millis();
-
+			start3=start;
+			printf("Ts: %i\n", start3-millis());
 			
 			// Read sensor data to local variable
-			readAccelerometer(accRaw, fdAcc);
-			readMagnetometer(magRaw, fdMag);
-			readGyroscope(gyrRaw, fdGyr);
+			pthread_mutex_lock(&mutexI2CBusy);
+				readAccelerometer(accRaw, fdAcc);
+				readMagnetometer(magRaw, fdMag);
+				readGyroscope(gyrRaw, fdGyr);
+			pthread_mutex_unlock(&mutexI2CBusy);
 		
 			// Run Sebastian Madgwick AHRS algorithm
 			MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
@@ -356,7 +373,7 @@ static void *threadSensorFusion (void *arg){
 			}
 			
 			if(calibrationFlag==1)
-				printf("roll: %.1f pitch: %.1f yaw: %.1f\n", roll, pitch, yaw);
+				//printf("roll: %.1f pitch: %.1f yaw: %.1f\n", roll, pitch, yaw);
 			
 			//printf("Acc: %.3f, %.3f, %.3f\n", accRaw[0], accRaw[1], accRaw[2]); 
 			//printf("Mag: %.3f, %.3f, %.3f\n", magRaw[0], magRaw[1], magRaw[2]); 
@@ -381,15 +398,54 @@ static void *threadSensorFusion (void *arg){
 			*/
 			
 			// Sleep for desired sampling frequency
-			if((millis()-start)<desiredPeriod)
-				usleep(1000*(desiredPeriod-(millis()-start)));
-				
-			
+			start2=millis()-start;
+			if(start2<desiredPeriod)
+				usleep(1000*(desiredPeriod-start2));
 		}
 	}
 	return NULL;
 }
 
+
+
+
+
+// Thread - PWM Control
+static void *threadPWMControl (void *arg){
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	float pwmValueBuffer[4];
+	
+	// Initialize I2C connection to the PWM board and define PWM frequency
+	pthread_mutex_lock(&mutexI2CBusy);
+		int fdPWM=wiringPiI2CSetup(PWM_ADDRESS);
+	pthread_mutex_unlock(&mutexI2CBusy);
+
+	
+	if(fdPWM==-1){
+	 printf("Error setup the I2C PWM connection\n");
+	}
+	else{
+		// Initialize PWM board
+		pthread_mutex_lock(&mutexI2CBusy);
+			enablePWM(fdPWM,500);
+		pthread_mutex_unlock(&mutexI2CBusy);
+		printf("PWM initialization complete\n");
+		
+		// Run forever and set PWM when controller computes new values
+		while(1){
+			// Read data from controller process
+			if(read(ptrPipe->parent[0], pwmValueBuffer, sizeof(pwmValueBuffer)) == -1) printf("read error in sensor from controller\n");
+			printf("Data received: %f\n", pwmValueBuffer[0]);
+			
+			// Set PWM
+			pthread_mutex_lock(&mutexI2CBusy);
+				setPWM(fdPWM, pwmValueBuffer);
+			pthread_mutex_unlock(&mutexI2CBusy);
+		}	
+	}
+	return NULL;
+}
 
 /******************************************************************/
 /****************************FUNCTIONS*****************************/

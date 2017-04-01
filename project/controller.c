@@ -27,7 +27,7 @@
 static void *threadPipeSensorToController(void*);
 static void *threadPipeCommToController(void*);
 static void *threadPipeControllerToComm(void*);
-static void *intController(void);
+static void *threadController(void*);
 
 // Static variables for threads
 static float sensorData[6]={0,0,0,0,0,0};
@@ -51,17 +51,19 @@ static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
 // Function to start the sensor process threads
 void startController(void *arg1, void *arg2){
 	// Create threads
-	pthread_t threadPipeSensToCtrl, threadPipeCommToCtrl, threadPipeCtrlToComm;
-	int res1, res2, res3;
+	pthread_t threadPipeSensToCtrl, threadPipeCommToCtrl, threadPipeCtrlToComm, threadCtrl;
+	int res1, res2, res3, res4;
 	
 	res1=pthread_create(&threadPipeSensToCtrl, NULL, &threadPipeSensorToController, arg1);
 	res2=pthread_create(&threadPipeCommToCtrl, NULL, &threadPipeCommToController, arg2);
 	res3=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg2);
+	res4=pthread_create(&threadCtrl, NULL, &threadController, arg1);
 	
 	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeSensToCtrl, NULL);
 	if (!res2) pthread_join( threadPipeCommToCtrl, NULL);
 	if (!res3) pthread_join( threadPipeCtrlToComm, NULL);
+	if (!res4) pthread_join( threadCtrl, NULL);
 }
 
 
@@ -139,31 +141,28 @@ void *threadPipeControllerToComm(void *arg)
 }
 
 
-// Interrupt - Controller algorithm
-void *intController()
+// Thread - Controller algorithm
+void *threadController(void *arg)
 {
-	// Update sensor measurements and constraints
-	pthread_mutex_lock(&mutexSensorData);
-	memcpy(position, sensorData, 3);
-	memcpy(angle, sensorData+3,3);
-	pthread_mutex_unlock(&mutexSensorData);
-	pthread_mutex_lock(&mutexConstraintData);
-	memcpy(constraints, constraintData, sizeof(constraintData));
-	pthread_mutex_unlock(&mutexConstraintData);
-	
-	
-	// Compute control signal
-	sleep(10);
-	float controllerData[9] = {1,2,3,4,5,6,7,8,9};
-	
-	
-	// 
-	
-	// Flag pipe write to communication process
-	flagController=1;
-	pthread_mutex_lock(&mutexControllerData);
-	memcpy(controller, controllerData, sizeof(controllerData));
-	pthread_mutex_unlock(&mutexControllerData);
+	structPipe *ptrPipe = arg;
+	sleep(15);
+	char input[10];
+	float value[4];
+
+	while(1){
+		// Read in PWM value
+		printf("Enter PWM value:");
+		fgets(input, 10, stdin);
+		value[0] = atof(input);
+		printf("Value: %f\n", value[0]);
+		
+		for (int i=1;i<4;i++){
+			value[i]=value[0];
+		}
+			
+		// Write data to sensor process
+		if (write(ptrPipe->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+	}
 	
 	return NULL;
 }
@@ -175,3 +174,36 @@ void *intController()
 /******************************************************************/
 
 
+
+
+
+
+
+
+
+	// Update sensor measurements and constraints
+	/*pthread_mutex_lock(&mutexSensorData);
+	memcpy(position, sensorData, 3);
+	memcpy(angle, sensorData+3,3);
+	pthread_mutex_unlock(&mutexSensorData);
+	pthread_mutex_lock(&mutexConstraintData);
+	memcpy(constraints, constraintData, sizeof(constraintData));
+	pthread_mutex_unlock(&mutexConstraintData);
+	*/
+	
+	// Compute control signal
+	/*
+	sleep(10);
+	float controllerData[9] = {1,2,3,4,5,6,7,8,9};
+	*/
+	
+	// 
+	
+	// Flag pipe write to communication process
+	/*
+	flagController=1;
+	pthread_mutex_lock(&mutexControllerData);
+	memcpy(controller, controllerData, sizeof(controllerData));
+	pthread_mutex_unlock(&mutexControllerData);
+	*/
+	
