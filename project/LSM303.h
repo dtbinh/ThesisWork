@@ -3,6 +3,8 @@
 
 //#include <stdint.h>
 
+#define G 9.80665
+
 // register addresses
 #define MAG_ADDRESS            (0x3C >> 1)
 #define ACC_ADDRESS            (0x32 >> 1)

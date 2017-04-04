@@ -26,7 +26,7 @@
 
 
 #define PI 3.141592653589793
-#define CALIBRATION 100
+#define CALIBRATION 10000
 
 
 /******************************************************************/
@@ -43,6 +43,7 @@ static void *threadSensorFusion (void*);
 //static void *threadReadBeacon (void*);
 //static void *threadSensorFusion (void*);
 static void *threadPWMControl (void*);
+float kalmanFilter(float, float, int);
 
 
 // Static variables for threads
@@ -58,6 +59,18 @@ static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
+
+
+
+float A=1;
+float Hk=1;
+float xkhat[9]={0,0,0,0,0,0,0,0,0};
+float Pk[9]={0,0,0,0,0,0,0,0,0};
+float Q[9]={.8,.8,.8,.8,.8,.8,.8,.8,.8}; // motion noise
+float Rk[9]={0.0691,0.0778,0.1417,0,0,0,0.1035,0.1207,0.1986}; // [acc, gyr, mag] measurement noise
+float Kk[9], Sk[9], vk[9];
+
+
 
 
 /******************************************************************/
@@ -304,14 +317,13 @@ static void *threadSensorFusion (void *arg){
 	float magRaw[3];
 	//float bmpRaw[3];
 	
-	float eulers[3]; // roll, pitch, yaw;
 	float roll, pitch, yaw;
-	uint32_t desiredPeriod = 20;
+	uint32_t desiredPeriod = 500;
 	uint32_t start=millis();
 	uint32_t start2=start;
-	uint32_t start3;
 	
-	//float mean[3], variance[3], std_deviation[3], accRawCal[3][100], sum[3]={0.0,0.0,0.0}, sum1[3]={0.0,0.0,0.0};
+	float mean[3], variance[3], std_deviation[3], accRawCal[3][CALIBRATION], sum[3]={0.0,0.0,0.0}, sum1[3]={0.0,0.0,0.0};
+	int counterCal=0;
 	
 	// Setup I2C communication
 	pthread_mutex_lock(&mutexI2CBusy);
@@ -342,12 +354,13 @@ static void *threadSensorFusion (void *arg){
 		int calibrationFlag=0;
 		
 		sleep(10);
+		int k=0;
 		// Loop for ever
 		while(1){
 			// Timing
+			//printf("Ts: %i\n", millis()-start2);
 			start=millis();
-			start3=start;
-			printf("Ts: %i\n", start3-millis());
+			start2=start;
 			
 			// Read sensor data to local variable
 			pthread_mutex_lock(&mutexI2CBusy);
@@ -355,52 +368,113 @@ static void *threadSensorFusion (void *arg){
 				readMagnetometer(magRaw, fdMag);
 				readGyroscope(gyrRaw, fdGyr);
 			pthread_mutex_unlock(&mutexI2CBusy);
+			
+			
+			if(k<100)
+				k++;
+			else
+				beta=1;
+				
+			
+			
+		
+		/*
+			// Kalman Filter the raw acc data
+			for (int i=0;i<3;i++){
+				 accRaw[i]=kalmanFilter(accRaw[i], (float)desiredPeriod, i);
+			}
+			// Kalman Filter the raw gyr data
+			for (int i=3;i<6;i++){
+				gyrRaw[i]=kalmanFilter(gyrRaw[i], (float)desiredPeriod, i);
+			}
+			// Kalman Filter the raw mag data
+			for (int i=6;i<9;i++){
+				magRaw[i]=kalmanFilter(magRaw[i], (float)desiredPeriod, i);
+			}
+		*/
+			//printf("Raw Acc: %6.3f %6.3f %6.3f Filter acc: %6.3f %6.3f %6.3f P acc: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], xkhat[0], xkhat[1], xkhat[2], Pk[0], Pk[1], Pk[2]);
 		
 			// Run Sebastian Madgwick AHRS algorithm
-			MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
+			//MadgwickAHRSupdate(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
+			//MadgwickAHRSupdate(xkhat[3], xkhat[4], xkhat[5], xkhat[0], xkhat[1], xkhat[2], xkhat[6], xkhat[7], xkhat[8]);
 			//MadgwickAHRSupdateIMU(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2]);
 			
+
+			
+			
+	
+	
+			// Calibration routine to get mean, variance and std_deviation
+			/*if(counterCal==CALIBRATION-1){
+				// Mean
+				for (int i=0;i<CALIBRATION;i++){
+					sum[0]+=accRawCal[0][i];
+					sum[1]+=accRawCal[1][i];
+					sum[2]+=accRawCal[2][i];
+				}
+				mean[0]=sum[0]/CALIBRATION;
+				mean[1]=sum[1]/CALIBRATION;
+				mean[2]=sum[2]/CALIBRATION;
+				
+				// Variance and std_deviation
+				for (int i=0;i<CALIBRATION;i++){
+					sum1[0]+=pow((accRawCal[0][i] - mean[0]), 2);
+					sum1[1]+=pow((accRawCal[1][i] - mean[1]), 2);
+					sum1[2]+=pow((accRawCal[2][i] - mean[2]), 2);
+				}
+				std_deviation[0]=sum1[0]/CALIBRATION;
+				std_deviation[1]=sum1[1]/CALIBRATION;
+				std_deviation[2]=sum1[2]/CALIBRATION;
+				variance[0]=sqrt(std_deviation[0]);
+				variance[1]=sqrt(std_deviation[1]);
+				variance[2]=sqrt(std_deviation[2]);
+				printf("Mean: %.4f %.4f %.4f Variance: %.4f %.4f %.4f Std Deviation: %.4f %.4f %.4f\n", mean[0], mean[1], mean[2], variance[0], variance[1], variance[2], std_deviation[0], std_deviation[1], std_deviation[2]);
+				counterCal=CALIBRATION;
+			}
+			else{
+				accRawCal[0][counterCal]=accRaw[0];
+				accRawCal[1][counterCal]=accRaw[1];
+				accRawCal[2][counterCal]=accRaw[2];
+				counterCal++;
+			}
+			
+			*/
+			
+			
+			
+			
+			//float accFiltered=kalmanFilter(accRaw[0], (float)desiredPeriod);
+			
+			//printf("Acc1: %6.3f %6.3f %6.3f Acc2: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], accRaw[3], accRaw[4], accRaw[5]);
+			printf("Acc: %6.3f %6.3f %6.3f Mag: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2]);
+			//printf("Acc: %f %f\n", accRaw[0], accFiltered);
+		
 			// Quaternion to euler angles [rad]
+			/*
 			yaw=atan2f(2*q1*q2-2*q0*q3,2*pow(q0,2)+2*pow(q1,2)-1)*(180.0/PI);
 			pitch=-asinf(2*q1*q3+2*q0*q2)*(180.0/PI);
 			roll=atan2f(2*q2*q3-2*q0*q1,2*pow(q0,2)+2*pow(q3,2)-1)*(180.0/PI);
+			*/
 			
+			/*
 			if(millis()-start2>=10000 && calibrationFlag==0){
 				printf("Finished sensor Calibration...\n");
 				calibrationFlag=1;
 				beta = 0.033;
 				printf("Beta: %.2f\n", beta);
 			}
-			
-			if(calibrationFlag==1)
-				//printf("roll: %.1f pitch: %.1f yaw: %.1f\n", roll, pitch, yaw);
-			
-			//printf("Acc: %.3f, %.3f, %.3f\n", accRaw[0], accRaw[1], accRaw[2]); 
-			//printf("Mag: %.3f, %.3f, %.3f\n", magRaw[0], magRaw[1], magRaw[2]); 
-			
-			/*
-			// Share data for WIFI communication
-			pthread_mutex_lock(&mutexAngleData);
-			//memcpy(angles, eulers, sizeof(eulers));
-			sensorRawData[0]=gyrRaw[0];
-			sensorRawData[1]=gyrRaw[1];
-			sensorRawData[2]=gyrRaw[2];
-			sensorRawData[3]=accRaw[0];
-			sensorRawData[4]=accRaw[1];
-			sensorRawData[5]=accRaw[2];
-			sensorRawData[6]=magRaw[0];
-			sensorRawData[7]=magRaw[1];
-			sensorRawData[8]=magRaw[2];
-			sensorRawData[9]=eulers[0]*(180.0/PI);
-			sensorRawData[10]=eulers[1]*(180.0/PI);
-			sensorRawData[11]=eulers[2]*(180.0/PI);
-			pthread_mutex_unlock(&mutexAngleData);
 			*/
 			
+			//if(calibrationFlag==1)
+				
+				//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", roll, pitch, yaw);
+				fflush(stdout);
+				printf("\033c");
+				
+				
 			// Sleep for desired sampling frequency
-			start2=millis()-start;
-			if(start2<desiredPeriod)
-				usleep(1000*(desiredPeriod-start2));
+			if((millis()-start)<desiredPeriod)
+				usleep(1000*(desiredPeriod-(millis()-start)));
 		}
 	}
 	return NULL;
@@ -451,5 +525,52 @@ static void *threadPWMControl (void *arg){
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
 
+// Kalman filter (random walk)
+float kalmanFilter(float yk, float Ts, int index){
+	float Ak=1+A*(Ts/1000);
+	float Qk=Q[index]*(Ts/1000);
+	//printf("yk=%f Ak=%f Qk=%f\n", yk, Ak, Qk);
+	// Prediction step
+	xkhat[index]=Ak*xkhat[index];
+	Pk[index]=Ak*Pk[index]*Ak+Qk;
+	//printf("Prediction: xkhat=%f Pk=%f\n", xkhat, Pk);
+	
+	// Update step
+	Sk[index]=Hk*Pk[index]*Hk+Rk[index];
+	Kk[index]=Pk[index]*Hk*(1/Sk[index]);
+	vk[index]=yk-Hk*xkhat[index];
+	//printf("Sk=%f Kk=%f vk=%f\n", Sk, Kk, vk);
+
+	xkhat[index]=xkhat[index]+Kk[index]*vk[index];
+	Pk[index]=Pk[index]-Kk[index]*Sk[index]*Kk[index];
+	//printf("Update: xkhat=%f Pk=%f\n", xkhat, Pk);
+	
+	return xkhat[index];
+}
 
 
+
+
+
+
+/*
+// Low pass filter
+static void lowPassFilter(float* data, int Ts, int freq, int r){
+	c=1.0f/tanf(PI*freq / Ts);
+	a1=1.0f/(1.0f+r*c+c*c);
+	a2=2.0f*a1;
+	a3=a1;
+	b1=2.0f*(1.0f-c*c)*a1;
+	b2=(1.0f-r*c+c*c)*a1;
+}
+
+// High pass filter
+static void highPassFilter(float* data, int Ts, int freq, int r){
+	c=tanf(PI*freq / Ts);
+	a1=1.0f/(1.0f+r*c+c*c);
+	a2=-2.0f*a1;
+	a3=a1;
+	b1=2.0f*(c*c-1.0f)*a1;
+	b2=(1.0f-r*c+c*c)*a1;
+}
+*/

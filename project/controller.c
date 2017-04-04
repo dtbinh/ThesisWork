@@ -151,7 +151,7 @@ void *threadController(void *arg)
 
 	while(1){
 		// Read in PWM value
-		printf("Enter PWM value:");
+		printf("Enter PWM value:\n");
 		fgets(input, 10, stdin);
 		value[0] = atof(input);
 		printf("Value: %f\n", value[0]);
@@ -159,7 +159,7 @@ void *threadController(void *arg)
 		for (int i=1;i<4;i++){
 			value[i]=value[0];
 		}
-			
+		
 		// Write data to sensor process
 		if (write(ptrPipe->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
 	}

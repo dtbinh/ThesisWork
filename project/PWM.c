@@ -6,20 +6,6 @@
 #include <unistd.h>
 
 
-#include <unistd.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <string.h>
-#include <wiringPi.h>
-#include <wiringPiI2C.h>
-#include <wiringSerial.h>
-#include <errno.h>
-#include <math.h>
-#include <errno.h>
-
 static void scalePWM(float*, int*);
 
 // Function for enabling Gyroscope sensor
