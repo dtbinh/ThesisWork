@@ -22,7 +22,8 @@ void readGyroscope(float *gyrRaw, int fd){
 	gyr[4]=wiringPiI2CReadReg8(fd,L3G_OUT_Z_L);
 	gyr[5]=wiringPiI2CReadReg8(fd,L3G_OUT_Z_H);
 	
-	gyrRaw[0] = (float)(((int16_t)(gyr[1] << 8| gyr[0]))/pow(2,8));
-	gyrRaw[1] = (float)(((int16_t)(gyr[3] << 8| gyr[2]))/pow(2,8));
-	gyrRaw[2] = (float)(((int16_t)(gyr[5] << 8| gyr[4]))/pow(2,8));
+	gyrRaw[0] = (float)(int16_t)(gyr[1] << 8| gyr[0])*0.07;
+	gyrRaw[1] = (float)(int16_t)(gyr[3] << 8| gyr[2])*0.07;
+	gyrRaw[2] = (float)(int16_t)(gyr[5] << 8| gyr[4])*0.07;
+
 }

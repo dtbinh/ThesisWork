@@ -52,11 +52,12 @@ float kalmanFilter(float, float, int);
 //static float tuning[3];
 static float sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between imu read and angle fusion threads
 static float sensorRawData[12]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
+static float sensorRawDataAngles[12]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
 //static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 
@@ -163,7 +164,7 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 	float sensorDataBuffer[12]={0,0,0,0,0,0,0,0,0,0,0,0};
 	
 	// Timers for sampling frequency
-	uint32_t desiredPeriod = 1000;
+	uint32_t desiredPeriod = 20;
 	uint32_t start=millis();
 	
 	// Loop forever sending data to controller and communication processes
@@ -178,15 +179,15 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 		/*pthread_mutex_lock(&mutexPositionData);
 		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
 		pthread_mutex_unlock(&mutexPositionData);
-		
+		*/
 		
 		pthread_mutex_lock(&mutexAngleSensorData);
-		memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
+			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
 		pthread_mutex_unlock(&mutexAngleSensorData);
-		pthread_mutex_lock(&mutexPositionSensorData);
-		memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
-		pthread_mutex_unlock(&mutexPositionSensorData);
-		*/
+		/*pthread_mutex_lock(&mutexPositionSensorData);
+			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
+		pthread_mutex_unlock(&mutexPositionSensorData);*/
+		
 		// Write to Controller process
 		//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
 		//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
@@ -317,8 +318,10 @@ static void *threadSensorFusion (void *arg){
 	float magRaw[3];
 	//float bmpRaw[3];
 	
-	float roll, pitch, yaw;
-	uint32_t desiredPeriod = 500;
+	float roll=0;
+	float pitch=0;
+	float yaw=0;
+	uint32_t desiredPeriod = 20;
 	uint32_t start=millis();
 	uint32_t start2=start;
 	
@@ -332,6 +335,9 @@ static void *threadSensorFusion (void *arg){
 		int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
 		//int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
 	pthread_mutex_unlock(&mutexI2CBusy);
+	
+	printf("%d\n", fdGyr);
+	
 	
 	// Check that the I2C setup was successful
 	//if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
@@ -353,7 +359,7 @@ static void *threadSensorFusion (void *arg){
 		printf("Start sensor Calibration...\n");
 		int calibrationFlag=0;
 		
-		sleep(10);
+		sleep(5);
 		int k=0;
 		// Loop for ever
 		while(1){
@@ -369,12 +375,49 @@ static void *threadSensorFusion (void *arg){
 				readGyroscope(gyrRaw, fdGyr);
 			pthread_mutex_unlock(&mutexI2CBusy);
 			
+			// Run Sebastian Madgwick AHRS algorithm
+			MadgwickAHRSupdate(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
+			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
 			
-			if(k<100)
+			// Calibration routine
+			if(k<500){
 				k++;
-			else
-				beta=1;
-				
+			}
+			else if(k==10000){
+				beta=0.01;
+				printf("Sensor Calibration finish\n");
+				printf("Beta: %.2f\n", beta);
+				k++;
+			}
+			//else if(k<600)
+				//k++;
+			else{
+				// Quaternion to euler angles [rad]
+				yaw=atan2f(2*q1*q2-2*q0*q3,2*pow(q0,2)+2*pow(q1,2)-1)*(180.0/PI);
+				pitch=-asinf(2*q1*q3+2*q0*q2)*(180.0/PI);
+				roll=atan2f(2*q2*q3-2*q0*q1,2*pow(q0,2)+2*pow(q3,2)-1)*(180.0/PI);
+				printf("roll: %.2f pitch: %.2f yaw: %.2f\n", roll, pitch, yaw);
+			}
+			
+			// Print raw sensor measurements
+			//printf("Acc: %6.3f %6.3f %6.3f Mag: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0]*1000000, magRaw[1]*1000000, magRaw[2]*1000000, gyrRaw[0]*PI/180, gyrRaw[1]*PI/180, gyrRaw[2]*PI/180);
+			
+			pthread_mutex_lock(&mutexAngleSensorData);
+				sensorRawDataAngles[0]=gyrRaw[0]*PI/180;
+				sensorRawDataAngles[1]= gyrRaw[1]*PI/180;
+				sensorRawDataAngles[2]= gyrRaw[2]*PI/180;
+				sensorRawDataAngles[3]=accRaw[0];
+				sensorRawDataAngles[4]=accRaw[1];
+				sensorRawDataAngles[5]=accRaw[2];
+				sensorRawDataAngles[6]=magRaw[0];
+				sensorRawDataAngles[7]=magRaw[1];
+				sensorRawDataAngles[8]=magRaw[2];
+				sensorRawDataAngles[9]=yaw;
+				sensorRawDataAngles[10]=pitch;
+				sensorRawDataAngles[11]=roll;
+			pthread_mutex_unlock(&mutexAngleSensorData);
+			
+			
 			
 			
 		
@@ -394,18 +437,14 @@ static void *threadSensorFusion (void *arg){
 		*/
 			//printf("Raw Acc: %6.3f %6.3f %6.3f Filter acc: %6.3f %6.3f %6.3f P acc: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], xkhat[0], xkhat[1], xkhat[2], Pk[0], Pk[1], Pk[2]);
 		
-			// Run Sebastian Madgwick AHRS algorithm
+			
 			//MadgwickAHRSupdate(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
 			//MadgwickAHRSupdate(xkhat[3], xkhat[4], xkhat[5], xkhat[0], xkhat[1], xkhat[2], xkhat[6], xkhat[7], xkhat[8]);
-			//MadgwickAHRSupdateIMU(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2]);
-			
-
-			
-			
+			//MadgwickAHRSupdateIMU(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2]);	
 	
-	
+	/*
 			// Calibration routine to get mean, variance and std_deviation
-			/*if(counterCal==CALIBRATION-1){
+			if(counterCal==CALIBRATION-1){
 				// Mean
 				for (int i=0;i<CALIBRATION;i++){
 					sum[0]+=accRawCal[0][i];
@@ -428,33 +467,25 @@ static void *threadSensorFusion (void *arg){
 				variance[0]=sqrt(std_deviation[0]);
 				variance[1]=sqrt(std_deviation[1]);
 				variance[2]=sqrt(std_deviation[2]);
-				printf("Mean: %.4f %.4f %.4f Variance: %.4f %.4f %.4f Std Deviation: %.4f %.4f %.4f\n", mean[0], mean[1], mean[2], variance[0], variance[1], variance[2], std_deviation[0], std_deviation[1], std_deviation[2]);
+				printf("Gryoscope: Mean: %.4f %.4f %.4f Variance: %.4f %.4f %.4f Std Deviation: %.4f %.4f %.4f\n", mean[0], mean[1], mean[2], variance[0], variance[1], variance[2], std_deviation[0], std_deviation[1], std_deviation[2]);
 				counterCal=CALIBRATION;
 			}
 			else{
-				accRawCal[0][counterCal]=accRaw[0];
-				accRawCal[1][counterCal]=accRaw[1];
-				accRawCal[2][counterCal]=accRaw[2];
+				accRawCal[0][counterCal]=gyrRaw[0]*PI/180;
+				accRawCal[1][counterCal]=gyrRaw[1]*PI/180;
+				accRawCal[2][counterCal]=gyrRaw[2]*PI/180;
 				counterCal++;
 			}
 			
 			*/
 			
-			
-			
-			
 			//float accFiltered=kalmanFilter(accRaw[0], (float)desiredPeriod);
 			
 			//printf("Acc1: %6.3f %6.3f %6.3f Acc2: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], accRaw[3], accRaw[4], accRaw[5]);
-			printf("Acc: %6.3f %6.3f %6.3f Mag: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2]);
+			//printf("Acc: %6.3f %6.3f %6.3f Mag: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0]*1000000, magRaw[1]*1000000, magRaw[2]*1000000, gyrRaw[0]*PI/180, gyrRaw[1]*PI/180, gyrRaw[2]*PI/180);
 			//printf("Acc: %f %f\n", accRaw[0], accFiltered);
 		
-			// Quaternion to euler angles [rad]
-			/*
-			yaw=atan2f(2*q1*q2-2*q0*q3,2*pow(q0,2)+2*pow(q1,2)-1)*(180.0/PI);
-			pitch=-asinf(2*q1*q3+2*q0*q2)*(180.0/PI);
-			roll=atan2f(2*q2*q3-2*q0*q1,2*pow(q0,2)+2*pow(q3,2)-1)*(180.0/PI);
-			*/
+
 			
 			/*
 			if(millis()-start2>=10000 && calibrationFlag==0){
@@ -468,8 +499,8 @@ static void *threadSensorFusion (void *arg){
 			//if(calibrationFlag==1)
 				
 				//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", roll, pitch, yaw);
-				fflush(stdout);
-				printf("\033c");
+				//fflush(stdout);
+				//printf("\033c");
 				
 				
 			// Sleep for desired sampling frequency
@@ -547,11 +578,6 @@ float kalmanFilter(float yk, float Ts, int index){
 	
 	return xkhat[index];
 }
-
-
-
-
-
 
 /*
 // Low pass filter
