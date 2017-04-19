@@ -8,10 +8,10 @@ OBJ	= startup.o sensor.o communication.o controller.o bmp180.o L3G.o LSM303.o PW
 DEPS = sensor.h communication.h controller.h bmp180.h L3G.h LSM303.h PWM.h MadgwickAHRS.h
 
 #Any special libraries you are using in your project (e.g. -lbcm2835 -lrt `pkg-config --libs gtk+-3.0` ), or leave blank
-LIBS = -lm -lwiringPi -lpthread
+LIBS = -lm -lwiringPi -lpthread -L/usr/lib/libblas -lblas -L/usr/lib/lapack -llapack
 
 #Set any compiler flags you want to use (e.g. -I/usr/include/somefolder `pkg-config --cflags gtk+-3.0` ), or leave blank
-CFLAGS = -std=c99 
+CFLAGS = -std=c99 -L/usr/lib/libblas -lblas -L/usr/lib/lapack -llapack
 
 #Set the compiler you are using ( gcc for C or g++ for C++ )
 CC = gcc

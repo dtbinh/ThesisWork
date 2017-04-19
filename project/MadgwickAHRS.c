@@ -22,8 +22,8 @@
 // Definitions
 
 //#define sampleFreq	512.0f		// sample frequency in Hz
-#define sampleFreq 50.0F
-#define betaDef		0.1f		// 2 * proportional gain
+#define sampleFreq 20.0F
+#define betaDef		0.2f		// 2 * proportional gain
 
 //---------------------------------------------------------------------------------------------------
 // Variable definitions
@@ -60,7 +60,7 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
 	qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
 	qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
-	
+
 	// Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
 	if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
