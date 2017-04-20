@@ -89,6 +89,6 @@
 
 void enableAccelerometer(int);
 void enableMagnetometer(int);
-void readAccelerometer(float*, int);
-void readMagnetometer(float*, int); 
+void readAccelerometer(double*, int);
+void readMagnetometer(double*, int); 
 #endif

@@ -3,9 +3,9 @@
  * processes.
  * 
  *
- * Parent (Startup and Controller)	-> Controller - Child1(threadMPC)
- * 						-> Sensor fusion - Child2(threadReadIMU, threadAngles, threadReadBeacon, threadPosition)
- * 						-> Data communication - Child3(threadWriteUdp, threadReadUdp)
+ * Parent (Startup and Controller)
+ * 						-> Sensor fusion - Child1(threadReadIMU, threadAngles, threadReadBeacon, threadPosition)
+ * 						-> Data communication - Child2(threadWriteUdp, threadReadUdp)
  * 
  *
  * 

@@ -16,12 +16,12 @@
 #define L3G_OUT_TEMP      0x26
 #define L3G_STATUS_REG    0x27
 
-#define L3G_OUT_X_L       0x28h
-#define L3G_OUT_X_H       0x29h
-#define L3G_OUT_Y_L       0x2Ah
-#define L3G_OUT_Y_H       0x2Bh
-#define L3G_OUT_Z_L       0x2Ch
-#define L3G_OUT_Z_H       0x2Dh
+#define L3G_OUT_X_L       0x28
+#define L3G_OUT_X_H       0x29
+#define L3G_OUT_Y_L       0x2A
+#define L3G_OUT_Y_H       0x2B
+#define L3G_OUT_Z_L       0x2C
+#define L3G_OUT_Z_H       0x2D
 
 #define L3G_FIFO_CTRL_REG 0x2E
 #define L3G_FIFO_SRC_REG  0x2F
@@ -37,6 +37,6 @@
 #define L3G_INT1_DURATION 0x38
 
 void enableGyroscope(int);
-void readGyroscope(float*, int);
+void readGyroscope(double*, int);
 
 #endif

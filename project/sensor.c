@@ -44,8 +44,8 @@ static void *threadSensorFusion (void*);
 //static void *threadReadBeacon (void*);
 //static void *threadSensorFusion (void*);
 static void *threadPWMControl (void*);
-float kalmanFilter(float, float, int);
-void mTranspose(float**, float**, int, int);
+//float kalmanFilter(float, float, int);
+//void mTranspose(float**, float**, int, int);
 void Qq(double*, double*);
 void dQqdq(double*, double*, double*, double*, double*, double*, double*);
 void printmat(double*, int, int);
@@ -54,6 +54,10 @@ void qNormalize(double*);
 void Sq(double*, double*, double);
 void Somega(double*, double*);
 void q2euler(double*, double*);
+void accelerometerUpdate(double*, double*, double*, double*, double*);
+void gyroscopeUpdate(double*, double*, double*, double*, double);
+void magnetometerUpdate(double*, double*, double*, double*, double*, double);
+void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
 
 
 // Static variables for threads
@@ -70,18 +74,6 @@ static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
-
-
-
-float A=1;
-float Hk=1;
-float xkhat[9]={0,0,0,0,0,0,0,0,0};
-float Pk[9]={0,0,0,0,0,0,0,0,0};
-float Q[9]={.8,.8,.8,.8,.8,.8,.8,.8,.8}; // motion noise
-float Rk[9]={0.0691,0.0778,0.1417,0,0,0,0.1035,0.1207,0.1986}; // [acc, gyr, mag] measurement noise
-float Kk[9], Sk[9], vk[9];
-
-
 
 
 /******************************************************************/
@@ -168,7 +160,7 @@ void startSensors(void *arg1, void *arg2){
 static void *threadPipeSensorToControllerAndComm (void *arg){
 	// Get pipe array and define local variables
 	pipeArray *pipeArray1 = arg;
-	structPipe *ptrPipe1 = pipeArray1->pipe1;
+	//structPipe *ptrPipe1 = pipeArray1->pipe1;
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	//float sensorDataBuffer[3]={0,0,0};
 	float sensorDataBuffer[12]={0,0,0,0,0,0,0,0,0,0,0,0};
@@ -215,8 +207,8 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 }
 
 
-/*
 // Thread - Pipe Communication to Sensor process read
+/*
 static void *threadPipeCommToSensor (void *arg)
 {
 	// Get pipe and define local variables
@@ -239,7 +231,6 @@ static void *threadPipeCommToSensor (void *arg)
 	return NULL;
 }
 */
-
 
 
 // Thread - Read position values
@@ -316,52 +307,13 @@ void *threadReadBeacon (void *arg){
 }
 
 
-
 // Thread - Sensor fusion
 static void *threadSensorFusion (void *arg){
-	beta = 10;
-	//printf("Beta: %.2f\n", beta);
-	sleep(2);
-	
-	
-	
-	/*
-	float mT[3][3];
-	float m[3][3] = {{3.0,7.0,9.0},{2.0,7.0,5.0},{6.0,3.0,4.0}};
-	mTranspose(mT, m, 3, 3);
-	
-	for (int j=0;j<3;++j){
-		for (int i=0;i<3;++i){
-			printf(" %f" , mT[j][i]);
-		}
-		printf("\n");
-	}
-	
-	*/
-	
-	
-	
-	
-	
-	
-	
-	
 	// Define local variables
-	float accRaw[3];
-	float gyrRaw[3];
-	float magRaw[3];
-	//float qConj[4] = {0,0,0,0};
-	//float bmpRaw[3];
-	
-	float roll=0;
-	float pitch=0;
-	float yaw=0;
-	uint32_t desiredPeriod = 50;
-	uint32_t start=millis();
-	uint32_t start2=start;
-	
-	float mean[3], variance[3], std_deviation[3], accRawCal[3][CALIBRATION], sum[3]={0.0,0.0,0.0}, sum1[3]={0.0,0.0,0.0};
-	int counterCal=0;
+	double accRaw[3], gyrRaw[3], magRaw[3], acc0[3], gyr0[3], mag0[3], accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3];
+	//double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
+	uint32_t desiredPeriod = 100, start;
+	int calibrationCounter=0;
 	
 	// Setup I2C communication
 	pthread_mutex_lock(&mutexI2CBusy);
@@ -371,13 +323,6 @@ static void *threadSensorFusion (void *arg){
 		//int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
 	pthread_mutex_unlock(&mutexI2CBusy);
 	
-	printf("%d\n", fdGyr);
-	
-
-	
-	
-	
-	
 	// Check that the I2C setup was successful
 	//if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
 	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1)
@@ -386,175 +331,91 @@ static void *threadSensorFusion (void *arg){
 	}
 	else
 	{
-		printf("Enabling sensors...\n");
 		// Enable acc, gyr, mag  and bmp sensors
+		printf("Enabling sensors...\n");
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableAccelerometer(fdAcc);
 			enableMagnetometer(fdMag);
 			enableGyroscope(fdGyr);
 			//enableBMP(fdBmp);
 		pthread_mutex_unlock(&mutexI2CBusy);
-
-		printf("Start sensor Calibration...\n");
-		int calibrationFlag=0;
-		
-		sleep(1);
-		int k=0;
+int done=0;
 		// Loop for ever
 		while(1){
 			// Timing
 			//printf("Ts: %i\n", millis()-start2);
 			start=millis();
-			start2=start;
-			
+			//start2=start;
+			/*
 			// Read sensor data to local variable
 			pthread_mutex_lock(&mutexI2CBusy);
 				readAccelerometer(accRaw, fdAcc);
 				readMagnetometer(magRaw, fdMag);
 				readGyroscope(gyrRaw, fdGyr);
 			pthread_mutex_unlock(&mutexI2CBusy);
-			
+			*/
 			// Run Sebastian Madgwick AHRS algorithm
-			MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
+			//MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
 			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
 			//printf("q0: %f q1: %f q2: %f q3: %f\n", q0, q1, q2, q3);
-			
-			// Calibration routine
-			if (k==0){
-				// sensor fusion algorithm test (accelerometer)
-				//sleep(2);
-				printf("Running mu_g\n");
-				getOrientationEulers((double*)accRaw,(double*)gyrRaw,(double*)magRaw);
-				sleep(10);
-				k++;
-			}
-			else if(k<100){
-				k++;
-			}
-			else if(k==100){
-				beta=0.2;
-				printf("Sensor Calibration finish\n");
-				//printf("Beta: %.2f\n", beta);
-				k++;
-			}
-			//else if(k<600)
-				//k++;
-			else{
-				// Quaternion to euler angles [rad]
-				//qConj[0]=q0; qConj[1]=-q1; qConj[2]=-q2; qConj[3]=-q3;
-				//float r1=2
-				
-				 
-				//yaw=atan2f(2*q1*q2-2*q0*q3,2*pow(q0,2)+2*pow(q1,2)-1)*(180.0/PI);
-				//pitch=-asinf(2*q1*q3+2*q0*q2)*(180.0/PI);
-				//roll=atan2f(2*q2*q3-2*q0*q1,2*pow(q0,2)+2*pow(q3,2)-1)*(180.0/PI);
-				//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", roll, pitch, yaw);
-			}
-			
-			// Print raw sensor measurements
-			//printf("Acc [G]: %6.3f %6.3f %6.3f Mag [Flux]: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2]);
-			
-			pthread_mutex_lock(&mutexAngleSensorData);
-				sensorRawDataAngles[0]=gyrRaw[0];
-				sensorRawDataAngles[1]=gyrRaw[1];
-				sensorRawDataAngles[2]=gyrRaw[2];
-				sensorRawDataAngles[3]=accRaw[0];
-				sensorRawDataAngles[4]=accRaw[1];
-				sensorRawDataAngles[5]=accRaw[2];
-				sensorRawDataAngles[6]=magRaw[0];
-				sensorRawDataAngles[7]=magRaw[1];
-				sensorRawDataAngles[8]=magRaw[2];
-				sensorRawDataAngles[9]=yaw;
-				sensorRawDataAngles[10]=pitch;
-				sensorRawDataAngles[11]=roll;
-			pthread_mutex_unlock(&mutexAngleSensorData);
-			
-			
-			
-			
-		
-		/*
-			// Kalman Filter the raw acc data
-			for (int i=0;i<3;i++){
-				 accRaw[i]=kalmanFilter(accRaw[i], (float)desiredPeriod, i);
-			}
-			// Kalman Filter the raw gyr data
-			for (int i=3;i<6;i++){
-				gyrRaw[i]=kalmanFilter(gyrRaw[i], (float)desiredPeriod, i);
-			}
-			// Kalman Filter the raw mag data
-			for (int i=6;i<9;i++){
-				magRaw[i]=kalmanFilter(magRaw[i], (float)desiredPeriod, i);
-			}
-		*/
-			//printf("Raw Acc: %6.3f %6.3f %6.3f Filter acc: %6.3f %6.3f %6.3f P acc: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], xkhat[0], xkhat[1], xkhat[2], Pk[0], Pk[1], Pk[2]);
-		
-			
-			//MadgwickAHRSupdate(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
-			//MadgwickAHRSupdate(xkhat[3], xkhat[4], xkhat[5], xkhat[0], xkhat[1], xkhat[2], xkhat[6], xkhat[7], xkhat[8]);
-			//MadgwickAHRSupdateIMU(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2]);	
-	
-	/*
-			// Calibration routine to get mean, variance and std_deviation
-			if(counterCal==CALIBRATION-1){
-				// Mean
-				for (int i=0;i<CALIBRATION;i++){
-					sum[0]+=accRawCal[0][i];
-					sum[1]+=accRawCal[1][i];
-					sum[2]+=accRawCal[2][i];
-				}
-				mean[0]=sum[0]/CALIBRATION;
-				mean[1]=sum[1]/CALIBRATION;
-				mean[2]=sum[2]/CALIBRATION;
-				
-				// Variance and std_deviation
-				for (int i=0;i<CALIBRATION;i++){
-					sum1[0]+=pow((accRawCal[0][i] - mean[0]), 2);
-					sum1[1]+=pow((accRawCal[1][i] - mean[1]), 2);
-					sum1[2]+=pow((accRawCal[2][i] - mean[2]), 2);
-				}
-				std_deviation[0]=sum1[0]/CALIBRATION;
-				std_deviation[1]=sum1[1]/CALIBRATION;
-				std_deviation[2]=sum1[2]/CALIBRATION;
-				variance[0]=sqrt(std_deviation[0]);
-				variance[1]=sqrt(std_deviation[1]);
-				variance[2]=sqrt(std_deviation[2]);
-				printf("Gryoscope: Mean: %.4f %.4f %.4f Variance: %.4f %.4f %.4f Std Deviation: %.4f %.4f %.4f\n", mean[0], mean[1], mean[2], variance[0], variance[1], variance[2], std_deviation[0], std_deviation[1], std_deviation[2]);
-				counterCal=CALIBRATION;
-			}
-			else{
-				accRawCal[0][counterCal]=gyrRaw[0]*PI/180;
-				accRawCal[1][counterCal]=gyrRaw[1]*PI/180;
-				accRawCal[2][counterCal]=gyrRaw[2]*PI/180;
-				counterCal++;
-			}
-			
-			*/
-			
-			//float accFiltered=kalmanFilter(accRaw[0], (float)desiredPeriod);
-			
-			//printf("Acc1: %6.3f %6.3f %6.3f Acc2: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], accRaw[3], accRaw[4], accRaw[5]);
-			//printf("Acc: %6.3f %6.3f %6.3f Mag: %6.3f %6.3f %6.3f Gyr: %6.3f %6.3f %6.3f\n", accRaw[0], accRaw[1], accRaw[2], magRaw[0]*1000000, magRaw[1]*1000000, magRaw[2]*1000000, gyrRaw[0]*PI/180, gyrRaw[1]*PI/180, gyrRaw[2]*PI/180);
-			//printf("Acc: %f %f\n", accRaw[0], accFiltered);
-		
-
-			
 			/*
-			if(millis()-start2>=10000 && calibrationFlag==0){
-				printf("Finished sensor Calibration...\n");
-				calibrationFlag=1;
-				beta = 0.033;
-				printf("Beta: %.2f\n", beta);
+			// Calibration routine
+			if (calibrationCounter==0){
+				printf("Sensor Calibration started\n");
+				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRaw, calibrationCounter);
+				calibrationCounter++;
 			}
-			*/
+			else if(calibrationCounter<CALIBRATION){
+				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRaw, calibrationCounter);
+				calibrationCounter++;
+				
+			}
+			// Sensor fusion
+			else{*/
+				//printf("Sensor Calibration finish\n");
+				
+				double Racc[9]={1,0,0,0,1,0,0,0,1}, Rgyr[9]={1,0,0,0,1,0,0,0,1}, Rmag[9]={1,0,0,0,1,0,0,0,1}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
+				// Variables
+				accRaw[0]=0.2; accRaw[1]=0.3; accRaw[2]=0.9;
+				gyrRaw[0]=0.6; gyrRaw[1]=0.1; gyrRaw[2]=0.1;
+				magRaw[0]=0.0001; magRaw[1]=0.0002; magRaw[2]=0.0003;
+				acc0[0]=0.0161; acc0[1]=0.0355; acc0[2]=1.0141;
+				mag0[0]=0.001; mag0[1]=0.001; mag0[2]=0.001;
+				
+				
+				// Orientation estimation
+				accelerometerUpdate(q, P, accRaw, acc0, Racc);
+				qNormalize(q);	
+				gyroscopeUpdate(q, P, gyrRaw, Rgyr, (double)desiredPeriod/1000);
+				qNormalize(q);
+				magnetometerUpdate(q, P, magRaw, mag0, Rmag, L);
+				qNormalize(q);
+				q2euler(euler,q);
+				
+				if(done==0){
+					printmat(q,4,1);
+					printf("roll: %.2f pitch: %.2f yaw: %.2f\n\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI);
+					printmat(P,4,4);
+					done=1;
+				}
+
+				// Move over data to global variables for sending to controller process
+				pthread_mutex_lock(&mutexAngleSensorData);
+					sensorRawDataAngles[0]=gyrRaw[0];
+					sensorRawDataAngles[1]=gyrRaw[1];
+					sensorRawDataAngles[2]=gyrRaw[2];
+					sensorRawDataAngles[3]=accRaw[0];
+					sensorRawDataAngles[4]=accRaw[1];
+					sensorRawDataAngles[5]=accRaw[2];
+					sensorRawDataAngles[6]=magRaw[0];
+					sensorRawDataAngles[7]=magRaw[1];
+					sensorRawDataAngles[8]=magRaw[2];
+					sensorRawDataAngles[9]=euler[0];
+					sensorRawDataAngles[10]=euler[0];
+					sensorRawDataAngles[11]=euler[0];
+				pthread_mutex_unlock(&mutexAngleSensorData);
+			//}
 			
-			//if(calibrationFlag==1)
-				
-				//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", roll, pitch, yaw);
-				//fflush(stdout);
-				//printf("\033c");
-				
-				
 			// Sleep for desired sampling frequency
 			if((millis()-start)<desiredPeriod)
 				usleep(1000*(desiredPeriod-(millis()-start)));
@@ -609,6 +470,7 @@ static void *threadPWMControl (void *arg){
 /******************************************************************/
 
 // Kalman filter (random walk)
+/*
 float kalmanFilter(float yk, float Ts, int index){
 	float Ak=1+A*(Ts/1000);
 	float Qk=Q[index]*(Ts/1000);
@@ -630,9 +492,10 @@ float kalmanFilter(float yk, float Ts, int index){
 	
 	return xkhat[index];
 }
+*/
 
-/*
 // Low pass filter
+/*
 static void lowPassFilter(float* data, int Ts, int freq, int r){
 	c=1.0f/tanf(PI*freq / Ts);
 	a1=1.0f/(1.0f+r*c+c*c);
@@ -653,38 +516,13 @@ static void highPassFilter(float* data, int Ts, int freq, int r){
 }
 */
 
-
-
-// Orientation Filter
-void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
-	// Variables
-	double yacc[3]={0.2,0.3,0.9};
-	double ygyr[3]={0.6,0.1,0.1};
-	double ymag[3]={0.0001,0.0002,0.0003};
-	double g0[3]={0.0161,0.0355,1.0141};
-	double m0[3]={0.001,0.001,0.001};
-	double q[4]={1,0,0,0};
-	double h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], Smag[9];
-	double Q[9]; //Qt[9];
-	double fone=1;
-	double fzero=0;
-	int ione=1;
-	double yka[3], yka2[9], ykm[3], ykm2[9];
-	double fka[3]={0,0,0}, fkm[3]={0,0,0};
-	//double eyen[9]={1,0,0,0,1,0,0,0,1};
-	double P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-	double K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-	double Ra[9]={1,0,0,0,1,0,0,0,1};
-	double Rw[9]={1,0,0,0,1,0,0,0,1};
-	double Rm[9]={1,0,0,0,1,0,0,0,1};
-	double L=1;
-	double a=0.01;
-	double euler[3]={0,0,0};
+// Accelerometer part: mu_g
+void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double *Ra){
+	// local variables
+	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
+	double fone=1, fzero=0, yka[3], yka2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Sacc_inv[9], yacc_diff[3], state_temp[4];
+	double fka[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 	
-	
-	
-	printf("mu_g1\n");
-	// ********** Acceleration PART **********
 	// check if acc is valid (isnan and all!=0)
 	// outlier detection
 	if (sqrt(pow(yacc[0],2) + pow(yacc[1],2) + pow(yacc[2],2)) > 1.5* sqrtf(pow(g0[0],2) + pow(g0[1],2) + pow(g0[2],2))){
@@ -699,20 +537,15 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		yka2[0]=g0[0]+fka[0];
 		yka2[1]=g0[1]+fka[1];
 		yka2[2]=g0[2]+fka[2];
-		int n=3, k=3, m=3;
+
 		F77_CALL(dgemv)("t",&m,&n,&fone,Q,&m,yka2,&ione,&fzero,yka,&ione);
-		
-		
 		
 		// [h1 h2 h3 h4]=dQqdq(x); jacobian
 		// hd=[h1'*g0 h2'*g0 h3'*g0 h4'*g0];
 		dQqdq(h1, h2, h3, h4, hd, q, g0);	
 		
-		
-		
 		// S=hd*P*hd'+Ra; innovation covariance
 		n=4; k=4; m=3;
-		double S_temp[12];
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,hd,&m,P,&k,&fzero,S_temp,&m);
 		n=3; k=4; m=3;
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,S_temp,&m,hd,&n,&fzero,Sacc,&m);
@@ -725,51 +558,31 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		Sacc[7]+=Ra[7];
 		Sacc[8]+=Ra[8];
 		
-		
-
 		// K=P*hd'/S; kalman gain
 		n=3; k=4; m=4;
-		double K_temp[12];
-		int info = 0; 
-		int SIZE=3;
-		int lworkspace = SIZE;
-		int ipiv [SIZE];
-		double workspace [lworkspace];
-		double Sacc_inv[9];
 		memcpy(Sacc_inv, Sacc, sizeof(Sacc_inv));
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
 		F77_CALL(dgetrf)(&SIZE, &SIZE, Sacc_inv, &SIZE, ipiv, &info);
 		F77_CALL(dgetri)(&SIZE, Sacc_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
 		if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
-		
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,Sacc_inv,&k,&fzero,K,&m);
-			
-
 				
 		// x=x+K*yacc_diff=x+K*(yacc-yka); state update
-		double yacc_diff[3];
-		double state_temp[4];
 		yacc_diff[0]=yacc[0]-yka[0];
 		yacc_diff[1]=yacc[1]-yka[1];
 		yacc_diff[2]=yacc[2]-yka[2];
-
-
-
 		n=3, k=4, m=4;
 		F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,yacc_diff,&ione,&fzero,state_temp,&ione);
-
 		q[0]+=state_temp[0];
 		q[1]+=state_temp[1];
 		q[2]+=state_temp[2];
 		q[3]+=state_temp[3];
 
-		
 		// P=P-K*S*K'; covariance update
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,Sacc,&k,&fzero,K_temp,&m);
 		n=4; k=3; m=4;
-		double P_temp[16];
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,P_temp,&m);
 		P[0]-=P_temp[0];
 		P[1]-=P_temp[1];
@@ -787,18 +600,15 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		P[13]-=P_temp[13];
 		P[14]-=P_temp[14];
 		P[15]-=P_temp[15];
-		printf("Pacc\n");
-		printmat(P, 4,4);
-		
-		qNormalize(q);
-		
-		printf("qnormacc\n");
-		printmat(q, 4,1);
 	}
+}
+
+// Gyroscope part: tu_qw
+void gyroscopeUpdate(double *q, double *P, double *ygyr, double *Rw, double Ts){
+	// local variables
+	int ione=1, n=4, k=4, m=4;
+	double fone=1, fzero=0, Gm[12], Sm[16], F[16], q_temp[4], F_temp[16], P_temp[16], Gm_temp12[12], Gm_temp16[16];
 	
-	
-	printf("tu_qw\n");
-	// ********** Gyroscope PART **********
 	// check if gyr is valid (isnan and all!=0)
 	// outlier detection
 	if (ygyr[0]==0 && ygyr[1]==0 && ygyr[2]==0){
@@ -809,13 +619,9 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		// continue measurement
 		// tu_qw
 		// Gm=Sq(x)*0.5*T, ;
-		double Ts=0.01;
-		double Gm[12];
 		Sq(Gm, q, Ts);
 		
 		// F=eye(4)+Somega(omega)*0.5*T;
-		double Sm[16];
-		double F[16];
 		Somega(Sm,ygyr);
 		F[0]=1+Sm[0]*0.5*Ts;
 		F[1]=0+Sm[1]*0.5*Ts;
@@ -835,23 +641,17 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		F[15]=1+Sm[15]*0.5*Ts;
 		
 		// x=F*x; predicted state estimate
-		double q_temp[4];
-		int n=4, m=4;
 		F77_CALL(dgemv)("n",&m,&n,&fone,F,&m,q,&ione,&fzero,q_temp,&ione);	
 		memcpy(q, q_temp, sizeof(q_temp));
 		
 		// P=F_temp*F'+G_temp*G'=F*P*F'+G*Rw*G'=P_temp+G_temp2; predicted covariance estimate
-		double F_temp[16],P_temp[16],Gm_temp12[12],Gm_temp16[16];
-		n=4; int k=4; m=4;
+		n=4; k=4; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,F,&m,P,&k,&fzero,F_temp,&m);
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,F_temp,&m,F,&n,&fzero,P_temp,&m);
-		
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,Gm,&m,Rw,&k,&fzero,Gm_temp12,&m);
-		
 		n=4; k=3; m=4;
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Gm_temp12,&m,Gm,&n,&fzero,Gm_temp16,&m);	
-		
 		P[0]=P_temp[0]+Gm_temp16[0];
 		P[1]=P_temp[1]+Gm_temp16[1];
 		P[2]=P_temp[2]+Gm_temp16[2];
@@ -868,20 +668,16 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		P[13]=P_temp[13]+Gm_temp16[13];
 		P[14]=P_temp[14]+Gm_temp16[14];
 		P[15]=P_temp[15]+Gm_temp16[15];
-	
-		printf("Pgyr\n");
-		printmat(P, 4,4);
-	
-		qNormalize(q);
-		
-		printf("qnormgyr..\n");
-		printmat(q, 4,1);
 	}
+}
+
+// Magnetometer part: mu_m
+void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *Rm, double L){
+	// local variables
+	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
+	double fone=1, fzero=0, ykm[3], ykm2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Smag[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Smag_inv[9], ymag_diff[3], state_temp[4];
+	double fkm[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, a=0.01;
 	
-	
-	
-		printf("mu_m\n");
-	// ********** Magnetometer PART **********
 	// check if acc is valid (isnan and all!=0)
 	// outlier detection
 	L=(1-a)*L+a*sqrt(pow(ymag[0],2) + pow(ymag[1],2) + pow(ymag[2],2)); // recursive magnetometer compensator
@@ -897,7 +693,6 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		ykm2[0]=m0[0]+fkm[0];
 		ykm2[1]=m0[1]+fkm[1];
 		ykm2[2]=m0[2]+fkm[2];
-		int n=3, k=3, m=3;
 		F77_CALL(dgemv)("t",&m,&n,&fone,Q,&m,ykm2,&ione,&fzero,ykm,&ione);
 		
 		// [h1 h2 h3 h4]=dQqdq(x); jacobian
@@ -906,7 +701,6 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		
 		// Smag=hd*P*hd'+Rm; innovation covariance
 		n=4; k=4; m=3;
-		double S_temp[12];
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,hd,&m,P,&k,&fzero,S_temp,&m);
 		n=3; k=4; m=3;
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,S_temp,&m,hd,&n,&fzero,Smag,&m);
@@ -921,32 +715,20 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 
 		// K=P*hd'/Smag; kalman gain
 		n=3; k=4; m=4;
-		double K_temp[12];
-		int info = 0; 
-		int SIZE=3;
-		int lworkspace = SIZE;
-		int ipiv [SIZE];
-		double workspace [lworkspace];
-		double Smag_inv[9];
 		memcpy(Smag_inv, Smag, sizeof(Smag_inv));
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
 		F77_CALL(dgetrf)(&SIZE, &SIZE, Smag_inv, &SIZE, ipiv, &info);
 		F77_CALL(dgetri)(&SIZE, Smag_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
 		if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
-		
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,Smag_inv,&k,&fzero,K,&m);		
 				
 		// x=x+K*ymag_diff=x+K*(ymag-ykm); state update
-		double ymag_diff[3];
-		double state_temp[4];
 		ymag_diff[0]=ymag[0]-ykm[0];
 		ymag_diff[1]=ymag[1]-ykm[1];
 		ymag_diff[2]=ymag[2]-ykm[2];
-		
 		n=3, k=4, m=4;
 		F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,ymag_diff,&ione,&fzero,state_temp,&ione);
-
 		q[0]+=state_temp[0];
 		q[1]+=state_temp[1];
 		q[2]+=state_temp[2];
@@ -956,7 +738,6 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,Smag,&k,&fzero,K_temp,&m);
 		n=4; k=3; m=4;
-		double P_temp[16];
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,P_temp,&m);
 		P[0]-=P_temp[0];
 		P[1]-=P_temp[1];
@@ -975,19 +756,97 @@ void getOrientationEulers(double *yacc1, double *ygyr1, double *ymag1){
 		P[14]-=P_temp[14];
 		P[15]-=P_temp[15];
 		
-		printf("Pmag\n");
-		printmat(P, 4,4);
-
 		qNormalize(q);
-		
-		printf("qnormmag\n");
-		printmat(q, 4,1);
 	}
-	
-	q2euler(euler,q);
-	printf("roll: %.2f pitch: %.2f yaw: %.2f\n", euler[0], euler[1], euler[2]);
-	
-	
+
+}
+
+// Sensor calibration
+void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, double *gyr0, double *mag0, double *accCal, double *gyrCal, double *magCal, double *yacc, double *ygyr, double *ymag, int counterCal){
+	// Calibration routine to get mean, variance and std_deviation
+	if(counterCal==CALIBRATION-1){
+		// Mean (bias) accelerometer, gyroscope and magnetometer
+		for (int i=0;i<CALIBRATION;i++){
+			acc0[0]+=accCal[i*3];
+			acc0[1]+=accCal[i*3+1];
+			acc0[2]+=accCal[i*3+2];
+			gyr0[0]+=gyrCal[i*3];
+			gyr0[1]+=gyrCal[i*3+1];
+			gyr0[2]+=gyrCal[i*3+2];
+			mag0[0]+=magCal[i*3];
+			mag0[1]+=magCal[i*3+1];
+			mag0[2]+=magCal[i*3+2];
+		}
+		acc0[0]/=CALIBRATION;
+		acc0[1]/=CALIBRATION;
+		acc0[2]/=CALIBRATION;
+		gyr0[0]/=CALIBRATION;
+		gyr0[1]/=CALIBRATION;
+		gyr0[2]/=CALIBRATION;
+		mag0[0]/=CALIBRATION;
+		mag0[1]/=CALIBRATION;
+		mag0[2]/=CALIBRATION;
+		
+		// Sum up for variance and std_deviation calculation
+		for (int i=0;i<CALIBRATION;i++){
+			Racc[0]+=pow((accCal[i*3] - acc0[0]), 2);
+			Racc[4]+=pow((accCal[i*3+1] - acc0[1]), 2);
+			Racc[8]+=pow((accCal[i*3+2] - acc0[2]), 2);
+			Rgyr[0]+=pow((gyrCal[i*3] - gyr0[0]), 2);
+			Rgyr[4]+=pow((gyrCal[i*3+1] - gyr0[1]), 2);
+			Rgyr[8]+=pow((gyrCal[i*3+2] - gyr0[2]), 2);
+			Rmag[0]+=pow((magCal[i*3] - mag0[0]), 2);
+			Rmag[4]+=pow((magCal[i*3+1] - mag0[1]), 2);
+			Rmag[8]+=pow((magCal[i*3+2] - mag0[2]), 2);
+		}
+		// Standard deviation (sigma²)
+		Racc[0]/=CALIBRATION;
+		Racc[4]/=CALIBRATION;
+		Racc[8]/=CALIBRATION;
+		Rgyr[0]/=CALIBRATION;
+		Rgyr[4]/=CALIBRATION;
+		Rgyr[8]/=CALIBRATION;
+		Rmag[0]/=CALIBRATION;
+		Rmag[4]/=CALIBRATION;
+		Rmag[8]/=CALIBRATION;
+		
+		// Variance (sigma)
+		Racc[0]=sqrt(Racc[0]);
+		Racc[4]=sqrt(Racc[4]);
+		Racc[8]=sqrt(Racc[8]);
+		Rgyr[0]=sqrt(Racc[0]);
+		Rgyr[4]=sqrt(Racc[4]);
+		Rgyr[8]=sqrt(Racc[8]);
+		Rmag[0]=sqrt(Racc[0]);
+		Rmag[4]=sqrt(Racc[4]);
+		Rmag[8]=sqrt(Racc[8]);
+		
+		// Print results
+		printf("Mean (bias) accelerometer\n");
+		printmat(acc0,3,1);
+		printf("Mean (bias) gyroscope\n");
+		printmat(gyr0,3,1);
+		printf("Mean (bias) magnetometer\n");
+		printmat(mag0,3,1);
+		printf("Covariance matrix (sigma) accelerometer\n");
+		printmat(Racc,3,3);
+		printf("Covariance (sigma) gyroscope\n");
+		printmat(Rgyr,3,3);
+		printf("Covariance (sigma) magnetometer\n");
+		printmat(Rmag,3,3);
+	}
+	// Default i save calibrartion data
+	else{
+		accCal[counterCal*3]=yacc[0];
+		accCal[counterCal*3+1]=yacc[1];
+		accCal[counterCal*3+2]=yacc[2];
+		gyrCal[counterCal*3]=ygyr[0];
+		gyrCal[counterCal*3+1]=ygyr[1];
+		gyrCal[counterCal*3+2]=ygyr[2];
+		magCal[counterCal*3]=ymag[0];
+		magCal[counterCal*3+1]=ymag[1];
+		magCal[counterCal*3+2]=ymag[2];
+	}		
 }
 
 // S(q) matrix
@@ -1026,7 +885,7 @@ void Somega(double *Sm, double *omega){
 	Sm[15]=0;
 }
 
-// Quaternions
+// Quaternions matrix
 void Qq(double *Q, double *q){
 	// input q0->q3
 	//float q0, q1, q2, q3;
@@ -1123,15 +982,31 @@ void qNormalize(double *q){
 	}
 }
 
-// Quaternions to Eulers
+// Quaternions to Eulers (avoids gimbal lock)
 void q2euler(double *result, double *q){
-	result[2]=atan2(2*q[1]*q[2]-2*q[0]*q[3],2*pow(q[0],2)+2*pow(q[1],2)-1)*(180.0/PI);
-	result[1]=-asin(2*q[1]*q[3]+2*q[0]*q[2])*(180.0/PI);
-	result[0]=atan2(2*q[2]*q[3]-2*q[0]*q[1],2*pow(q[0],2)+2*pow(q[3],2)-1)*(180.0/PI);
+	// Handle north pole case
+	if (q[1]*q[3]+q[0]*q[2] > 0.5){
+		result[0]=2*atan2(q[1],q[0]);
+		result[2]=0;
+	}
+	else{
+		result[0]=atan2(-2*(q[0]*q[2]-q[0]*q[3]),1-2*(pow(q[2],2)+pow(q[3],2))); //heading
+		result[2]=atan2(2*(q[2]*q[3]-q[0]*q[1]),1-2*(pow(q[1],2)+pow(q[2],2))); // bank
+	}
+	
+	// Handle south pole case
+	if (q[1]*q[3]+q[0]*q[2] < -0.5){
+		result[0]=-2*atan2(q[1],q[0]);
+		result[2]=0;
+	}
+	else{
+		result[0]=atan2(-2*(q[0]*q[2]-q[0]*q[3]),1-2*(pow(q[2],2)+pow(q[3],2))); //heading
+		result[2]=atan2(2*(q[2]*q[3]-q[0]*q[1]),1-2*(pow(q[1],2)+pow(q[2],2))); // bank
+	}
+	
+	result[1]=asin(2*(q[1]*q[3]+q[0]*q[2])); // attitude
 }
-
-
-
+			
 // Matrix print function
 void printmat(double *A, int m, int n)
 {
@@ -1146,5 +1021,6 @@ void printmat(double *A, int m, int n)
         }
         printf("\n");
     }
+    printf("\n");
     return;
 }

@@ -20,7 +20,7 @@ void enableMagnetometer(int fd){
 
 
 // Function for reading Accelerometer data
-void readAccelerometer(float *accRaw, int fd){
+void readAccelerometer(double *accRaw, int fd){
 	acc[0]=wiringPiI2CReadReg8(fd,LSM303_OUT_X_L_A);
 	acc[1]=wiringPiI2CReadReg8(fd,LSM303_OUT_X_H_A);
 	acc[2]=wiringPiI2CReadReg8(fd,LSM303_OUT_Y_L_A);
@@ -29,16 +29,16 @@ void readAccelerometer(float *accRaw, int fd){
 	acc[5]=wiringPiI2CReadReg8(fd,LSM303_OUT_Z_H_A);
 	
 	// Convert 16 bit 2's complement to floating point value
-	accRaw[0] = (float)((int16_t)( acc[0] | acc[1] << 8 ) >> 4)*0.004;
-	accRaw[1] = (float)((int16_t)( acc[2] | acc[3] << 8 ) >> 4)*0.004;
-	accRaw[2] = (float)((int16_t)( acc[4] | acc[5] << 8 ) >> 4)*0.004;
+	accRaw[0] = (double)((int16_t)( acc[0] | acc[1] << 8 ) >> 4)*0.004;
+	accRaw[1] = (double)((int16_t)( acc[2] | acc[3] << 8 ) >> 4)*0.004;
+	accRaw[2] = (double)((int16_t)( acc[4] | acc[5] << 8 ) >> 4)*0.004;
 }
 	
 
 
 
 // Function for reading Magnetometer data
-void readMagnetometer(float *magRaw, int fd){
+void readMagnetometer(double *magRaw, int fd){
 	mag[0]=wiringPiI2CReadReg8(fd,LSM303_OUT_X_L_M);
 	mag[1]=wiringPiI2CReadReg8(fd,LSM303_OUT_X_H_M);
 	mag[2]=wiringPiI2CReadReg8(fd,LSM303_OUT_Y_L_M);
@@ -47,7 +47,7 @@ void readMagnetometer(float *magRaw, int fd){
 	mag[5]=wiringPiI2CReadReg8(fd,LSM303_OUT_Z_H_M);
 	
 	// Convert 16 bit 2's complement to floating point value
-	magRaw[0] = (float)(int16_t)(mag[0] | mag[1] << 8)/1100;
-	magRaw[1] = (float)(int16_t)(mag[2] | mag[3] << 8)/1100;
-	magRaw[2] = (float)(int16_t)(mag[4] | mag[5] << 8)/980;
+	magRaw[0] = (double)(int16_t)(mag[0] | mag[1] << 8)/1100;
+	magRaw[1] = (double)(int16_t)(mag[2] | mag[3] << 8)/1100;
+	magRaw[2] = (double)(int16_t)(mag[4] | mag[5] << 8)/980;
 }
