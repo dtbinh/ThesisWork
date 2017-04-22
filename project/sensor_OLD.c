@@ -9,7 +9,6 @@
 #include "MadgwickAHRS.h"
 #include "lapack.h"
 #include "blas.h"
-#include "MPU9250.h"
 
 #include <unistd.h>
 #include <pthread.h>
@@ -311,65 +310,50 @@ void *threadReadBeacon (void *arg){
 // Thread - Sensor fusion
 static void *threadSensorFusion (void *arg){
 	// Define local variables
-	double accRaw[3], gyrRaw[3], magRaw[3], tempRaw, acc0[3], gyr0[3], mag0[3], accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3];
-	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
+	double accRaw[3], gyrRaw[3], magRaw[3], acc0[3], gyr0[3], mag0[3], accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3];
+	//double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
 	uint32_t desiredPeriod = 100, start;
 	int calibrationCounter=0;
-	/*
+	
 	// Setup I2C communication
 	pthread_mutex_lock(&mutexI2CBusy);
 		int fdAcc=wiringPiI2CSetup(ACC_ADDRESS);
 		int fdMag=wiringPiI2CSetup(MAG_ADDRESS);
 		int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
-		int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
+		//int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
 	pthread_mutex_unlock(&mutexI2CBusy);
 	
-	 Check that the I2C setup was successful
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1){
-	if(fdMPU9250==-1){ 
+	// Check that the I2C setup was successful
+	//if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
+	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1)
+	{
 	 printf("Error setup the I2C devices\n");
 	}
-	else{*/
+	else
+	{
 		// Enable acc, gyr, mag  and bmp sensors
 		printf("Enabling sensors...\n");
 		pthread_mutex_lock(&mutexI2CBusy);
-			//enableAccelerometer(fdAcc);
-			//enableMagnetometer(fdMag);
-			//enableGyroscope(fdGyr);
+			enableAccelerometer(fdAcc);
+			enableMagnetometer(fdMag);
+			enableGyroscope(fdGyr);
 			//enableBMP(fdBmp);
-			enableMPU9250();
-			enableAK8963();
-			//MPU9250SelfTest(fdMPU9250, destination);
-			//initMPU9250(fdMPU9250);
-			//printf("Init MPU9250 finished\n");
-			//sleep(1);
 		pthread_mutex_unlock(&mutexI2CBusy);
-		int done=0;
+int done=0;
 		// Loop for ever
 		while(1){
 			// Timing
 			//printf("Ts: %i\n", millis()-start2);
 			start=millis();
 			//start2=start;
-			
+			/*
 			// Read sensor data to local variable
 			pthread_mutex_lock(&mutexI2CBusy);
-				//readAccelerometer(accRaw, fdAcc);
-				//readMagnetometer(magRaw, fdMag);
-				//readGyroscope(gyrRaw, fdGyr);
-				//readAccelData(accRaw);
-				//readGyroData(gyrRaw);
-				//readMagData(magRaw);
-				//readTempData(tempRaw);	
-				readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
+				readAccelerometer(accRaw, fdAcc);
+				readMagnetometer(magRaw, fdMag);
+				readGyroscope(gyrRaw, fdGyr);
 			pthread_mutex_unlock(&mutexI2CBusy);
-			
-			// Print sensor data
-			// Print acceleration values in milligs!
-			printf("Acc [g] X: %7.4f Y: %7.4f %7.4f \t Gyr [d/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [G] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0]/1000, magRaw[1]/1000, magRaw[2]/1000, tempRaw);
-			
-			//sleep(100);
+			*/
 			// Run Sebastian Madgwick AHRS algorithm
 			//MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
 			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
@@ -386,11 +370,19 @@ static void *threadSensorFusion (void *arg){
 				calibrationCounter++;
 				
 			}
-			else if(calibrationCounter==CALIBRATION){
-				printf("Sensor Calibration finish\n");
-			}
 			// Sensor fusion
-			else{
+			else{*/
+				//printf("Sensor Calibration finish\n");
+				
+				double Racc[9]={1,0,0,0,1,0,0,0,1}, Rgyr[9]={1,0,0,0,1,0,0,0,1}, Rmag[9]={1,0,0,0,1,0,0,0,1}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
+				// Variables
+				accRaw[0]=0.2; accRaw[1]=0.3; accRaw[2]=0.9;
+				gyrRaw[0]=0.6; gyrRaw[1]=0.1; gyrRaw[2]=0.1;
+				magRaw[0]=0.0001; magRaw[1]=0.0002; magRaw[2]=0.0003;
+				acc0[0]=0.0161; acc0[1]=0.0355; acc0[2]=1.0141;
+				mag0[0]=0.001; mag0[1]=0.001; mag0[2]=0.001;
+				
+				
 				// Orientation estimation
 				accelerometerUpdate(q, P, accRaw, acc0, Racc);
 				qNormalize(q);	
@@ -422,12 +414,13 @@ static void *threadSensorFusion (void *arg){
 					sensorRawDataAngles[10]=euler[0];
 					sensorRawDataAngles[11]=euler[0];
 				pthread_mutex_unlock(&mutexAngleSensorData);
-			}
-			*/
+			//}
+			
 			// Sleep for desired sampling frequency
 			if((millis()-start)<desiredPeriod)
 				usleep(1000*(desiredPeriod-(millis()-start)));
 		}
+	}
 	return NULL;
 }
 
@@ -436,7 +429,7 @@ static void *threadSensorFusion (void *arg){
 
 
 // Thread - PWM Control
-static void *threadPWMControl(void *arg){
+static void *threadPWMControl (void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
 	float pwmValueBuffer[4];
@@ -1015,7 +1008,8 @@ void q2euler(double *result, double *q){
 }
 			
 // Matrix print function
-void printmat(double *A, int m, int n){
+void printmat(double *A, int m, int n)
+{
     double *dptr;
     int j, i;
     dptr = A;

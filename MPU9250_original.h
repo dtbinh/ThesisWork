@@ -1,9 +1,22 @@
+/*
+ Note: The MPU9250 is an I2C sensor and uses the Arduino Wire library.
+ Because the sensor is not 5V tolerant, we are using a 3.3 V 8 MHz Pro Mini or
+ a 3.3 V Teensy 3.1. We have disabled the internal pull-ups used by the Wire
+ library in the Wire.h/twi.c utility file. We are also using the 400 kHz fast
+ I2C mode by setting the TWI_FREQ  to 400000L /twi.h utility file.
+ */
 #ifndef _MPU9250_H_
 #define _MPU9250_H_
 
-#define _BSD_SOURCE
+#include <SPI.h>
+#include <Wire.h>
 
 #define SERIAL_DEBUG true
+
+// See also MPU-9250 Register Map and Descriptions, Revision 4.0,
+// RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
+// document; the MPU9250 and MPU9150 are virtually identical but the latter has
+// a different register map
 
 //Magnetometer Registers
 #define AK8963_ADDRESS   0x0C
@@ -172,44 +185,6 @@
 //#define SPI_DATA_RATE 1000000 // 1MHz is the max speed of the MPU-9250
 #define SPI_MODE SPI_MODE3
 
-
-// Set initial input parameters
-enum Ascale
-{
-  AFS_2G = 0,
-  AFS_4G,
-  AFS_8G,
-  AFS_16G
-};
-
-enum Gscale {
-  GFS_250DPS = 0,
-  GFS_500DPS,
-  GFS_1000DPS,
-  GFS_2000DPS
-};
-
-enum Mscale {
-  MFS_14BITS = 0, // 0.6 mG per LSB
-  MFS_16BITS      // 0.15 mG per LSB
-};
-
-enum M_MODE {
-  M_8HZ = 0x02,  // 8 Hz update
-  M_100HZ = 0x06 // 100 Hz continuous magnetometer
-};
-
-// Public methods
-void enableMPU9250();
-void enableAK8963();
-
-void readMagData(double*);
-void readAccelData(double*);
-void readGyroData(double*);
-void readTempData(double*);
-void readAllSensorData(double*, double*, double*, double*);
-
-/*
 class MPU9250
 {
   protected:
@@ -316,5 +291,5 @@ public:
     bool isInI2cMode() { return _csPin == -1; }
     bool begin();
 };  // class MPU9250
-*/
+
 #endif // _MPU9250_H_
