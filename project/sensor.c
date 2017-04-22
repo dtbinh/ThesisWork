@@ -28,7 +28,7 @@
 
 
 #define PI 3.141592653589793
-#define CALIBRATION 10000
+#define CALIBRATION 500
 
 
 /******************************************************************/
@@ -313,7 +313,7 @@ static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3], gyrRaw[3], magRaw[3], tempRaw, acc0[3], gyr0[3], mag0[3], accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3];
 	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
-	uint32_t desiredPeriod = 100, start;
+	uint32_t desiredPeriod = 20, start;
 	int calibrationCounter=0;
 	/*
 	// Setup I2C communication
@@ -367,14 +367,14 @@ static void *threadSensorFusion (void *arg){
 			
 			// Print sensor data
 			// Print acceleration values in milligs!
-			printf("Acc [g] X: %7.4f Y: %7.4f %7.4f \t Gyr [d/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [G] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0]/1000, magRaw[1]/1000, magRaw[2]/1000, tempRaw);
+			//printf("Acc [g] X: %7.4f Y: %7.4f %7.4f \t Gyr [d/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [G] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0]/1000, magRaw[1]/1000, magRaw[2]/1000, tempRaw);
 			
 			//sleep(100);
 			// Run Sebastian Madgwick AHRS algorithm
 			//MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
 			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
 			//printf("q0: %f q1: %f q2: %f q3: %f\n", q0, q1, q2, q3);
-			/*
+			
 			// Calibration routine
 			if (calibrationCounter==0){
 				printf("Sensor Calibration started\n");
@@ -388,6 +388,7 @@ static void *threadSensorFusion (void *arg){
 			}
 			else if(calibrationCounter==CALIBRATION){
 				printf("Sensor Calibration finish\n");
+				calibrationCounter++;
 			}
 			// Sensor fusion
 			else{
@@ -423,7 +424,7 @@ static void *threadSensorFusion (void *arg){
 					sensorRawDataAngles[11]=euler[0];
 				pthread_mutex_unlock(&mutexAngleSensorData);
 			}
-			*/
+			
 			// Sleep for desired sampling frequency
 			if((millis()-start)<desiredPeriod)
 				usleep(1000*(desiredPeriod-(millis()-start)));
