@@ -7,18 +7,13 @@
 #include <stdio.h>
 #include <unistd.h>
 
-//MPU9250 myIMU;
-
-
-
 static uint8_t c;
 static uint8_t Gscale = GFS_250DPS; // Specify sensor full scale
 static uint8_t Ascale = AFS_2G; // Specify sensor full scale
 static uint8_t Mscale = MFS_16BITS; // Choose either 14-bit or 16-bit magnetometer resolution
 static uint8_t Mmode = M_8HZ; // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
 static int fdMPU9250, fdAK8963;
-static float fSelfTest[6], aRes, gRes, mRes, gyroBias[3]  = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3]   = {0, 0, 0}, magScale[3]  = {0, 0, 0}, factoryMagCalibration[3] = {0,0,0};
-          
+static float fSelfTest[6], aRes, gRes, mRes, gyroBias[3]  = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3]   = {0, 0, 0}, magScale[3]  = {0, 0, 0}, factoryMagCalibration[3] = {0,0,0};      
 
 static void MPU9250SelfTest();
 static void initMPU9250();
@@ -834,6 +829,7 @@ void readGyroData(double *gyrRaw){
 	gyrRaw[0]=(double)gyrRawInt16[0] * gRes; // - myIMU.accelBias[0];
 	gyrRaw[1]=(double)gyrRawInt16[1] * gRes; // - myIMU.accelBias[1];
 	gyrRaw[2]=(double)gyrRawInt16[2] * gRes; // - myIMU.accelBias[2];
+	
 }
 
 // Read temperature data

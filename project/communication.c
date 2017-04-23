@@ -202,7 +202,7 @@ static void *threadUdpWrite()
 			//sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0], agentData[1], agentData[2]);
 			//printf("%s\n", writeBuff);
 			// Send data over UDP
-			usleep(20000);
+			usleep(1000000);
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
 				perror("write");
 			}
@@ -259,7 +259,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	//socketReady=1;
+	socketReady=1;
 }
 
 /*
