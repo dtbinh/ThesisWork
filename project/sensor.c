@@ -2,11 +2,7 @@
 
 #include "sensor.h"
 #include "startup.h"
-#include "L3G.h"
-#include "LSM303.h"
-#include "bmp180.h"
 #include "PWM.h"
-#include "MadgwickAHRS.h"
 #include "lapack.h"
 #include "blas.h"
 #include "MPU9250.h"
@@ -26,7 +22,7 @@
 #include <errno.h>
 
 #define PI 3.141592653589793
-#define CALIBRATION 10
+#define CALIBRATION 500
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -57,15 +53,16 @@ void accelerometerUpdate(double*, double*, double*, double*, double*);
 void gyroscopeUpdate(double*, double*, double*, double*, double);
 void magnetometerUpdate(double*, double*, double*, double*, double*, double);
 void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
-
+void loadSettings();
+void saveSettings();
 
 // Static variables for threads
 //static float position[3]={1.0f,1.0f,1.0f};
 //static float angles[3]={0,0,0};
 //static float tuning[3];
-static float sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-static float sensorRawData[12]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
-static float sensorRawDataAngles[12]={0,0,0,0,0,0,0,0,0,0,0,0}; 
+static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
+static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
+static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
 //static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
@@ -168,7 +165,7 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 	//structPipe *ptrPipe1 = pipeArray1->pipe1;
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	//float sensorDataBuffer[3]={0,0,0};
-	float sensorDataBuffer[12]={0,0,0,0,0,0,0,0,0,0,0,0};
+	double sensorDataBuffer[16]={0,0,0,0,0,0,0,0,0,0,0,0};
 	
 	// Timers for sampling frequency
 	uint32_t desiredPeriod = 20;
@@ -191,6 +188,7 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 		pthread_mutex_lock(&mutexAngleSensorData);
 			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
 		pthread_mutex_unlock(&mutexAngleSensorData);
+		
 		/*pthread_mutex_lock(&mutexPositionSensorData);
 			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
 		pthread_mutex_unlock(&mutexPositionSensorData);*/
@@ -316,7 +314,7 @@ void *threadReadBeacon (void *arg){
 static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
-	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=10000, q[4]={1,0,0,0};
+	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=4, q[4]={1,0,0,0};
 	uint32_t desiredPeriod = 20, start, start2;
 	int calibrationCounter=0;
 	/*
@@ -355,7 +353,7 @@ static void *threadSensorFusion (void *arg){
 		// Loop for ever
 		while(1){
 			// Timing
-			printf("Ts: %i\n", millis()-start2);
+			//printf("Ts: %i\n", millis()-start2);
 			start=millis();
 			start2=start;
 			
@@ -434,7 +432,7 @@ static void *threadSensorFusion (void *arg){
 				
 				//if(done==0){
 					//printmat(q,4,1);
-					//printf("roll: %.2f pitch: %.2f yaw: %.2f\n\n", euler[1]*180/PI, euler[2]*180/PI, euler[0]*180/PI);
+					//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", euler[1]*180/PI, euler[2]*180/PI, euler[0]*180/PI);
 					//printmat(P,4,4);
 					//done=1;
 				//}
@@ -453,6 +451,10 @@ static void *threadSensorFusion (void *arg){
 					sensorRawDataAngles[9]=euler[0];
 					sensorRawDataAngles[10]=euler[1];
 					sensorRawDataAngles[11]=euler[2];
+					sensorRawDataAngles[12]=q[0];
+					sensorRawDataAngles[13]=q[1];
+					sensorRawDataAngles[14]=q[2];
+					sensorRawDataAngles[15]=q[3];
 				pthread_mutex_unlock(&mutexAngleSensorData);
 			}
 			
@@ -562,9 +564,9 @@ void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double 
 	double fka[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 	// check if acc is valid (isnan and all!=0)
 	// outlier detection
-	if (sqrt(pow(yacc[0],2) + pow(yacc[1],2) + pow(yacc[2],2)) > 1.5* sqrtf(pow(g0[0],2) + pow(g0[1],2) + pow(g0[2],2))){
+	if (sqrt(pow(yacc[0],2) + pow(yacc[1],2) + pow(yacc[2],2)) > 1.0* sqrtf(pow(g0[0],2) + pow(g0[1],2) + pow(g0[2],2))){
 		// dont use measurement
-		printf("Accelerometer Outlier\n");
+		//printf("Accelerometer Outlier\n");
 	}
 	else{
 		// continue measurement
@@ -654,7 +656,7 @@ void gyroscopeUpdate(double *q, double *P, double *ygyr, double *Rw, double Ts){
 	// outlier detection
 	if (ygyr[0]==0 && ygyr[1]==0 && ygyr[2]==0){
 		// dont use measurement
-		printf("Gyroscope Outlier\n");
+		//printf("Gyroscope Outlier\n");
 	}
 	else{
 		// continue measurement
@@ -724,7 +726,7 @@ void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *
 	L=(1-a)*L+a*sqrt(pow(ymag[0],2) + pow(ymag[1],2) + pow(ymag[2],2)); // recursive magnetometer compensator
 	if (sqrt(pow(ymag[0],2) + pow(ymag[1],2) + pow(ymag[2],2)) > L){
 		// dont use measurement
-		printf("Magnetometer Outlier\n");
+		//printf("Magnetometer Outlier\n");
 	}
 	else{
 		// continue measurement
@@ -833,29 +835,29 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		
 		// Sum up for variance and std_deviation calculation
 		for (int i=0;i<CALIBRATION;i++){
-			RaccTemp[0]+=pow((accCal[i*3] - acc0[0]), 2);
-			RaccTemp[1]+=pow((accCal[i*3+1] - acc0[1]), 2);
-			RaccTemp[2]+=pow((accCal[i*3+2] - acc0[2]), 2);
-			RgyrTemp[0]+=pow((gyrCal[i*3] - gyr0[0]), 2);
-			RgyrTemp[1]+=pow((gyrCal[i*3+1] - gyr0[1]), 2);
-			RgyrTemp[2]+=pow((gyrCal[i*3+2] - gyr0[2]), 2);
-			RmagTemp[0]+=pow((magCal[i*3] - mag0[0]), 2);
-			RmagTemp[1]+=pow((magCal[i*3+1] - mag0[1]), 2);
-			RmagTemp[2]+=pow((magCal[i*3+2] - mag0[2]), 2);
+			Racc[0]+=pow((accCal[i*3] - acc0[0]), 2);
+			Racc[4]+=pow((accCal[i*3+1] - acc0[1]), 2);
+			Racc[8]+=pow((accCal[i*3+2] - acc0[2]), 2);
+			Rgyr[0]+=pow((gyrCal[i*3] - gyr0[0]), 2);
+			Rgyr[4]+=pow((gyrCal[i*3+1] - gyr0[1]), 2);
+			Rgyr[8]+=pow((gyrCal[i*3+2] - gyr0[2]), 2);
+			Rmag[0]+=pow((magCal[i*3] - mag0[0]), 2);
+			Rmag[4]+=pow((magCal[i*3+1] - mag0[1]), 2);
+			Rmag[8]+=pow((magCal[i*3+2] - mag0[2]), 2);
 		}
-		// Standard deviation (sigma²)
-		RaccTemp[0]/=CALIBRATION;
-		RaccTemp[1]/=CALIBRATION;
-		RaccTemp[2]/=CALIBRATION;
-		RgyrTemp[0]/=CALIBRATION;
-		RgyrTemp[1]/=CALIBRATION;
-		RgyrTemp[2]/=CALIBRATION;
-		RmagTemp[0]/=CALIBRATION;
-		RmagTemp[1]/=CALIBRATION;
-		RmagTemp[2]/=CALIBRATION;
-		
 		// Variance (sigma)
-		Racc[0]=sqrt(RaccTemp[0]);
+		Racc[0]/=CALIBRATION;
+		Racc[4]/=CALIBRATION;
+		Racc[8]/=CALIBRATION;
+		Rgyr[0]/=CALIBRATION;
+		Rgyr[4]/=CALIBRATION;
+		Rgyr[8]/=CALIBRATION;
+		Rmag[0]/=CALIBRATION;
+		Rmag[4]/=CALIBRATION;
+		Rmag[8]/=CALIBRATION;
+		
+		// Standard deviation (sigma²)
+		/*Racc[0]=sqrt(RaccTemp[0]);
 		Racc[4]=sqrt(RaccTemp[1]);
 		Racc[8]=sqrt(RaccTemp[2]);
 		Rgyr[0]=sqrt(RgyrTemp[0]);
@@ -863,7 +865,7 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		Rgyr[8]=sqrt(RgyrTemp[2]);
 		Rmag[0]=sqrt(RmagTemp[0]);
 		Rmag[4]=sqrt(RmagTemp[1]);
-		Rmag[8]=sqrt(RmagTemp[2]);
+		Rmag[8]=sqrt(RmagTemp[2]);*/
 		
 		// Print results
 		printf("Mean (bias) accelerometer\n");
@@ -1079,4 +1081,43 @@ void printmat(double *A, int m, int n){
     }
     //printf("\n");
     return;
+}
+
+// Load settings file
+void loadSettings(){
+	// Create file pointer
+	FILE *fp;
+	float value;
+	// Open file and prepare for read
+	fp=fopen("settings.txt", "r");
+	// Check to see that file has opened
+	if(fp==NULL){
+		printf("File could not be opened for read\n");
+	}
+	else{
+		fscanf(fp, "%f\n", &value);
+		printf("Value read: %f\n", value);
+	}
+	
+	// Close file
+	fclose(fp);
+}
+
+// Save settings file
+void saveSettings(){
+	// Create file pointer
+	FILE *fp;
+	
+	// Open file and prepare for write
+	fp=fopen("settings.txt", "w");
+	// Check to see that file has opened
+	if(fp==NULL){
+		printf("File could not be opened for write\n");
+	}
+	else{
+		fprintf(fp, "THIS IS A TEST WRITE %f\n", 99220.98);
+	}
+	
+	// Close file
+	fclose(fp);
 }
