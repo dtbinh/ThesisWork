@@ -22,7 +22,7 @@
 #include <errno.h>
 
 #define PI 3.141592653589793
-#define CALIBRATION 500
+#define CALIBRATION 2000
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -53,19 +53,19 @@ void accelerometerUpdate(double*, double*, double*, double*, double*);
 void gyroscopeUpdate(double*, double*, double*, double*, double);
 void magnetometerUpdate(double*, double*, double*, double*, double*, double);
 void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
-void loadSettings();
-void saveSettings();
+void loadSettings(double*, double*, double*, double*, double*, double*);
+void saveSettings(double*, double*, double*, double*, double*, double*);
 
 // Static variables for threads
 //static float position[3]={1.0f,1.0f,1.0f};
 //static float angles[3]={0,0,0};
 //static float tuning[3];
 static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
+//static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
 static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
 //static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
@@ -85,8 +85,8 @@ void startSensors(void *arg1, void *arg2){
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl;
-	int res1, res5, res6;
+	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl, threadReadPos;
+	int res1, res3, res5, res6;
 	
 	res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArray1);
 	//res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
@@ -165,10 +165,10 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 	//structPipe *ptrPipe1 = pipeArray1->pipe1;
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	//float sensorDataBuffer[3]={0,0,0};
-	double sensorDataBuffer[16]={0,0,0,0,0,0,0,0,0,0,0,0};
+	double sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	
 	// Timers for sampling frequency
-	uint32_t desiredPeriod = 20;
+	uint32_t desiredPeriod = 100;
 	uint32_t start=millis();
 	
 	// Loop forever sending data to controller and communication processes
@@ -176,22 +176,24 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 		start=millis();
 		
 		// Get angle and position data from global variables in sensor.c
-		pthread_mutex_lock(&mutexAngleData);
-		memcpy(sensorDataBuffer, sensorRawData, sizeof(sensorRawData));
+		//pthread_mutex_lock(&mutexAngleData);
+		//memcpy(sensorDataBuffer, sensorRawData, sizeof(sensorRawData));
 		//memcpy(sensorDataBuffer, angles, sizeof(angles));
-		pthread_mutex_unlock(&mutexAngleData);
+		//pthread_mutex_unlock(&mutexAngleData);
 		/*pthread_mutex_lock(&mutexPositionData);
 		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
 		pthread_mutex_unlock(&mutexPositionData);
 		*/
 		
+		printf("pipe mutexAngleSensorData start\n");
 		pthread_mutex_lock(&mutexAngleSensorData);
 			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
 		pthread_mutex_unlock(&mutexAngleSensorData);
-		
-		/*pthread_mutex_lock(&mutexPositionSensorData);
-			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
-		pthread_mutex_unlock(&mutexPositionSensorData);*/
+		printf("pipe mutexAngleSensorData stop\n");
+		//usleep(20000);
+		//pthread_mutex_lock(&mutexPositionSensorData);
+			//memcpy(sensorDataBuffer+sizeof(sensorRawDataPosition), sensorRawDataPosition, sizeof(sensorRawDataPosition));	
+		//pthread_mutex_unlock(&mutexPositionSensorData);
 		
 		// Write to Controller process
 		//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
@@ -239,7 +241,7 @@ static void *threadPipeCommToSensor (void *arg)
 // Thread - Read position values
 void *threadReadBeacon (void *arg){
 	// Define local variables
-	float posRaw[3];
+	double posRaw[3];
 	uint8_t data8[30];
 	uint16_t data16[2];
 	uint32_t data32[4];
@@ -250,8 +252,8 @@ void *threadReadBeacon (void *arg){
 	// Loop for ever trying to connect to Beacon sensor via USB
 	while(1){
 		// Open serial communication
-		if ((fdBeacon=serialOpen("/dev/ttyACM1", 115200)) < 0){
-			//fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
+		if ((fdBeacon=serialOpen("/dev/ttyACM0", 115200)) < 0){
+			fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
 		}
 		else{
 			// Activate wiringPiSetup
@@ -286,22 +288,27 @@ void *threadReadBeacon (void *arg){
 						else{
 						
 						// Raw position uint data to float
-						posRaw[0] = (float)((data32[1] = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9]));
-						posRaw[1] = (float)((data32[2] = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13]));	
-						posRaw[2] = (float)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
+						posRaw[0] = (double)((data32[1] = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9]));
+						posRaw[1] = (double)((data32[2] = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13]));	
+						posRaw[2] = (double)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
 						
 						// Copy raw position to global variable for use in sensor fusion thread
+						printf("beacon mutexPositionSensorData start\n");
 						pthread_mutex_lock(&mutexPositionSensorData);
 						memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
 						pthread_mutex_unlock(&mutexPositionSensorData);
+						printf("beacon mutexPositionSensorData stopp\n");	
 							
 						printf("X=%.3f, Y=%.3f, Z=%.3f\n\n", posRaw[0]/1000, posRaw[1]/1000, posRaw[2]/1000);
 						}
 					}
 					else{
-						sleep(10);
+						//printf("No beacon data. Sleep for 1 second\n");
+						usleep(50000);
+
 					}
 				}
+				usleep(50000);
 			}
 		}
 		sleep(5);
@@ -315,153 +322,126 @@ static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
 	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=4, q[4]={1,0,0,0};
-	uint32_t desiredPeriod = 20, start, start2;
+	uint32_t desiredPeriod = 20, start;
 	int calibrationCounter=0;
-	/*
-	// Setup I2C communication
-	pthread_mutex_lock(&mutexI2CBusy);
-		int fdAcc=wiringPiI2CSetup(ACC_ADDRESS);
-		int fdMag=wiringPiI2CSetup(MAG_ADDRESS);
-		int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
-		int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
-	pthread_mutex_unlock(&mutexI2CBusy);
 	
-	 Check that the I2C setup was successful
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1){
-	if(fdMPU9250==-1){ 
-	 printf("Error setup the I2C devices\n");
+	// Enable acc, gyr, mag  and bmp sensors
+	printf("Enabling sensors...\n");
+	printf("sf1 mutexI2CBusy start\n");
+	pthread_mutex_lock(&mutexI2CBusy);
+		enableMPU9250();
+		enableAK8963();
+	pthread_mutex_unlock(&mutexI2CBusy);
+	printf("sf1 mutexI2CBusy stopp\n");
+	
+	// Try and load covariance and bias from file "Settings.txt" and check if they are valid, else calibrate.
+	loadSettings(Racc, Rgyr, Rmag, acc0, gyr0, mag0);
+	if(acc0[0]==0 && acc0[1]==0 && acc0[2]==0){
+		printf("Loaded settings not valid\n");
+		sleep(2);
 	}
-	else{*/
-		// Enable acc, gyr, mag  and bmp sensors
-		printf("Enabling sensors...\n");
-		pthread_mutex_lock(&mutexI2CBusy);
-			//enableAccelerometer(fdAcc);
-			//enableMagnetometer(fdMag);
-			//enableGyroscope(fdGyr);
-			//enableBMP(fdBmp);
-			enableMPU9250();
-			enableAK8963();
-			//MPU9250SelfTest(fdMPU9250, destination);
-			//initMPU9250(fdMPU9250);
-			//printf("Init MPU9250 finished\n");
-			//sleep(1);
+	else{
+		printf("Loaded settings successfully");
+		calibrationCounter=CALIBRATION+1; // Avoids the calibration routine inside while(1)
+		sleep(2);
+	}
+	
+	
+	// Loop for ever
+	while(1){
+		// Timing
+		//printf("Ts: %i\n", millis()-start2);
+		start=millis();
+		//start2=start;
+		
+		// Read sensor data to local variable
+		printf("sf2 mutexI2CBusy start\n");
+		pthread_mutex_lock(&mutexI2CBusy);	
+			readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
 		pthread_mutex_unlock(&mutexI2CBusy);
+		printf("sf2 mutexI2CBusy stopp\n");
 		
-		int done=0;
+		// Convert sensor data to correct (filter) units:
+		// Acc: g -> m/s² Factor: 9.81
+		// Gyr: degrees/s -> radians/s Factor: (PI/180)
+		// Mag: milli gauss -> micro tesla Factor: 10^-1
+		accRaw[0]*=9.81;
+		accRaw[1]*=9.81;
+		accRaw[2]*=9.81;
+		gyrRaw[0]*=(PI/180);
+		gyrRaw[1]*=(PI/180);
+		gyrRaw[2]*=(PI/180);
+		magRaw[0]/=10;
+		magRaw[1]/=10;
+		magRaw[2]/=10;
 		
-		// Loop for ever
-		while(1){
-			// Timing
-			//printf("Ts: %i\n", millis()-start2);
-			start=millis();
-			start2=start;
-			
-			// Read sensor data to local variable
-			pthread_mutex_lock(&mutexI2CBusy);
-				//readAccelerometer(accRaw, fdAcc);
-				//readMagnetometer(magRaw, fdMag);
-				//readGyroscope(gyrRaw, fdGyr);
-				//readAccelData(accRaw);
-				//readGyroData(gyrRaw);
-				//readMagData(magRaw);
-				//readTempData(tempRaw);	
-				readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
-			pthread_mutex_unlock(&mutexI2CBusy);
-			
-			// Convert sensor data to correct (filter) units:
-			// Acc: g -> m/s² Factor: 9.81
-			// Gyr: degrees/s -> radians/s Factor: (PI/180)
-			// Mag: milli gauss -> micro tesla Factor: 10^-1
-			accRaw[0]*=9.81;
-			accRaw[1]*=9.81;
-			accRaw[2]*=9.81;
-			gyrRaw[0]*=(PI/180);
-			gyrRaw[1]*=(PI/180);
-			gyrRaw[2]*=(PI/180);
-			magRaw[0]/=10;
-			magRaw[1]/=10;
-			magRaw[2]/=10;
-			
-			// Rotate magnetometer data such that the sensor coordinate frames match.
-			// Rz(90), magX*(-1), magZ*(-1)
-			// Note: For more info check the MPU9250 Product Specification (Chapter 9)
-			magRawRot[0]=-magRaw[1]*(-1);
-			magRawRot[1]=magRaw[0];
-			magRawRot[2]=magRaw[3]*(-1);
-			
-			// Print sensor data
-			//printf("Acc [m/s²] X: %7.4f Y: %7.4f %7.4f \t Gyr [rad/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [microT] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0], magRaw[1], magRaw[2], tempRaw);
-			
-			// Run Sebastian Madgwick AHRS algorithm
-			//MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
-			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
-			//printf("q0: %f q1: %f q2: %f q3: %f\n", q0, q1, q2, q3);
-			/*
-			q[0]=q0;
-			q[1]=q1;
-			q[2]=q2;
-			q[3]=q3;
-			*/
-			// Calibration routine
-			if (calibrationCounter==0){
-				printf("Sensor Calibration started\n");
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				calibrationCounter++;
-			}
-			else if(calibrationCounter<CALIBRATION){
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				calibrationCounter++;
-				
-			}
-			else if(calibrationCounter==CALIBRATION){
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				printf("Sensor Calibration finish\n");
-				calibrationCounter++;
-			}
-			// Sensor fusion
-			else{
-				// Orientation estimation
-				accelerometerUpdate(q, P, accRaw, acc0, Racc);
-				qNormalize(q);	
-				gyroscopeUpdate(q, P, gyrRaw, Rgyr, (double)desiredPeriod/1000);
-				qNormalize(q);
-				magnetometerUpdate(q, P, magRawRot, mag0, Rmag, L);
-				qNormalize(q);
-				q2euler(euler,q);
-				
-				//if(done==0){
-					//printmat(q,4,1);
-					//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", euler[1]*180/PI, euler[2]*180/PI, euler[0]*180/PI);
-					//printmat(P,4,4);
-					//done=1;
-				//}
-
-				// Move over data to global variables for sending to controller process
-				pthread_mutex_lock(&mutexAngleSensorData);
-					sensorRawDataAngles[0]=gyrRaw[0];
-					sensorRawDataAngles[1]=gyrRaw[1];
-					sensorRawDataAngles[2]=gyrRaw[2];
-					sensorRawDataAngles[3]=accRaw[0];
-					sensorRawDataAngles[4]=accRaw[1];
-					sensorRawDataAngles[5]=accRaw[2];
-					sensorRawDataAngles[6]=magRaw[0];
-					sensorRawDataAngles[7]=magRaw[1];
-					sensorRawDataAngles[8]=magRaw[2];
-					sensorRawDataAngles[9]=euler[0];
-					sensorRawDataAngles[10]=euler[1];
-					sensorRawDataAngles[11]=euler[2];
-					sensorRawDataAngles[12]=q[0];
-					sensorRawDataAngles[13]=q[1];
-					sensorRawDataAngles[14]=q[2];
-					sensorRawDataAngles[15]=q[3];
-				pthread_mutex_unlock(&mutexAngleSensorData);
-			}
-			
-			// Sleep for desired sampling frequency
-			if((millis()-start)<desiredPeriod)
-				usleep(1000*(desiredPeriod-(millis()-start)));
+		// Rotate magnetometer data such that the sensor coordinate frames match.
+		// Rz(90), magX*(-1), magZ*(-1)
+		// Note: For more info check the MPU9250 Product Specification (Chapter 9)
+		magRawRot[0]=magRaw[1]*(-1);
+		magRawRot[1]=-magRaw[0];
+		magRawRot[2]=magRaw[3]*(-1);
+		
+		// Print sensor data
+		//printf("Acc [m/s²] X: %7.4f Y: %7.4f %7.4f \t Gyr [rad/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [microT] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0], magRaw[1], magRaw[2], tempRaw);
+	
+		
+		// Calibration routine.
+		// If covariance and bias has been successfully loaded, calibrationCounter is set equal to CALIBRATION+1 such that calibration is skipped.
+		if(calibrationCounter==0){
+			printf("Sensor Calibration started\n");
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			calibrationCounter++;
 		}
+		else if(calibrationCounter<CALIBRATION){
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			calibrationCounter++;
+			
+		}
+		else if(calibrationCounter==CALIBRATION){
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			printf("Sensor Calibration finish\n");
+			calibrationCounter++;
+			saveSettings(Racc, Rgyr, Rmag, acc0, gyr0, mag0); // Save covariance and bias to "Settings.txt"
+		}
+		// Sensor fusion
+		else{
+			// Orientation estimation
+			accelerometerUpdate(q, P, accRaw, acc0, Racc);
+			qNormalize(q);	
+			gyroscopeUpdate(q, P, gyrRaw, Rgyr, (double)desiredPeriod/1000);
+			qNormalize(q);
+			magnetometerUpdate(q, P, magRawRot, mag0, Rmag, L);
+			qNormalize(q);
+			q2euler(euler,q);
+			
+			// Move over data to global variables for sending to controller process
+			printf("sf3 mutexAngleSensorData start\n");
+			pthread_mutex_lock(&mutexAngleSensorData);
+				sensorRawDataAngles[0]=gyrRaw[0];
+				sensorRawDataAngles[1]=gyrRaw[1];
+				sensorRawDataAngles[2]=gyrRaw[2];
+				sensorRawDataAngles[3]=accRaw[0];
+				sensorRawDataAngles[4]=accRaw[1];
+				sensorRawDataAngles[5]=accRaw[2];
+				sensorRawDataAngles[6]=magRaw[0];
+				sensorRawDataAngles[7]=magRaw[1];
+				sensorRawDataAngles[8]=magRaw[2];
+				sensorRawDataAngles[9]=euler[0];
+				sensorRawDataAngles[10]=euler[1];
+				sensorRawDataAngles[11]=euler[2];
+				sensorRawDataAngles[12]=q[0];
+				sensorRawDataAngles[13]=q[1];
+				sensorRawDataAngles[14]=q[2];
+				sensorRawDataAngles[15]=q[3];
+			pthread_mutex_unlock(&mutexAngleSensorData);
+			printf("sf3 mutexAngleSensorData stopp\n");
+		}
+		
+		// Sleep for desired sampling frequency
+		if((millis()-start)<desiredPeriod)
+			usleep(1000*(desiredPeriod-(millis()-start)));
+	}
 	return NULL;
 }
 
@@ -471,21 +451,25 @@ static void *threadPWMControl(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
 	float pwmValueBuffer[4];
-	
+		sleep(10000);
 	// Initialize I2C connection to the PWM board and define PWM frequency
+	printf("pwm1 mutexI2CBusy start\n");
 	pthread_mutex_lock(&mutexI2CBusy);
 		int fdPWM=wiringPiI2CSetup(PWM_ADDRESS);
 	pthread_mutex_unlock(&mutexI2CBusy);
+	printf("pwm1 mutexI2CBusy stopp\n");
 
-	
+
 	if(fdPWM==-1){
 	 printf("Error setup the I2C PWM connection\n");
 	}
 	else{
 		// Initialize PWM board
+		printf("pwm2 mutexI2CBusy start\n");
 		pthread_mutex_lock(&mutexI2CBusy);
 			enablePWM(fdPWM,500);
 		pthread_mutex_unlock(&mutexI2CBusy);
+		printf("pwm2 mutexI2CBusy stopp\n");
 		printf("PWM initialization complete\n");
 		
 		// Run forever and set PWM when controller computes new values
@@ -495,9 +479,11 @@ static void *threadPWMControl(void *arg){
 			printf("Data received: %f\n", pwmValueBuffer[0]);
 			
 			// Set PWM
+			printf("pwm3 mutexI2CBusy start\n");
 			pthread_mutex_lock(&mutexI2CBusy);
 				setPWM(fdPWM, pwmValueBuffer);
 			pthread_mutex_unlock(&mutexI2CBusy);
+			printf("pwm3 mutexI2CBusy stopp\n");
 		}	
 	}
 	return NULL;
@@ -559,8 +545,8 @@ static void highPassFilter(float* data, int Ts, int freq, int r){
 // Accelerometer part: mu_g
 void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double *Ra){
 	// local variables
-	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
-	double fone=1, fzero=0, yka[3], yka2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Sacc_inv[9], yacc_diff[3], state_temp[4];
+	int ione=1, n=3, k=3, m=3;
+	double fone=1, fzero=0, yka[3], yka2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], P_temp[16], S_temp[12], K_temp[12], Sacc_inv[9], yacc_diff[3], state_temp[4];
 	double fka[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 	// check if acc is valid (isnan and all!=0)
 	// outlier detection
@@ -600,11 +586,7 @@ void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double 
 		
 		// K=P*hd'/S; kalman gain
 		n=3; k=4; m=4;
-		//memcpy(Sacc_inv, Sacc, sizeof(Sacc_inv));
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
-		//F77_CALL(dgetrf)(&SIZE, &SIZE, Sacc_inv, &SIZE, ipiv, &info);	
-		//F77_CALL(dgetri)(&SIZE, Sacc_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
-		//if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
 	
 		mInverse(Sacc, Sacc_inv);
 		
@@ -717,8 +699,8 @@ void gyroscopeUpdate(double *q, double *P, double *ygyr, double *Rw, double Ts){
 // Magnetometer part: mu_m
 void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *Rm, double L){
 	// local variables
-	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
-	double fone=1, fzero=0, ykm[3], ykm2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Smag[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Smag_inv[9], ymag_diff[3], state_temp[4];
+	int ione=1, n=3, k=3, m=3;
+	double fone=1, fzero=0, ykm[3], ykm2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Smag[9], P_temp[16], S_temp[12], K_temp[12], Smag_inv[9], ymag_diff[3], state_temp[4];
 	double fkm[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, a=0.01;
 	
 	// check if acc is valid (isnan and all!=0)
@@ -759,12 +741,7 @@ void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *
 
 		// K=P*hd'/Smag; kalman gain
 		n=3; k=4; m=4;
-		//memcpy(Smag_inv, Smag, sizeof(Smag_inv));
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
-		//F77_CALL(dgetrf)(&SIZE, &SIZE, Smag_inv, &SIZE, ipiv, &info);
-		//F77_CALL(dgetri)(&SIZE, Smag_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
-		//if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
-		
 		mInverse(Smag, Smag_inv);
 		
 		n=3; k=3; m=4;
@@ -810,7 +787,6 @@ void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *
 void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, double *gyr0, double *mag0, double *accCal, double *gyrCal, double *magCal, double *yacc, double *ygyr, double *ymag, int counterCal){
 	// Calibration routine to get mean, variance and std_deviation
 	if(counterCal==CALIBRATION){
-		double RaccTemp[3]={0,0,0}, RgyrTemp[3]={0,0,0}, RmagTemp[3]={0,0,0};
 		// Mean (bias) accelerometer, gyroscope and magnetometer
 		for (int i=0;i<CALIBRATION;i++){
 			acc0[0]+=accCal[i*3];
@@ -833,7 +809,7 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		mag0[1]/=CALIBRATION;
 		mag0[2]/=CALIBRATION;
 		
-		// Sum up for variance and std_deviation calculation
+		// Sum up for variance calculation
 		for (int i=0;i<CALIBRATION;i++){
 			Racc[0]+=pow((accCal[i*3] - acc0[0]), 2);
 			Racc[4]+=pow((accCal[i*3+1] - acc0[1]), 2);
@@ -855,17 +831,6 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		Rmag[0]/=CALIBRATION;
 		Rmag[4]/=CALIBRATION;
 		Rmag[8]/=CALIBRATION;
-		
-		// Standard deviation (sigma²)
-		/*Racc[0]=sqrt(RaccTemp[0]);
-		Racc[4]=sqrt(RaccTemp[1]);
-		Racc[8]=sqrt(RaccTemp[2]);
-		Rgyr[0]=sqrt(RgyrTemp[0]);
-		Rgyr[4]=sqrt(RgyrTemp[1]);
-		Rgyr[8]=sqrt(RgyrTemp[2]);
-		Rmag[0]=sqrt(RmagTemp[0]);
-		Rmag[4]=sqrt(RmagTemp[1]);
-		Rmag[8]=sqrt(RmagTemp[2]);*/
 		
 		// Print results
 		printf("Mean (bias) accelerometer\n");
@@ -1084,10 +1049,10 @@ void printmat(double *A, int m, int n){
 }
 
 // Load settings file
-void loadSettings(){
+void loadSettings(double *Racc, double *Rgyr, double *Rmag, double *acc0, double *gyr0, double *mag0){
 	// Create file pointer
 	FILE *fp;
-	float value;
+	
 	// Open file and prepare for read
 	fp=fopen("settings.txt", "r");
 	// Check to see that file has opened
@@ -1095,16 +1060,20 @@ void loadSettings(){
 		printf("File could not be opened for read\n");
 	}
 	else{
-		fscanf(fp, "%f\n", &value);
-		printf("Value read: %f\n", value);
+		// Get covariance matrices
+		fscanf(fp, "Racc:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", &Racc[0], &Racc[1], &Racc[2], &Racc[3], &Racc[4], &Racc[5], &Racc[6], &Racc[7], &Racc[8]);
+		fscanf(fp, "Rgyr:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", &Rgyr[0], &Rgyr[1], &Rgyr[2], &Rgyr[3], &Rgyr[4], &Rgyr[5], &Rgyr[6], &Rgyr[7], &Rgyr[8]);
+		fscanf(fp, "Rmag:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", &Rmag[0], &Rmag[1], &Rmag[2], &Rmag[3], &Rmag[4], &Rmag[5], &Rmag[6], &Rmag[7], &Rmag[8]);
+		fscanf(fp, "acc0:%lf,%lf,%lf\n", &acc0[0], &acc0[1], &acc0[2]);
+		fscanf(fp, "gyr0:%lf,%lf,%lf\n", &gyr0[0], &gyr0[1], &gyr0[2]);
+		fscanf(fp, "mag0:%lf,%lf,%lf\n", &mag0[0], &mag0[1], &mag0[2]);
 	}
-	
 	// Close file
 	fclose(fp);
 }
 
 // Save settings file
-void saveSettings(){
+void saveSettings(double *Racc, double *Rgyr, double *Rmag, double *acc0, double *gyr0, double *mag0){
 	// Create file pointer
 	FILE *fp;
 	
@@ -1115,7 +1084,12 @@ void saveSettings(){
 		printf("File could not be opened for write\n");
 	}
 	else{
-		fprintf(fp, "THIS IS A TEST WRITE %f\n", 99220.98);
+		fprintf(fp, "Racc:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", Racc[0], Racc[1], Racc[2], Racc[3], Racc[4], Racc[5], Racc[6], Racc[7], Racc[8]);
+		fprintf(fp, "Rgyr:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", Rgyr[0], Rgyr[1], Rgyr[2], Rgyr[3], Rgyr[4], Rgyr[5], Rgyr[6], Rgyr[7], Rgyr[8]);
+		fprintf(fp, "Rmag:%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n", Rmag[0], Rmag[1], Rmag[2], Rmag[3], Rmag[4], Rmag[5], Rmag[6], Rmag[7], Rmag[8]);
+		fprintf(fp, "acc0:%lf,%lf,%lf\n", acc0[0], acc0[1], acc0[2]);
+		fprintf(fp, "gyr0:%lf,%lf,%lf\n", gyr0[0], gyr0[1], gyr0[2]);
+		fprintf(fp, "mag0:%lf,%lf,%lf\n", mag0[0], mag0[1], mag0[2]);
 	}
 	
 	// Close file

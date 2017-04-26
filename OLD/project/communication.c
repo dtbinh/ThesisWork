@@ -33,7 +33,7 @@ static void openSocketCommunication(void);
 
 // Static variables for threads
 static float controllerData[9]={0,0,0,0,0,0,0,0,0};
-static double sensorData[16]={0,0,0,0,0,0,0,0,0,0,0,0};
+static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
 
 static int socketReady=0;
@@ -117,7 +117,7 @@ static void *threadPipeSensorToCommunication(void *arg)
 {
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double sensorDataBuffer[16];
+	double sensorDataBuffer[19];
 	
 	// Loop forever reading/waiting for data
 	while(1){
@@ -177,7 +177,7 @@ static void *threadUdpRead(void *arg)
 static void *threadUdpWrite()
 {
 	// Local variables
-	double agentData[16]={0,0,0,0,0,0,0,0,0,0,0,0};
+	double agentData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	//float agentData[3]={0,0,0};
 	//float agentData[9]={0,0,0,0,0,0,0,0,0};
 	printf("updwrite\n");
@@ -197,7 +197,8 @@ static void *threadUdpWrite()
 			*/
 			
 				
-			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15]);
+			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",
+			agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15] ,agentData[16] ,agentData[17] ,agentData[18]);
 			//sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0], agentData[1], agentData[2]);
 			//sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0], agentData[1], agentData[2]);
 			//printf("%s\n", writeBuff);
