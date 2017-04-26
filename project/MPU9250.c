@@ -153,7 +153,7 @@ void MPU9250SelfTest(){
 
 	// Get average current values of gyro and acclerometer
 	for (int ii = 0; ii < 200; ii++){
-		printf("BHW::ii = %i\n",ii);
+		//printf("BHW::ii = %i\n",ii);
 		// Read the six raw data registers into data array
 		rawData[0]=wiringPiI2CReadReg8(fdMPU9250, ACCEL_XOUT_H);
 		rawData[1]=wiringPiI2CReadReg8(fdMPU9250, ACCEL_XOUT_L);

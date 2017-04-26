@@ -61,11 +61,11 @@ void saveSettings();
 //static float angles[3]={0,0,0};
 //static float tuning[3];
 static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
+//static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
 static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
 //static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
@@ -85,12 +85,12 @@ void startSensors(void *arg1, void *arg2){
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl;
-	int res1, res5, res6;
+	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl,threadReadPos;
+	int res1, res3, res5, res6;
 	
 	res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArray1);
 	//res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
-	//res3=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
+	res3=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
 	//res4=pthread_create(&threadPipeCommToSens, NULL, &threadPipeCommToSensor, arg2);
 	res5=pthread_create(&threadSenFus, NULL, &threadSensorFusion, arg1);
 	res6=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
@@ -98,7 +98,7 @@ void startSensors(void *arg1, void *arg2){
 	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
 	//if (!res2) pthread_join( threadAngles, NULL);
-	//if (!res3) pthread_join( threadReadPos, NULL);
+	if (!res3) pthread_join( threadReadPos, NULL);
 	//if (!res4) pthread_join( threadPipeCommToSens, NULL);
 	if (!res5) pthread_join( threadSenFus, NULL);
 	if (!res6) pthread_join( threadPWMCtrl, NULL);
@@ -165,7 +165,7 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 	//structPipe *ptrPipe1 = pipeArray1->pipe1;
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	//float sensorDataBuffer[3]={0,0,0};
-	double sensorDataBuffer[16]={0,0,0,0,0,0,0,0,0,0,0,0};
+	double sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	
 	// Timers for sampling frequency
 	uint32_t desiredPeriod = 20;
@@ -176,10 +176,10 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 		start=millis();
 		
 		// Get angle and position data from global variables in sensor.c
-		pthread_mutex_lock(&mutexAngleData);
-		memcpy(sensorDataBuffer, sensorRawData, sizeof(sensorRawData));
+		//pthread_mutex_lock(&mutexAngleData);
+		//memcpy(sensorDataBuffer, sensorRawData, sizeof(sensorRawData));
 		//memcpy(sensorDataBuffer, angles, sizeof(angles));
-		pthread_mutex_unlock(&mutexAngleData);
+		//pthread_mutex_unlock(&mutexAngleData);
 		/*pthread_mutex_lock(&mutexPositionData);
 		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
 		pthread_mutex_unlock(&mutexPositionData);
@@ -189,10 +189,10 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
 		pthread_mutex_unlock(&mutexAngleSensorData);
 		
-		/*pthread_mutex_lock(&mutexPositionSensorData);
-			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
-		pthread_mutex_unlock(&mutexPositionSensorData);*/
-		
+		pthread_mutex_lock(&mutexPositionSensorData);
+			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition, sizeof(sensorRawDataPosition));	
+		pthread_mutex_unlock(&mutexPositionSensorData);
+
 		// Write to Controller process
 		//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
 		//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
@@ -239,7 +239,7 @@ static void *threadPipeCommToSensor (void *arg)
 // Thread - Read position values
 void *threadReadBeacon (void *arg){
 	// Define local variables
-	float posRaw[3];
+	double posRaw[3];
 	uint8_t data8[30];
 	uint16_t data16[2];
 	uint32_t data32[4];
@@ -251,7 +251,7 @@ void *threadReadBeacon (void *arg){
 	while(1){
 		// Open serial communication
 		if ((fdBeacon=serialOpen("/dev/ttyACM1", 115200)) < 0){
-			//fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
+			fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
 		}
 		else{
 			// Activate wiringPiSetup
@@ -286,25 +286,26 @@ void *threadReadBeacon (void *arg){
 						else{
 						
 						// Raw position uint data to float
-						posRaw[0] = (float)((data32[1] = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9]));
-						posRaw[1] = (float)((data32[2] = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13]));	
-						posRaw[2] = (float)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
+						posRaw[0] = (double)((data32[1] = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9]));
+						posRaw[1] = (double)((data32[2] = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13]));	
+						posRaw[2] = (double)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
 						
 						// Copy raw position to global variable for use in sensor fusion thread
 						pthread_mutex_lock(&mutexPositionSensorData);
-						memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
+							memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
 						pthread_mutex_unlock(&mutexPositionSensorData);
 							
 						printf("X=%.3f, Y=%.3f, Z=%.3f\n\n", posRaw[0]/1000, posRaw[1]/1000, posRaw[2]/1000);
 						}
 					}
 					else{
-						sleep(10);
+						usleep(20000);	// if it is not broadcasting 0xff
 					}
 				}
+				usleep(20000);	// if Data not avail 
 			}
 		}
-		sleep(5);
+		sleep(5); // file not open sleep for 5
 	}
 	return NULL;
 }

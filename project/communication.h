@@ -3,7 +3,7 @@
 
 #define PIPE_BUFFER_SIZE 1
 #define SERVERPORT 4950
-#define BUFFER_LENGTH 150
+#define BUFFER_LENGTH 200
 
 #define SUPERVISOR "A0"
 #define AGENT1 "A1"
