@@ -22,7 +22,7 @@
 #include <errno.h>
 
 #define PI 3.141592653589793
-#define CALIBRATION 500
+#define CALIBRATION 100
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -55,7 +55,8 @@ void magnetometerUpdate(double*, double*, double*, double*, double*, double);
 void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
 void loadSettings();
 void saveSettings();
-
+void kalmanFilterCV(double*, double*, double, double, double, double);
+void kalmanFilterCA(double*, double*, double, double, double, double);
 // Static variables for threads
 //static float position[3]={1.0f,1.0f,1.0f};
 //static float angles[3]={0,0,0};
@@ -103,10 +104,6 @@ void startSensors(void *arg1, void *arg2){
 	if (!res5) pthread_join( threadSenFus, NULL);
 	if (!res6) pthread_join( threadPWMCtrl, NULL);
 }
-
-
-
-
 
 /******************************************************************/
 /*****************************THREADS******************************/
@@ -311,158 +308,121 @@ void *threadReadBeacon (void *arg){
 }
 
 
-// Thread - Sensor fusion
+// Thread - Sensor fusion Orientation and Position
 static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
-	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=4, q[4]={1,0,0,0};
-	uint32_t desiredPeriod = 20, start, start2;
+	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
+	uint32_t desiredPeriod = 20, start;
 	int calibrationCounter=0;
-	/*
-	// Setup I2C communication
+	
+			
+			
+	//double x[2]={0,0}, Pp[4]={1,0,0,1}, qq=0.1, r=0.1, ymeas=2, Ts=1;
+	double x[3]={0,0,0}, Pp[9]={1,0,0,0,1,0,0,0,1}, qq=0.1, r=0.1, ymeas=2, Ts=1;
+	
+	for (int i=0;i<10;i++){
+		kalmanFilterCA(x, Pp, qq, r, ymeas, Ts);
+		sleep(1);
+	}
+	
+	sleep(100);
+	
+	
+	// Enable acc, gyr, mag  and bmp sensors
+	printf("Enabling sensors...\n");
 	pthread_mutex_lock(&mutexI2CBusy);
-		int fdAcc=wiringPiI2CSetup(ACC_ADDRESS);
-		int fdMag=wiringPiI2CSetup(MAG_ADDRESS);
-		int fdGyr=wiringPiI2CSetup(GYR_ADDRESS);
-		int fdBmp=wiringPiI2CSetup(BMP180_ADDRESS);
+		enableMPU9250();
+		enableAK8963();
 	pthread_mutex_unlock(&mutexI2CBusy);
 	
-	 Check that the I2C setup was successful
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1 || fdBmp==-1)
-	if(fdAcc==-1 || fdMag==-1 || fdGyr==-1){
-	if(fdMPU9250==-1){ 
-	 printf("Error setup the I2C devices\n");
-	}
-	else{*/
-		// Enable acc, gyr, mag  and bmp sensors
-		printf("Enabling sensors...\n");
-		pthread_mutex_lock(&mutexI2CBusy);
-			//enableAccelerometer(fdAcc);
-			//enableMagnetometer(fdMag);
-			//enableGyroscope(fdGyr);
-			//enableBMP(fdBmp);
-			enableMPU9250();
-			enableAK8963();
-			//MPU9250SelfTest(fdMPU9250, destination);
-			//initMPU9250(fdMPU9250);
-			//printf("Init MPU9250 finished\n");
-			//sleep(1);
+	
+	
+	
+	// Loop for ever
+	while(1){
+		// Timing
+		//printf("Ts: %i\n", millis()-start2);
+		start=millis();
+		
+		// Read sensor data to local variable
+		pthread_mutex_lock(&mutexI2CBusy);	
+			readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
-		int done=0;
+		// Convert sensor data to correct (filter) units:
+		// Acc: g -> m/s² Factor: 9.81
+		// Gyr: degrees/s -> radians/s Factor: (PI/180)
+		// Mag: milli gauss -> micro tesla Factor: 10^-1
+		accRaw[0]*=9.81;
+		accRaw[1]*=9.81;
+		accRaw[2]*=9.81;
+		gyrRaw[0]*=(PI/180);
+		gyrRaw[1]*=(PI/180);
+		gyrRaw[2]*=(PI/180);
+		magRaw[0]/=10;
+		magRaw[1]/=10;
+		magRaw[2]/=10;
 		
-		// Loop for ever
-		while(1){
-			// Timing
-			//printf("Ts: %i\n", millis()-start2);
-			start=millis();
-			start2=start;
-			
-			// Read sensor data to local variable
-			pthread_mutex_lock(&mutexI2CBusy);
-				//readAccelerometer(accRaw, fdAcc);
-				//readMagnetometer(magRaw, fdMag);
-				//readGyroscope(gyrRaw, fdGyr);
-				//readAccelData(accRaw);
-				//readGyroData(gyrRaw);
-				//readMagData(magRaw);
-				//readTempData(tempRaw);	
-				readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
-			pthread_mutex_unlock(&mutexI2CBusy);
-			
-			// Convert sensor data to correct (filter) units:
-			// Acc: g -> m/s² Factor: 9.81
-			// Gyr: degrees/s -> radians/s Factor: (PI/180)
-			// Mag: milli gauss -> micro tesla Factor: 10^-1
-			accRaw[0]*=9.81;
-			accRaw[1]*=9.81;
-			accRaw[2]*=9.81;
-			gyrRaw[0]*=(PI/180);
-			gyrRaw[1]*=(PI/180);
-			gyrRaw[2]*=(PI/180);
-			magRaw[0]/=10;
-			magRaw[1]/=10;
-			magRaw[2]/=10;
-			
-			// Rotate magnetometer data such that the sensor coordinate frames match.
-			// Rz(90), magX*(-1), magZ*(-1)
-			// Note: For more info check the MPU9250 Product Specification (Chapter 9)
-			magRawRot[0]=-magRaw[1]*(-1);
-			magRawRot[1]=magRaw[0];
-			magRawRot[2]=magRaw[3]*(-1);
-			
-			// Print sensor data
-			//printf("Acc [m/s²] X: %7.4f Y: %7.4f %7.4f \t Gyr [rad/s] X: %7.4f Y: %7.4f Z: %7.4f \t Mag [microT] X: %7.4f Y: %7.4f Z: %7.4f \t Temp [C]: %7.4f\n", accRaw[0], accRaw[1], accRaw[2], gyrRaw[0], gyrRaw[1], gyrRaw[2], magRaw[0], magRaw[1], magRaw[2], tempRaw);
-			
-			// Run Sebastian Madgwick AHRS algorithm
-			//MadgwickAHRSupdate(gyrRaw[0], gyrRaw[1], gyrRaw[2], accRaw[0], accRaw[1], accRaw[2], magRaw[0], magRaw[1], magRaw[2]);
-			//MadgwickAHRSupdateIMU(gyrRaw[0]*(PI/180), gyrRaw[1]*(PI/180), gyrRaw[2]*(PI/180), accRaw[0], accRaw[1], accRaw[2]);
-			//printf("q0: %f q1: %f q2: %f q3: %f\n", q0, q1, q2, q3);
-			/*
-			q[0]=q0;
-			q[1]=q1;
-			q[2]=q2;
-			q[3]=q3;
-			*/
-			// Calibration routine
-			if (calibrationCounter==0){
-				printf("Sensor Calibration started\n");
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				calibrationCounter++;
-			}
-			else if(calibrationCounter<CALIBRATION){
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				calibrationCounter++;
-				
-			}
-			else if(calibrationCounter==CALIBRATION){
-				sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-				printf("Sensor Calibration finish\n");
-				calibrationCounter++;
-			}
-			// Sensor fusion
-			else{
-				// Orientation estimation
-				accelerometerUpdate(q, P, accRaw, acc0, Racc);
-				qNormalize(q);	
-				gyroscopeUpdate(q, P, gyrRaw, Rgyr, (double)desiredPeriod/1000);
-				qNormalize(q);
-				magnetometerUpdate(q, P, magRawRot, mag0, Rmag, L);
-				qNormalize(q);
-				q2euler(euler,q);
-				
-				//if(done==0){
-					//printmat(q,4,1);
-					//printf("roll: %.2f pitch: %.2f yaw: %.2f\n", euler[1]*180/PI, euler[2]*180/PI, euler[0]*180/PI);
-					//printmat(P,4,4);
-					//done=1;
-				//}
-
-				// Move over data to global variables for sending to controller process
-				pthread_mutex_lock(&mutexAngleSensorData);
-					sensorRawDataAngles[0]=gyrRaw[0];
-					sensorRawDataAngles[1]=gyrRaw[1];
-					sensorRawDataAngles[2]=gyrRaw[2];
-					sensorRawDataAngles[3]=accRaw[0];
-					sensorRawDataAngles[4]=accRaw[1];
-					sensorRawDataAngles[5]=accRaw[2];
-					sensorRawDataAngles[6]=magRaw[0];
-					sensorRawDataAngles[7]=magRaw[1];
-					sensorRawDataAngles[8]=magRaw[2];
-					sensorRawDataAngles[9]=euler[0];
-					sensorRawDataAngles[10]=euler[1];
-					sensorRawDataAngles[11]=euler[2];
-					sensorRawDataAngles[12]=q[0];
-					sensorRawDataAngles[13]=q[1];
-					sensorRawDataAngles[14]=q[2];
-					sensorRawDataAngles[15]=q[3];
-				pthread_mutex_unlock(&mutexAngleSensorData);
-			}
-			
-			// Sleep for desired sampling frequency
-			if((millis()-start)<desiredPeriod)
-				usleep(1000*(desiredPeriod-(millis()-start)));
+		// Rotate magnetometer data such that the sensor coordinate frames match.
+		// Rz(90), magX*(-1), magZ*(-1)
+		// Note: For more info check the MPU9250 Product Specification (Chapter 9)
+		magRawRot[0]=-magRaw[1]*(-1);
+		magRawRot[1]=magRaw[0];
+		magRawRot[2]=magRaw[3]*(-1);
+		
+		// Calibration routine
+		if (calibrationCounter==0){
+			printf("Sensor Calibration started\n");
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			calibrationCounter++;
 		}
+		else if(calibrationCounter<CALIBRATION){
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			calibrationCounter++;
+			
+		}
+		else if(calibrationCounter==CALIBRATION){
+			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
+			printf("Sensor Calibration finish\n");
+			calibrationCounter++;
+		}
+		// Sensor fusion
+		else{
+			// Orientation estimation
+			accelerometerUpdate(q, P, accRaw, acc0, Racc);
+			qNormalize(q);	
+			gyroscopeUpdate(q, P, gyrRaw, Rgyr, (double)desiredPeriod/1000);
+			qNormalize(q);
+			magnetometerUpdate(q, P, magRawRot, mag0, Rmag, L);
+			qNormalize(q);
+			q2euler(euler,q);
+
+			// Move over data to global variables for sending to controller process
+			pthread_mutex_lock(&mutexAngleSensorData);
+				sensorRawDataAngles[0]=gyrRaw[0];
+				sensorRawDataAngles[1]=gyrRaw[1];
+				sensorRawDataAngles[2]=gyrRaw[2];
+				sensorRawDataAngles[3]=accRaw[0];
+				sensorRawDataAngles[4]=accRaw[1];
+				sensorRawDataAngles[5]=accRaw[2];
+				sensorRawDataAngles[6]=magRaw[0];
+				sensorRawDataAngles[7]=magRaw[1];
+				sensorRawDataAngles[8]=magRaw[2];
+				sensorRawDataAngles[9]=euler[0];
+				sensorRawDataAngles[10]=euler[1];
+				sensorRawDataAngles[11]=euler[2];
+				sensorRawDataAngles[12]=q[0];
+				sensorRawDataAngles[13]=q[1];
+				sensorRawDataAngles[14]=q[2];
+				sensorRawDataAngles[15]=q[3];
+			pthread_mutex_unlock(&mutexAngleSensorData);
+		}
+		
+		// Sleep for desired sampling frequency
+		if((millis()-start)<desiredPeriod)
+			usleep(1000*(desiredPeriod-(millis()-start)));
+	}
 	return NULL;
 }
 
@@ -510,62 +470,125 @@ static void *threadPWMControl(void *arg){
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
 
-// Kalman filter (random walk)
-/*
-float kalmanFilter(float yk, float Ts, int index){
-	float Ak=1+A*(Ts/1000);
-	float Qk=Q[index]*(Ts/1000);
-	//printf("yk=%f Ak=%f Qk=%f\n", yk, Ak, Qk);
-	// Prediction step
-	xkhat[index]=Ak*xkhat[index];
-	Pk[index]=Ak*Pk[index]*Ak+Qk;
-	//printf("Prediction: xkhat=%f Pk=%f\n", xkhat, Pk);
+// Kalman filter (Constant Velocity model)
+void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, double Ts){
+	// Declare filter variables
+	double A_cv[4]={1,0,Ts,1}; // model augmented with bias in position
+	double Q_cv[4]={pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,2)*q/2,Ts*q}; // Covariance
+	double x_pred[2]={0,0}, P_pred[4]={0,0,0,0}, P_temp[4]={0,0,0,0}, S_temp[4], S[2], fone=1, fzero=0, C[2]={1,0}, K[2]={0,0}, V=0;
 	
-	// Update step
-	Sk[index]=Hk*Pk[index]*Hk+Rk[index];
-	Kk[index]=Pk[index]*Hk*(1/Sk[index]);
-	vk[index]=yk-Hk*xkhat[index];
-	//printf("Sk=%f Kk=%f vk=%f\n", Sk, Kk, vk);
-
-	xkhat[index]=xkhat[index]+Kk[index]*vk[index];
-	Pk[index]=Pk[index]-Kk[index]*Sk[index]*Kk[index];
-	//printf("Update: xkhat=%f Pk=%f\n", xkhat, Pk);
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=2, k=2, m=2;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_cv,&m,x,&ione,&fzero,x_pred,&ione);
 	
-	return xkhat[index];
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_cv,&m,P,&k,&fzero,P_temp,&m);
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_cv,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_cv[0];
+	P_pred[1]+=Q_cv[1];
+	P_pred[2]+=Q_cv[2];
+	P_pred[3]+=Q_cv[3];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	double C_temp[4]={1,0,0,0};
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
+	S[0]+=r;
+	
+	// K=P*C'*S^-1; Kalman gain
+	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
+	K[0]/=S[0];
+	K[1]/=S[0];
+	
+	// V=yk-C*x; 
+	V=ymeas-x_pred[0];
+	
+	// x=x+K*v;
+	x[0]=x_pred[0]+K[0]*V;
+	x[1]=x_pred[1]+K[1]*V;
+	
+	// P=P-K*S*K';
+	double K_tempS[4]={K[0]*S[0],K[1]*S[0],0,0};
+	double K_temp[4]={K[0],K[1],0,0};
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
 }
-*/
 
-// Low pass filter
-/*
-static void lowPassFilter(float* data, int Ts, int freq, int r){
-	c=1.0f/tanf(PI*freq / Ts);
-	a1=1.0f/(1.0f+r*c+c*c);
-	a2=2.0f*a1;
-	a3=a1;
-	b1=2.0f*(1.0f-c*c)*a1;
-	b2=(1.0f-r*c+c*c)*a1;
+// Kalman filter (Constant Acceleration model)
+void kalmanFilterCA(double *x, double *P, double q, double r, double ymeas, double Ts){
+// Declare filter variables
+	double A_ca[9]={1,0,0,Ts,1,0,pow(Ts,2)/2,Ts,1}; // model augmented with bias in position
+	double Q_ca[9]={pow(Ts,5)*q/20,pow(Ts,4)*q/8,pow(Ts,3)*q/6,pow(Ts,4)*q/8,pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,3)*q/6,pow(Ts,2)*q/2,Ts*q}; // Covariance
+	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9], S[3], fone=1, fzero=0, C[3]={1,0,0}, K[3]={0,0,0}, V=0;
+	
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=3, k=3, m=3;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
+	
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_ca[0];
+	P_pred[1]+=Q_ca[1];
+	P_pred[2]+=Q_ca[2];
+	P_pred[3]+=Q_ca[3];
+	P_pred[4]+=Q_ca[4];
+	P_pred[5]+=Q_ca[5];
+	P_pred[6]+=Q_ca[6];
+	P_pred[7]+=Q_ca[7];
+	P_pred[8]+=Q_ca[8];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	double C_temp[9]={1,0,0,0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
+	S[0]+=r;
+	
+	// K=P*C'*S^-1; Kalman gain
+	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
+	K[0]/=S[0];
+	K[1]/=S[0];
+	K[2]/=S[0];
+	
+	// V=yk-C*x; 
+	V=ymeas-x_pred[0];
+	printf("V=%f\n", V);
+	
+	// x=x+K*v;
+	x[0]=x_pred[0]+K[0]*V;
+	x[1]=x_pred[1]+K[1]*V;
+	x[2]=x_pred[2]+K[2]*V;
+	
+	// P=P-K*S*K';
+	double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
+	double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
+	P[4]=P_pred[4]-P_temp[4];
+	P[5]=P_pred[5]-P_temp[5];
+	P[6]=P_pred[6]-P_temp[6];
+	P[7]=P_pred[7]-P_temp[7];
+	P[8]=P_pred[8]-P_temp[8];
 }
-
-// High pass filter
-static void highPassFilter(float* data, int Ts, int freq, int r){
-	c=tanf(PI*freq / Ts);
-	a1=1.0f/(1.0f+r*c+c*c);
-	a2=-2.0f*a1;
-	a3=a1;
-	b1=2.0f*(c*c-1.0f)*a1;
-	b2=(1.0f-r*c+c*c)*a1;
-}
-*/
 
 // Accelerometer part: mu_g
 void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double *Ra){
 	// local variables
-	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
-	double fone=1, fzero=0, yka[3], yka2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Sacc_inv[9], yacc_diff[3], state_temp[4];
+	int ione=1, n=3, k=3, m=3;
+	double fone=1, fzero=0, yka[3], yka2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Sacc[9], P_temp[16], S_temp[12], K_temp[12], Sacc_inv[9], yacc_diff[3], state_temp[4];
 	double fka[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 	// check if acc is valid (isnan and all!=0)
 	// outlier detection
-	if (sqrt(pow(yacc[0],2) + pow(yacc[1],2) + pow(yacc[2],2)) > 1.0* sqrtf(pow(g0[0],2) + pow(g0[1],2) + pow(g0[2],2))){
+	if (sqrt(pow(yacc[0],2) + pow(yacc[1],2) + pow(yacc[2],2)) > 1.2* sqrtf(pow(g0[0],2) + pow(g0[1],2) + pow(g0[2],2))){
 		// dont use measurement
 		//printf("Accelerometer Outlier\n");
 	}
@@ -601,14 +624,8 @@ void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double 
 		
 		// K=P*hd'/S; kalman gain
 		n=3; k=4; m=4;
-		//memcpy(Sacc_inv, Sacc, sizeof(Sacc_inv));
 		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
-		//F77_CALL(dgetrf)(&SIZE, &SIZE, Sacc_inv, &SIZE, ipiv, &info);	
-		//F77_CALL(dgetri)(&SIZE, Sacc_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
-		//if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
-	
 		mInverse(Sacc, Sacc_inv);
-		
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,Sacc_inv,&k,&fzero,K,&m);
 				
@@ -718,8 +735,8 @@ void gyroscopeUpdate(double *q, double *P, double *ygyr, double *Rw, double Ts){
 // Magnetometer part: mu_m
 void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *Rm, double L){
 	// local variables
-	int ione=1, n=3, k=3, m=3, info=0, SIZE=3, lworkspace = SIZE, ipiv [SIZE];
-	double fone=1, fzero=0, ykm[3], ykm2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Smag[9], P_temp[16], S_temp[12], K_temp[12], workspace [lworkspace], Smag_inv[9], ymag_diff[3], state_temp[4];
+	int ione=1, n=3, k=3, m=3;
+	double fone=1, fzero=0, ykm[3], ykm2[9], Q[9], h1[9], h2[9], h3[9], h4[9], hd[12], Smag[9], P_temp[16], S_temp[12], K_temp[12], Smag_inv[9], ymag_diff[3], state_temp[4];
 	double fkm[3]={0,0,0}, K[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, a=0.01;
 	
 	// check if acc is valid (isnan and all!=0)
@@ -760,14 +777,8 @@ void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *
 
 		// K=P*hd'/Smag; kalman gain
 		n=3; k=4; m=4;
-		//memcpy(Smag_inv, Smag, sizeof(Smag_inv));
-		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);
-		//F77_CALL(dgetrf)(&SIZE, &SIZE, Smag_inv, &SIZE, ipiv, &info);
-		//F77_CALL(dgetri)(&SIZE, Smag_inv, &SIZE, ipiv, workspace, &lworkspace, &info);
-		//if ( info != 0 ) printf("UNSECCESSFUL INVERSION");
-		
+		F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P,&m,hd,&n,&fzero,K_temp,&m);	
 		mInverse(Smag, Smag_inv);
-		
 		n=3; k=3; m=4;
 		F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,Smag_inv,&k,&fzero,K,&m);		
 				
@@ -811,7 +822,6 @@ void magnetometerUpdate(double *q, double *P, double *ymag, double *m0, double *
 void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, double *gyr0, double *mag0, double *accCal, double *gyrCal, double *magCal, double *yacc, double *ygyr, double *ymag, int counterCal){
 	// Calibration routine to get mean, variance and std_deviation
 	if(counterCal==CALIBRATION){
-		double RaccTemp[3]={0,0,0}, RgyrTemp[3]={0,0,0}, RmagTemp[3]={0,0,0};
 		// Mean (bias) accelerometer, gyroscope and magnetometer
 		for (int i=0;i<CALIBRATION;i++){
 			acc0[0]+=accCal[i*3];
@@ -834,7 +844,7 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		mag0[1]/=CALIBRATION;
 		mag0[2]/=CALIBRATION;
 		
-		// Sum up for variance and std_deviation calculation
+		// Sum up for variance calculation
 		for (int i=0;i<CALIBRATION;i++){
 			Racc[0]+=pow((accCal[i*3] - acc0[0]), 2);
 			Racc[4]+=pow((accCal[i*3+1] - acc0[1]), 2);
@@ -856,17 +866,6 @@ void sensorCalibration(double *Racc, double *Rgyr, double *Rmag, double *acc0, d
 		Rmag[0]/=CALIBRATION;
 		Rmag[4]/=CALIBRATION;
 		Rmag[8]/=CALIBRATION;
-		
-		// Standard deviation (sigma²)
-		/*Racc[0]=sqrt(RaccTemp[0]);
-		Racc[4]=sqrt(RaccTemp[1]);
-		Racc[8]=sqrt(RaccTemp[2]);
-		Rgyr[0]=sqrt(RgyrTemp[0]);
-		Rgyr[4]=sqrt(RgyrTemp[1]);
-		Rgyr[8]=sqrt(RgyrTemp[2]);
-		Rmag[0]=sqrt(RmagTemp[0]);
-		Rmag[4]=sqrt(RmagTemp[1]);
-		Rmag[8]=sqrt(RmagTemp[2]);*/
 		
 		// Print results
 		printf("Mean (bias) accelerometer\n");
@@ -1066,6 +1065,8 @@ void mInverse(double *m, double *mInv){
 	mInv[5] = -(m[0] * m[5] - m[2] * m[3]) / (m[0] * m[4] * m[8] - m[0] * m[5] * m[7] - m[1] * m[3] * m[8] + m[1] * m[6] * m[5] + m[2] * m[3] * m[7] - m[2] * m[6] * m[4]);
 	mInv[8] = (m[0] * m[4] - m[1] * m[3]) / (m[0] * m[4] * m[8] - m[0] * m[5] * m[7] - m[1] * m[3] * m[8] + m[1] * m[6] * m[5] + m[2] * m[3] * m[7] - m[2] * m[6] * m[4]);
 }
+
+
 
 // Matrix print function
 void printmat(double *A, int m, int n){
