@@ -163,6 +163,7 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	//float sensorDataBuffer[3]={0,0,0};
 	double sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	//int lengthSensorRawDataAngles = 0;
 	
 	// Timers for sampling frequency
 	uint32_t desiredPeriod = 20;
@@ -186,9 +187,13 @@ static void *threadPipeSensorToControllerAndComm (void *arg){
 			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
 		pthread_mutex_unlock(&mutexAngleSensorData);
 		
+		//lengthSensorRawDataAngles = sizeof(sensorRawDataAngles);
+		
 		pthread_mutex_lock(&mutexPositionSensorData);
-			memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition, sizeof(sensorRawDataPosition));	
+			memcpy(sensorDataBuffer + 16, sensorRawDataPosition, sizeof(sensorRawDataPosition));	
 		pthread_mutex_unlock(&mutexPositionSensorData);
+		
+		printmat(sensorDataBuffer, 1, 19);
 
 		// Write to Controller process
 		//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
@@ -247,7 +252,7 @@ void *threadReadBeacon (void *arg){
 	// Loop for ever trying to connect to Beacon sensor via USB
 	while(1){
 		// Open serial communication
-		if ((fdBeacon=serialOpen("/dev/ttyACM1", 115200)) < 0){
+		if ((fdBeacon=serialOpen("/dev/ttyACM0", 115200)) < 0){
 			fprintf(stderr, "Unable to open serial device: %s\n", strerror (errno));
 		}
 		else{
