@@ -1072,7 +1072,6 @@ void mInverse(double *m, double *mInv){
 }
 
 
-
 // Matrix print function
 void printmat(double *A, int m, int n){
     double *dptr;
