@@ -29,7 +29,7 @@
 /******************************************************************/
 
 // Predeclarations
-static void *threadPipeSensorToControllerAndComm (void*);
+//static void *threadPipeSensorToControllerAndComm (void*);
 //static void *threadPipeSensorToComm (void*);
 static void *threadReadBeacon (void*);
 //static void *threadSensorFusionAngles (void*);
@@ -55,25 +55,29 @@ void magnetometerUpdate(double*, double*, double*, double*, double*, double);
 void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
 void loadSettings();
 void saveSettings();
-void kalmanFilterCV(double*, double*, double, double, double, double);
+void kalmanFilterCV(double*, double*, double, double, double, double, int);
 void kalmanFilterCA(double*, double*, double, double, double, double);
+void kalmanFilterRW(double*, double*, double*, double*, double*, double);
+void printBits(size_t const, void const * const);
+int outlierGpsVelocity(double, double, double, double);
+
 // Static variables for threads
 //static float position[3]={1.0f,1.0f,1.0f};
 //static float angles[3]={0,0,0};
 //static float tuning[3];
 static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 //static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
-static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
+//static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
 //static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 
 
-
+int counter=0;
 
 
 /******************************************************************/
@@ -83,21 +87,21 @@ static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 // Function to start the sensor process threads
 void startSensors(void *arg1, void *arg2){
 	// Create pipe array
-	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
+	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadPipeSensToCtrlAndComm, threadSenFus, threadPWMCtrl,threadReadPos;
-	int res1, res3, res5, res6;
+	pthread_t threadSenFus, threadPWMCtrl,threadReadPos;
+	int res3, res5, res6;
 	
-	res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArray1);
+	//res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArrayStruct);
 	//res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
 	res3=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
 	//res4=pthread_create(&threadPipeCommToSens, NULL, &threadPipeCommToSensor, arg2);
-	res5=pthread_create(&threadSenFus, NULL, &threadSensorFusion, arg1);
+	res5=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
 	res6=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
 	
 	// If threads created successful, start them
-	if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
+	//if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
 	//if (!res2) pthread_join( threadAngles, NULL);
 	if (!res3) pthread_join( threadReadPos, NULL);
 	//if (!res4) pthread_join( threadPipeCommToSens, NULL);
@@ -105,151 +109,30 @@ void startSensors(void *arg1, void *arg2){
 	if (!res6) pthread_join( threadPWMCtrl, NULL);
 }
 
+
 /******************************************************************/
 /*****************************THREADS******************************/
 /******************************************************************/
-
-// Thread - Sensor fusion and pipe writing to Controller and Communication processes
-/*static void *threadSensorFusion (void *arg){
-		// Get pipe array and define local variables
-	pipeArray *pipeArray1 = arg;
-	structPipe *ptrPipe1 = pipeArray1->pipe1;
-	structPipe *ptrPipe2 = pipeArray1->pipe2;
-	float sensorDataBuffer[12]={0,0,0,0,0,0,0,0,0,0,0,0};
-	
-	// Loop forever sending data to controller and communication processes
-	while(1){
-	*/
-		// Get angle and position data from global variables in sensor.c
-		/*
-		pthread_mutex_lock(&mutexAngleData);
-		memcpy(sensorDataBuffer, angles, sizeof(angles));
-		pthread_mutex_unlock(&mutexAngleData);
-		pthread_mutex_lock(&mutexPositionData);
-		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
-		pthread_mutex_unlock(&mutexPositionData);
-		*/
-		/*
-		pthread_mutex_lock(&mutexAngleSensorData);
-		memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
-		pthread_mutex_unlock(&mutexAngleSensorData);
-		pthread_mutex_lock(&mutexPositionSensorData);
-		memcpy(sensorDataBuffer+sizeof(sensorRawDataAngles), sensorRawDataPosition+3, sizeof(position)-3);	
-		pthread_mutex_unlock(&mutexPositionSensorData);
-		*/
-		/*
-		// Write to Controller process
-		if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
-		//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
-		
-		// Write to Communication process
-		if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error to communicaiont in sensors\n");
-		//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
-		usleep(100000);
-		*/
-		/*sleep(5);
-	}
-	
-	return NULL;
-}
-*/
-
-
-// Thread - Pipe Sensor to Controller and Communication process write
-static void *threadPipeSensorToControllerAndComm (void *arg){
-	// Get pipe array and define local variables
-	pipeArray *pipeArray1 = arg;
-	//structPipe *ptrPipe1 = pipeArray1->pipe1;
-	structPipe *ptrPipe2 = pipeArray1->pipe2;
-	//float sensorDataBuffer[3]={0,0,0};
-	double sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	//int lengthSensorRawDataAngles = 0;
-	
-	// Timers for sampling frequency
-	uint32_t desiredPeriod = 20;
-	uint32_t start=millis();
-	
-	// Loop forever sending data to controller and communication processes
-	while(1){
-		start=millis();
-		
-		// Get angle and position data from global variables in sensor.c
-		//pthread_mutex_lock(&mutexAngleData);
-		//memcpy(sensorDataBuffer, sensorRawData, sizeof(sensorRawData));
-		//memcpy(sensorDataBuffer, angles, sizeof(angles));
-		//pthread_mutex_unlock(&mutexAngleData);
-		/*pthread_mutex_lock(&mutexPositionData);
-		memcpy(sensorDataBuffer+sizeof(angles), position, sizeof(position));	
-		pthread_mutex_unlock(&mutexPositionData);
-		*/
-		
-		pthread_mutex_lock(&mutexAngleSensorData);
-			memcpy(sensorDataBuffer, sensorRawDataAngles, sizeof(sensorRawDataAngles));
-		pthread_mutex_unlock(&mutexAngleSensorData);
-		
-		//lengthSensorRawDataAngles = sizeof(sensorRawDataAngles);
-		
-		pthread_mutex_lock(&mutexPositionSensorData);
-			memcpy(sensorDataBuffer + 16, sensorRawDataPosition, sizeof(sensorRawDataPosition));	
-		pthread_mutex_unlock(&mutexPositionSensorData);
-		
-		printmat(sensorDataBuffer, 1, 19);
-
-		// Write to Controller process
-		//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
-		//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
-		
-		// Write to Communication process
-		if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
-		//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
-		
-		// Sleep for desired sampling frequency
-		if((millis()-start)<desiredPeriod)
-			usleep(1000*(desiredPeriod-(millis()-start)));
-	}
-	
-	return NULL;
-}
-
-
-// Thread - Pipe Communication to Sensor process read
-/*
-static void *threadPipeCommToSensor (void *arg)
-{
-	// Get pipe and define local variables
-	structPipe *ptrPipe = arg;
-	float tuningDataBuffer[3];
-	
-	// Loop forever reading/waiting for data
-	while(1){
-		// Read data from controller process
-		if(read(ptrPipe->child[0], tuningDataBuffer, sizeof(tuningDataBuffer)) == -1) printf("read error in sensor from communication\n");
-		//else printf("Sensor ID: %d, Recieved Communication data: %f\n", (int)getpid(), tuningDataBuffer[0]);
-		
-		// Put new data in to global variable in communication.c
-		pthread_mutex_lock(&mutexTuningData);
-		memcpy(tuning, tuningDataBuffer, sizeof(tuningDataBuffer));
-		pthread_mutex_unlock(&mutexTuningData);
-		
-		sleep(10);
-	}
-	return NULL;
-}
-*/
 
 
 // Thread - Read position values
 void *threadReadBeacon (void *arg){
 	// Define local variables
 	double posRaw[3];
-	uint8_t data8[30];
-	uint16_t data16[2];
-	uint32_t data32[4];
+	double beaconTimestamp = 0.0;
+	double beaconTimestampPrev = 0.0;
+	uint8_t data8[100];	//this must be number of beacons*14+6+2 at least!
+	uint16_t data16;
+	uint32_t data32;
+	double beacons[16];	//each beacon needs 4 doubles, address and XYZ
 	int n;
-	
+	double hedgehogReading[1] = {0};
+	int beaconFlag = 0;
+	int beaconsCoordinates = 0;
+	//double dummy = 0.0;
 	int fdBeacon;
 	
-	// Loop for ever trying to connect to Beacon sensor via USB
+	// Loop forever trying to connect to Beacon sensor via USB
 	while(1){
 		// Open serial communication
 		if ((fdBeacon=serialOpen("/dev/ttyACM0", 115200)) < 0){
@@ -262,78 +145,206 @@ void *threadReadBeacon (void *arg){
 			}
 			
 			// Loop for ever reading data
-			while(1){				 
+			while(1){	
+				counter++;			 
 				// Read serial data when available
 				if (serialDataAvail(fdBeacon)){
 					if ((int)(data8[0]=serialGetchar(fdBeacon)) == -1){
 						fprintf(stderr, "serialGetchar, block for 10s: %s\n", strerror (errno));
 					}
-					else  if (data8[0] == 0xff){
-						data8[1] = serialGetchar(fdBeacon);	// Data type: 0x47
-						data8[2] = serialGetchar(fdBeacon);
+					else if (data8[0] == 0xff){
+						data8[1] = serialGetchar(fdBeacon);	// Yype of packet: 0x47 for both hedgehog coordinates and every 10s about beacons coordinates
+						data8[2] = serialGetchar(fdBeacon); // this and 3 are both code of data in packet
 						data8[3] = serialGetchar(fdBeacon);
-						data8[4] = serialGetchar(fdBeacon);
-						n = (int)(data8[4]);
-						//printf("%d", n);
-						for (int i=0;i<n;i++){
-							data8[5+i] = serialGetchar(fdBeacon);
-						}
-						data8[5+n] = serialGetchar(fdBeacon);
-						data8[6+n] = serialGetchar(fdBeacon);		
+						data8[4] = serialGetchar(fdBeacon);	// number of bytes of data transmitting
 						
-						if ((data16[0]=data8[3] << 8| data8[2]) != 0x0011){
-							//printf("Unrecognized code of data in packet -> %04x\n", data16[0]);
-							usleep(20000);
+						if ((data16=data8[3] << 8| data8[2]) == 0x0011 && data8[1] == 0x47 && data8[4] == 0x16){
+							hedgehogReading[0] = 1.0; //reading mm				
+							n = (int)(data8[4]);
+							//printf("%d", n);
+							for (int i=0;i<n;i++){
+								data8[5+i] = serialGetchar(fdBeacon);
+							}
+							data8[5+n] = serialGetchar(fdBeacon); // This and (6+n) are CRC-16
+							data8[6+n] = serialGetchar(fdBeacon);
+							
+							beaconTimestamp = (double)(data32 = data8[8] << 24| data8[7] << 16| data8[6] << 8| data8[5]);			
+							// Raw position uint data to float
+							posRaw[0] = (double)(int32_t)(data32 = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9])*0.001;
+							posRaw[1] = (double)(int32_t)(data32 = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13])*0.001;	
+							posRaw[2] = (double)(int32_t)(data32 = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17])*0.001;
+							
+							beaconFlag = (data8[21] >> 0) & 1; //takes the bit number 1 of it!
+							//printf("beaconFlag %i\n", beaconFlag);						
+							if ( beaconFlag == 0 ) {
+								// Copy raw position to global variable for use in sensor fusion thread
+								pthread_mutex_lock(&mutexPositionSensorData);
+									memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
+									//memcpy(sensorRawDataPosition+3, hedgehogReading, sizeof(hedgehogReading));
+									//memcpy(sensorRawDataPosition+4, &beaconTimestamp, sizeof(beaconTimestamp));
+									//memcpy(sensorRawDataPosition+5, &beaconFlag, sizeof(beaconFlag));
+								pthread_mutex_unlock(&mutexPositionSensorData);
+							}
+							else {
+								printf("beaconFlag ERROR, flag is %i\n", beaconFlag); //keep this on RPi console for troubleshooting
+							}
+							
+							//printf("INSIDE %i    ", counter);
+							//printmat(sensorRawDataPosition, 1, 4);
+							
+							// beaconFlag=(int)data8[21];
+							//printf("%.0f => X=%.3f, Y=%.3f, Z=%.3f at %f with all flags (mm)\n", hedgehogReading[0], posRaw[0], posRaw[1], posRaw[2], 1/(beaconTimestamp-beaconTimestampPrev)*1000);
+							// printBits(1, &beaconFlag);
+							beaconTimestampPrev = beaconTimestamp;
+							
+							//usleep(15000);
+						}
+						else if ((data16=data8[3] << 8| data8[2]) == 0x0001 && data8[1] == 0x47 && data8[4] == 0x10){
+							hedgehogReading[0] = 2.0; //reading cm				
+							n = (int)(data8[4]);
+							//printf("%d", n);
+							for (int i=0;i<n;i++){
+								data8[5+i] = serialGetchar(fdBeacon);
+							}
+							data8[5+n] = serialGetchar(fdBeacon); // This and (6+n) are CRC-16
+							data8[6+n] = serialGetchar(fdBeacon);
+							
+							beaconTimestamp = (double)(data32 = data8[8] << 24| data8[7] << 16| data8[6] << 8| data8[5]);			
+							// Raw position uint data to float
+							posRaw[0] = (double)(int16_t)(data16 = data8[10] << 8| data8[9])*0.01;
+							posRaw[1] = (double)(int16_t)(data16 = data8[12] << 8| data8[11])*0.01;	
+							posRaw[2] = (double)(int16_t)(data16 = data8[14] << 8| data8[13])*0.01;
+							
+							beaconFlag = (data8[15] >> 0) & 1; //takes the bit number 1 of it!
+							//printf("beaconFlag %i\n", beaconFlag);					
+							if ( beaconFlag == 1 ) {
+								// Copy raw position to global variable for use in sensor fusion thread
+								pthread_mutex_lock(&mutexPositionSensorData);
+									memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
+									//memcpy(sensorRawDataPosition+3, hedgehogReading, sizeof(hedgehogReading));
+									//memcpy(sensorRawDataPosition+4, &beaconTimestamp, sizeof(beaconTimestamp));
+									//memcpy(sensorRawDataPosition+5, &beaconFlag, sizeof(beaconFlag));
+								pthread_mutex_unlock(&mutexPositionSensorData);	
+							}
+							else {
+								printf("beaconFlag ERROR, flag is %i\n", beaconFlag); //keep this on RPi console for troubleshooting
+							}
+							
+							//beaconFlag=(int)data8[15];	
+							//printf("%.0f => X=%.3f, Y=%.3f, Z=%.3f at %f with all flags (cm)\n", hedgehogReading, posRaw[0], posRaw[1], posRaw[2], 1/(beaconTimestamp-beaconTimestampPrev)*1000);
+							//printBits(1, &beaconFlag);
+							beaconTimestampPrev = beaconTimestamp;
+							
+							usleep(15000);
+						}
+						else if ((data16=data8[3] << 8| data8[2]) == 0x0002 && data8[1] == 0x47){//cm
+							data8[5] = serialGetchar(fdBeacon); // number of beacons
+							n = (int)(data8[4]);
+							//printf("%d", n);
+							for (int i=0;i<n;i++){
+								data8[6+i] = serialGetchar(fdBeacon);
+							}
+							data8[6+n] = serialGetchar(fdBeacon); // This and (7+n) are CRC-16
+							data8[7+n] = serialGetchar(fdBeacon);
+							
+							beacons[0] = (double)(data8[6]);//address
+							beacons[1] = (double)(data16 = data8[8] << 8| data8[7])*0.01;
+							beacons[2] = (double)(data16 = data8[10] << 8| data8[9])*0.01;
+							beacons[3] = (double)(data16 = data8[12] << 8| data8[11])*0.01;
+							beacons[4] = (double)(data8[14]);//address
+							beacons[5] = (double)(data16 = data8[16] << 8| data8[15])*0.01;
+							beacons[6] = (double)(data16 = data8[18] << 8| data8[17])*0.01;
+							beacons[7] = (double)(data16 = data8[20] << 8| data8[19])*0.01;
+							beacons[8] = (double)(data8[22]);//address
+							beacons[9] = (double)(data16 = data8[24] << 8| data8[23])*0.01;
+							beacons[10] = (double)(data16 = data8[26] << 8| data8[25])*0.01;
+							beacons[11] = (double)(data16 = data8[28] << 8| data8[27])*0.01;
+							beacons[12] = (double)(data8[30]);//address
+							beacons[13] = (double)(data16 = data8[32] << 8| data8[31])*0.01;
+							beacons[14] = (double)(data16 = data8[34] << 8| data8[33])*0.01;
+							beacons[15] = (double)(data16 = data8[36] << 8| data8[35])*0.01;
+							//printf("%i beacons:\nBeacon%i> %.3f %.3f %.3f, Beacon%i> %.3f %.3f %.3f,\nBeacon%i> %.3f %.3f %.3f, Beacon%i> %.3f %.3f %.3f\n", data8[5], (int)beacons[0] ,beacons[1] ,beacons[2], beacons[3], (int)beacons[4], beacons[5], beacons[6], beacons[7], (int)beacons[8], beacons[9], beacons[10], beacons[11], (int)beacons[12], beacons[13], beacons[14], beacons[15]);
+							
+							usleep(15000);
+						}
+						else if ((data16=data8[3] << 8| data8[2]) == 0x0012 && data8[1] == 0x47){//mm
+							data8[5] = serialGetchar(fdBeacon); // number of beacons
+							n = (int)(data8[4]);
+							//printf("%d", n);
+							for (int i=0;i<n;i++){
+								data8[6+i] = serialGetchar(fdBeacon);
+							}
+							data8[6+n] = serialGetchar(fdBeacon); // This and (7+n) are CRC-16
+							data8[7+n] = serialGetchar(fdBeacon);
+							
+							beacons[0] = (double)(data8[6]);//address
+							beacons[1] = (double)(data32 = data8[10] << 24| data8[9] << 16| data8[8] << 8| data8[7])*0.001;
+							beacons[2] = (double)(data32 = data8[14] << 24| data8[13] << 16| data8[12] << 8| data8[11])*0.001; //?????????
+							beacons[3] = (double)(data32 = data8[18] << 24| data8[17] << 16| data8[16] << 8| data8[15])*0.001;
+							beacons[4] = (double)(data8[20]);//address
+							beacons[5] = (double)(data32 = data8[24] << 24| data8[23] << 16| data8[22] << 8| data8[21])*0.001;
+							beacons[6] = (double)(data32 = data8[28] << 24| data8[27] << 16| data8[26] << 8| data8[25])*0.001;
+							beacons[7] = (double)(data32 = data8[32] << 24| data8[31] << 16| data8[30] << 8| data8[29])*0.001;
+							beacons[8] = (double)(data8[34]);//address
+							beacons[9] = (double)(data32 = data8[38] << 24| data8[37] << 16| data8[36] << 8| data8[35])*0.001;
+							beacons[10] = (double)(data32 = data8[42] << 24| data8[41] << 16| data8[40] << 8| data8[39])*0.001;
+							beacons[11] = (double)(data32 = data8[46] << 24| data8[45] << 16| data8[44] << 8| data8[43])*0.001;
+							beacons[12] = (double)(data8[48]);//address
+							beacons[13] = (double)(data32 = data8[52] << 24| data8[51] << 16| data8[50] << 8| data8[49])*0.001;
+							beacons[14] = (double)(data32 = data8[56] << 24| data8[55] << 16| data8[54] << 8| data8[53])*0.001;
+							beacons[15] = (double)(data32 = data8[60] << 24| data8[59] << 16| data8[58] << 8| data8[57])*0.001;
+							//printf("%i beacons:\nBeacon%i> %.3f %.3f %.3f, Beacon%i> %.3f %.3f %.3f,\nBeacon%i> %.3f %.3f %.3f, Beacon%i> %.3f %.3f %.3f\n", data8[5], (int)beacons[0] ,beacons[1] ,beacons[2], beacons[3], (int)beacons[4], beacons[5], beacons[6], beacons[7], (int)beacons[8], beacons[9], beacons[10], beacons[11], (int)beacons[12], beacons[13], beacons[14], beacons[15]);
+							
+							usleep(15000);
 						}
 						else{
-						
-						// Raw position uint data to float
-						posRaw[0] = (double)((data32[1] = data8[12] << 24| data8[11] << 16| data8[10] << 8| data8[9]));
-						posRaw[1] = (double)((data32[2] = data8[16] << 24| data8[15] << 16| data8[14] << 8| data8[13]));	
-						posRaw[2] = (double)((data32[3] = data8[20] << 24| data8[19] << 16| data8[18] << 8| data8[17]));
-						
-						// Copy raw position to global variable for use in sensor fusion thread
-						pthread_mutex_lock(&mutexPositionSensorData);
-							memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
-						pthread_mutex_unlock(&mutexPositionSensorData);
+							//printf("data8[1] -> %04x\n", data8[1]);
+							//printf("Unrecognized code of data in packet -> %04x  and  %02x\n", data16, data8[1]);
 							
-						printf("X=%.3f, Y=%.3f, Z=%.3f\n\n", posRaw[0]/1000, posRaw[1]/1000, posRaw[2]/1000);
+							usleep(20000);
 						}
 					}
 					else{
 						usleep(20000);	// if it is not broadcasting 0xff
 					}
 				}
-				usleep(20000);	// if Data not avail 
+				else{// else not avail
+					//printf("else %i\n", counter);
+					/*hedgehogReading[0] = 0.0; //reading is done!
+					posRaw[0] = NAN;
+					posRaw[1] = NAN;	
+					posRaw[2] = NAN;
+					pthread_mutex_lock(&mutexPositionSensorData);
+						memcpy(sensorRawDataPosition, posRaw, sizeof(posRaw));
+						//memcpy(sensorRawDataPosition+3, hedgehogReading, sizeof(hedgehogReading));
+						//memcpy(sensorRawDataPosition+4, &beaconTimestamp, sizeof(beaconTimestamp));
+						//memcpy(sensorRawDataPosition+5, &beaconFlag, sizeof(beaconFlag));
+					pthread_mutex_unlock(&mutexPositionSensorData);*/
+					
+					usleep(15000);	// if Data not avail
+				}
 			}
+			
 		}
 		sleep(5); // file not open sleep for 5
 	}
 	return NULL;
 }
 
-
 // Thread - Sensor fusion Orientation and Position
 static void *threadSensorFusion (void *arg){
+	// Get pipe array and define local variables
+	pipeArray *pipeArrayStruct = arg;
+	//structPipe *ptrPipe1 = pipeArray1->pipe1;
+	structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
-	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0};
-	uint32_t desiredPeriod = 20, start;
-	int calibrationCounter=0;
-	
+	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, P[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0}, sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+	posRaw[3]={0,0,0}, xx[2]={0,0}, xy[2]={0,0}, xz[2]={0,0}, Px[4]={1,0,0,1}, Py[4]={1,0,0,1}, Pz[4]={1,0,0,1}, posRawPrev[3]={0,0,0};
+	uint32_t desiredPeriod = 50, start;
+	int calibrationCounter=0, posRawOldFlag=0;	
 			
-			
-	//double x[2]={0,0}, Pp[4]={1,0,0,1}, qq=0.1, r=0.1, ymeas=2, Ts=1;
-	double x[3]={0,0,0}, Pp[9]={1,0,0,0,1,0,0,0,1}, qq=0.1, r=0.1, ymeas=2, Ts=1;
-	
-	for (int i=0;i<10;i++){
-		kalmanFilterCA(x, Pp, qq, r, ymeas, Ts);
-		sleep(1);
-	}
-	
-	sleep(100);
-	
-	
 	// Enable acc, gyr, mag  and bmp sensors
 	printf("Enabling sensors...\n");
 	pthread_mutex_lock(&mutexI2CBusy);
@@ -341,19 +352,21 @@ static void *threadSensorFusion (void *arg){
 		enableAK8963();
 	pthread_mutex_unlock(&mutexI2CBusy);
 	
-	
-	
-	
 	// Loop for ever
 	while(1){
 		// Timing
 		//printf("Ts: %i\n", millis()-start2);
 		start=millis();
 		
-		// Read sensor data to local variable
+		// Read raw sensor data from I2C bus to local variable
 		pthread_mutex_lock(&mutexI2CBusy);	
 			readAllSensorData(accRaw, gyrRaw, magRaw, &tempRaw);	
 		pthread_mutex_unlock(&mutexI2CBusy);
+		
+		// Read raw position data from global to local variable
+		pthread_mutex_lock(&mutexPositionSensorData);	
+			memcpy(posRaw, sensorRawDataPosition, sizeof(sensorRawDataPosition));		
+		pthread_mutex_unlock(&mutexPositionSensorData);
 		
 		// Convert sensor data to correct (filter) units:
 		// Acc: g -> m/s² Factor: 9.81
@@ -391,6 +404,9 @@ static void *threadSensorFusion (void *arg){
 			sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
 			printf("Sensor Calibration finish\n");
 			calibrationCounter++;
+			xx[0]=posRaw[0];
+			xy[0]=posRaw[1];
+			xz[0]=posRaw[2];
 		}
 		// Sensor fusion
 		else{
@@ -402,26 +418,53 @@ static void *threadSensorFusion (void *arg){
 			magnetometerUpdate(q, P, magRawRot, mag0, Rmag, L);
 			qNormalize(q);
 			q2euler(euler,q);
+			
+			// Check if raw position data is new or old
+			if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
+				posRawOldFlag=1;
+			}
+			else{
+				posRawOldFlag=0;
+				memcpy(posRawPrev, posRaw, sizeof(posRaw));
+			}
+			
+			// Check if raw poisition data has moved to much
+			
+			// Position estimation
+			kalmanFilterCV(xx, Px, 0.0001, 0.00003212, posRaw[0], (double)desiredPeriod/1000, posRawOldFlag);
+			kalmanFilterCV(xy, Py, 0.0001, 0.00004067, posRaw[1], (double)desiredPeriod/1000, posRawOldFlag);
+			kalmanFilterCV(xz, Pz, 0.0001, 0.00005055, posRaw[2], (double)desiredPeriod/1000, posRawOldFlag);
+			
+			printf("X=%.3f, X=%.3f, Y=%.3f, Y=%.3f, Z=%.3f, Z=%.3f\n", posRaw[0], posRaw[1], posRaw[2], xx[0], xy[0], xz[0]);
 
 			// Move over data to global variables for sending to controller process
-			pthread_mutex_lock(&mutexAngleSensorData);
-				sensorRawDataAngles[0]=gyrRaw[0];
-				sensorRawDataAngles[1]=gyrRaw[1];
-				sensorRawDataAngles[2]=gyrRaw[2];
-				sensorRawDataAngles[3]=accRaw[0];
-				sensorRawDataAngles[4]=accRaw[1];
-				sensorRawDataAngles[5]=accRaw[2];
-				sensorRawDataAngles[6]=magRaw[0];
-				sensorRawDataAngles[7]=magRaw[1];
-				sensorRawDataAngles[8]=magRaw[2];
-				sensorRawDataAngles[9]=euler[0];
-				sensorRawDataAngles[10]=euler[1];
-				sensorRawDataAngles[11]=euler[2];
-				sensorRawDataAngles[12]=q[0];
-				sensorRawDataAngles[13]=q[1];
-				sensorRawDataAngles[14]=q[2];
-				sensorRawDataAngles[15]=q[3];
-			pthread_mutex_unlock(&mutexAngleSensorData);
+			sensorDataBuffer[0]=gyrRaw[0];
+			sensorDataBuffer[1]=gyrRaw[1];
+			sensorDataBuffer[2]=gyrRaw[2];
+			sensorDataBuffer[3]=accRaw[0];
+			sensorDataBuffer[4]=accRaw[1];
+			sensorDataBuffer[5]=accRaw[2];
+			sensorDataBuffer[6]=magRaw[0];
+			sensorDataBuffer[7]=magRaw[1];
+			sensorDataBuffer[8]=magRaw[2];
+			sensorDataBuffer[9]=euler[0];
+			sensorDataBuffer[10]=euler[1];
+			sensorDataBuffer[11]=euler[2];
+			sensorDataBuffer[12]=q[0];
+			sensorDataBuffer[13]=q[1];
+			sensorDataBuffer[14]=q[2];
+			sensorDataBuffer[15]=q[3];
+			sensorDataBuffer[16]=xx[0];
+			sensorDataBuffer[17]=xy[0];
+			sensorDataBuffer[18]=xz[0];
+			
+			// Write to Controller process
+			//if (write(ptrPipe1->child[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor to Controller\n");
+			//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
+			
+			// Write to Communication process
+			if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
+			//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
 		}
 		
 		// Sleep for desired sampling frequency
@@ -430,7 +473,6 @@ static void *threadSensorFusion (void *arg){
 	}
 	return NULL;
 }
-
 
 // Thread - PWM Control
 static void *threadPWMControl(void *arg){
@@ -470,13 +512,22 @@ static void *threadPWMControl(void *arg){
 }
 
 
-
 /******************************************************************/
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
+// Outlier GPS Velocity
+int outlierGpsVelocity(double ymeas, double x_pred, double velMax, double Ts){
+	if(fabs(ymeas-x_pred)>velMax*Ts){
+		printf("Velocity outlier active\n");
+		return 1;
+	}
+	else{
+		return 0;
+	}
+}
 
 // Kalman filter (Constant Velocity model)
-void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, double Ts){
+void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, double Ts, int flag){
 	// Declare filter variables
 	double A_cv[4]={1,0,Ts,1}; // model augmented with bias in position
 	double Q_cv[4]={pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,2)*q/2,Ts*q}; // Covariance
@@ -508,8 +559,15 @@ void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, doub
 	K[0]/=S[0];
 	K[1]/=S[0];
 	
-	// V=yk-C*x; 
-	V=ymeas-x_pred[0];
+	// V=yk-C*x;
+	// Check if ymeas is new data
+	if(flag==1 || outlierGpsVelocity(ymeas, x_pred[0], 0.5, Ts)==1){
+		V=0;
+		//printf("Old data\n");
+	}
+	else{
+		V=ymeas-x_pred[0];
+	}
 	
 	// x=x+K*v;
 	x[0]=x_pred[0]+K[0]*V;
@@ -563,7 +621,6 @@ void kalmanFilterCA(double *x, double *P, double q, double r, double ymeas, doub
 	
 	// V=yk-C*x; 
 	V=ymeas-x_pred[0];
-	printf("V=%f\n", V);
 	
 	// x=x+K*v;
 	x[0]=x_pred[0]+K[0]*V;
@@ -574,6 +631,73 @@ void kalmanFilterCA(double *x, double *P, double q, double r, double ymeas, doub
 	double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
 	double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
 	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
+	P[4]=P_pred[4]-P_temp[4];
+	P[5]=P_pred[5]-P_temp[5];
+	P[6]=P_pred[6]-P_temp[6];
+	P[7]=P_pred[7]-P_temp[7];
+	P[8]=P_pred[8]-P_temp[8];
+}
+
+// Kalman filter (Random Walk model)
+void kalmanFilterRW(double *x, double *P, double *q, double *r, double *ymeas, double Ts){
+// Declare filter variables
+	double A_ca[9]={1,0,0,0,1,0,0,0,1}; // random walk model (identity)
+	double Q_ca[9]={q[0],0,0,0,q[1],0,0,0,q[2]}; // Covariance
+	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9]={0,0,0,0,0,0,0,0,0}, S[9]={0,0,0,0,0,0,0,0,0}, fone=1, fzero=0, C[9]={1,0,0,0,1,0,0,0,1}, K[9]={0,0,0,0,0,0,0,0,0}, V[3];
+	
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=3, k=3, m=3;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
+	
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_ca[0];
+	P_pred[1]+=Q_ca[1];
+	P_pred[2]+=Q_ca[2];
+	P_pred[3]+=Q_ca[3];
+	P_pred[4]+=Q_ca[4];
+	P_pred[5]+=Q_ca[5];
+	P_pred[6]+=Q_ca[6];
+	P_pred[7]+=Q_ca[7];
+	P_pred[8]+=Q_ca[8];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,S_temp,&m,C,&k,&fzero,S,&m);
+	S[0]+=r[0];
+	S[4]+=r[1];
+	S[8]+=r[2];
+	
+	
+	// K=P*C'*S^-1; Kalman gain
+	double K_temp[9];
+	double S_inv[9];
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_pred,&m,C,&k,&fzero,K_temp,&m);
+	mInverse(S,S_inv);
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
+	
+	// V=yk-C*x; 
+	V[0]=ymeas[0]-x_pred[0];
+	V[1]=ymeas[1]-x_pred[1];
+	V[2]=ymeas[2]-x_pred[2];
+	
+	// x=x+K*v;
+	double x_temp[3];
+	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
+	x[0]=x_pred[0]+x_temp[0];
+	x[1]=x_pred[1]+x_temp[1];
+	x[2]=x_pred[2]+x_temp[2];
+	
+	// P=P-K*S*K';
+	//double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
+	//double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m);	
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&k,&fzero,P_temp,&m);	
 	P[0]=P_pred[0]-P_temp[0];
 	P[1]=P_pred[1]-P_temp[1];
 	P[2]=P_pred[2]-P_temp[2];
@@ -1071,7 +1195,6 @@ void mInverse(double *m, double *mInv){
 	mInv[8] = (m[0] * m[4] - m[1] * m[3]) / (m[0] * m[4] * m[8] - m[0] * m[5] * m[7] - m[1] * m[3] * m[8] + m[1] * m[6] * m[5] + m[2] * m[3] * m[7] - m[2] * m[6] * m[4]);
 }
 
-
 // Matrix print function
 void printmat(double *A, int m, int n){
     double *dptr;
@@ -1126,4 +1249,22 @@ void saveSettings(){
 	
 	// Close file
 	fclose(fp);
+}
+
+// Used to print the bits in a data type
+void printBits(size_t const size, void const * const ptr)
+{
+    unsigned char *b = (unsigned char*) ptr;
+    unsigned char byte;
+    int i, j;
+
+    for (i=size-1;i>=0;i--)
+    {
+        for (j=7;j>=0;j--)
+        {
+            byte = (b[i] >> j) & 1;
+            printf("%u", byte);
+        }
+    }
+    puts("");
 }
