@@ -1,3 +1,7 @@
+#define _POSIX_C_SOURCE 199309L
+#define _GNU_SOURCE
+
+ 
  
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,9 +21,7 @@
 #define NSEC_PER_SEC    (1000000000) /* The number of nsecs per sec. */
 
 void stack_prefault(void) {
-
         unsigned char dummy[MAX_SAFE_STACK];
-
         memset(dummy, 0, MAX_SAFE_STACK);
         return;
 }
@@ -28,7 +30,8 @@ int main(int argc, char* argv[])
 {
         struct timespec t;
         struct sched_param param;
-        int interval = 50000; /* 50us*/
+        int interval = 800000000; /* 50us*/
+        int interval_s = 1;
 
         /* Declare ourself as a real time task */
 
@@ -39,14 +42,12 @@ int main(int argc, char* argv[])
         }
 
         /* Lock memory */
-
         if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
                 perror("mlockall failed");
                 exit(-2);
         }
 
         /* Pre-fault our stack */
-
         stack_prefault();
 
         clock_gettime(CLOCK_MONOTONIC ,&t);
@@ -58,9 +59,11 @@ int main(int argc, char* argv[])
                 clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
 
                 /* do the stuff */
+                printf("PREEMT_RT timer of %f seconds\n", (float)interval_s);
 
                 /* calculate next shot */
-                t.tv_nsec += interval;
+                //t.tv_nsec += interval;
+                t.tv_sec += interval_s;
 
                 while (t.tv_nsec >= NSEC_PER_SEC) {
                        t.tv_nsec -= NSEC_PER_SEC;

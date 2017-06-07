@@ -21,6 +21,14 @@
 #include <math.h>
 #include <errno.h>
 
+// PREEMPT_RT
+#include <time.h>
+#include <sched.h>
+#include <sys/mman.h>
+
+
+
+
 #define PI 3.141592653589793
 #define CALIBRATION 100
 
@@ -29,17 +37,9 @@
 /******************************************************************/
 
 // Predeclarations
-//static void *threadPipeSensorToControllerAndComm (void*);
-//static void *threadPipeSensorToComm (void*);
 static void *threadReadBeacon (void*);
-//static void *threadSensorFusionAngles (void*);
-//static void *threadPipeCommToSensor (void*);
 static void *threadSensorFusion (void*);
-//static void *threadReadBeacon (void*);
-//static void *threadSensorFusion (void*);
 static void *threadPWMControl (void*);
-//float kalmanFilter(float, float, int);
-//void mTranspose(float**, float**, int, int);
 void Qq(double*, double*);
 void dQqdq(double*, double*, double*, double*, double*, double*, double*);
 void printmat(double*, int, int);
@@ -62,17 +62,9 @@ void printBits(size_t const, void const * const);
 int outlierGpsVelocity(double, double, double, double);
 
 // Static variables for threads
-//static float position[3]={1.0f,1.0f,1.0f};
-//static float angles[3]={0,0,0};
-//static float tuning[3];
 static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-//static double sensorRawData[16]={0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to communicate between imu read and position fusion threads
-//static double sensorRawDataAngles[16]={0,0,0,0,0,0,0,0,0,0,0,0}; 
 
-//static pthread_mutex_t mutexPositionData = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_mutex_t mutexAngleData = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_mutex_t mutexTuningData = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_mutex_t mutexAngleSensorData = PTHREAD_MUTEX_INITIALIZER;
+// Mutexes
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 
@@ -91,22 +83,16 @@ void startSensors(void *arg1, void *arg2){
 	
 	// Create thread
 	pthread_t threadSenFus, threadPWMCtrl,threadReadPos;
-	int res3, res5, res6;
+	int res1, res2, res3;
 	
-	//res1=pthread_create(&threadPipeSensToCtrlAndComm, NULL, &threadPipeSensorToControllerAndComm, &pipeArrayStruct);
-	//res2=pthread_create(&threadAngles, NULL, &threadSensorFusionAngles, NULL);
-	res3=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
-	//res4=pthread_create(&threadPipeCommToSens, NULL, &threadPipeCommToSensor, arg2);
-	res5=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
-	res6=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
+	res1=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
+	res2=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
+	res3=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
 	
 	// If threads created successful, start them
-	//if (!res1) pthread_join( threadPipeSensToCtrlAndComm, NULL);
-	//if (!res2) pthread_join( threadAngles, NULL);
-	if (!res3) pthread_join( threadReadPos, NULL);
-	//if (!res4) pthread_join( threadPipeCommToSens, NULL);
-	if (!res5) pthread_join( threadSenFus, NULL);
-	if (!res6) pthread_join( threadPWMCtrl, NULL);
+	if (!res1) pthread_join( threadReadPos, NULL);
+	if (!res2) pthread_join( threadSenFus, NULL);
+	if (!res3) pthread_join( threadPWMCtrl, NULL);
 }
 
 
