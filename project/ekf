@@ -1,17 +1,18 @@
 function [x_hat_states,d_hat,x_hat,P_hat] = StateParameterEstimation(u_prev,y_meas,x_hat_prev,P_hat_prev,parameters, control)
 %% Parameters
-% g=parameters(1); % 9.81; % gravity
-mass=parameters.mass; %.5;   %mass
-L=parameters.L; % .25;
-k=parameters.k; %3e-6; %lift coeff
-b=parameters.b; %1e-7; %drag coeff
-k_d=parameters.k; %.25;    %air friction
-% i_xx=parameters(7); %5e-3;  %quad inertia about xb
-% i_yy=parameters(8); %5e-3;  %quad inertia about yb
-% i_zz=parameters(9); %1e-2;  %quad inertia about zb
-c_m=parameters.c_m; %1e+4;   %motor constant
-Ts=parameters.Ts; %0.1; % sampling time
-% T= parameters(1) % 1000; % simulation time
+sim_struct.parameters.g=9.81; % gravity
+sim_struct.parameters.mass=.47;   %parameters.mass
+sim_struct.parameters.L=.25/2; 
+sim_struct.parameters.k=1.0107e-05; %lift coeff
+sim_struct.parameters.b=3.3691e-07; %drag coeff
+sim_struct.parameters.k_d=.25;    %air friction
+sim_struct.parameters.i_xx=12e-4;  %quad inertia about xb
+sim_struct.parameters.i_yy=12e-4;  %quad inertia about yb
+sim_struct.parameters.i_zz=23e-4;  %quad inertia about zb
+sim_struct.parameters.c_m=23.0907;   %motor constant
+
+sim_struct.parameters.Ts=1/20; % sampling
+sim_struct.parameters.Simulation_Time=20;
 
 
 %% Augmented Nonlinear Model
