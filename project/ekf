@@ -3,12 +3,22 @@ function [x_hat_states,d_hat,x_hat,P_hat] = StateParameterEstimation(u_prev,y_me
 sim_struct.parameters.g=9.81; % gravity
 sim_struct.parameters.mass=.47;   %parameters.mass
 sim_struct.parameters.L=.25/2; 
-sim_struct.parameters.k=1.0107e-05; %lift coeff
+sim_struct.parameters.k=1.0107e-05; %lift 
+Decimal form:
+0.000010107
 sim_struct.parameters.b=3.3691e-07; %drag coeff
+Decimal form:
+0.00000033691
 sim_struct.parameters.k_d=.25;    %air friction
 sim_struct.parameters.i_xx=12e-4;  %quad inertia about xb
+Decimal form:
+0.0012
 sim_struct.parameters.i_yy=12e-4;  %quad inertia about yb
+Decimal form:
+0.0012
 sim_struct.parameters.i_zz=23e-4;  %quad inertia about zb
+Decimal form:
+0.0023
 sim_struct.parameters.c_m=23.0907;   %motor constant
 
 sim_struct.parameters.Ts=1/20; % sampling
