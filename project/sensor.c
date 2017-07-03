@@ -40,6 +40,7 @@
 static void *threadReadBeacon (void*);
 static void *threadSensorFusion (void*);
 static void *threadPWMControl (void*);
+
 void Qq(double*, double*);
 void dQqdq(double*, double*, double*, double*, double*, double*, double*);
 void printmat(double*, int, int);
@@ -53,13 +54,19 @@ void accelerometerUpdate(double*, double*, double*, double*, double*);
 void gyroscopeUpdate(double*, double*, double*, double*, double);
 void magnetometerUpdate(double*, double*, double*, double*, double*, double);
 void sensorCalibration(double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, double*, int);
+
 void loadSettings();
 void saveSettings();
-void kalmanFilterCV(double*, double*, double, double, double, double, int);
-void kalmanFilterCA(double*, double*, double, double, double, double);
-void kalmanFilterRW(double*, double*, double*, double*, double*, double);
 void printBits(size_t const, void const * const);
-int outlierGpsVelocity(double, double, double, double);
+
+void EKF();
+void fx(double*, double*, double*, double);
+void Jfx(double*, double*, double*, double);
+
+//void kalmanFilterCV(double*, double*, double, double, double, double, int);
+//void kalmanFilterCA(double*, double*, double, double, double, double);
+//void kalmanFilterRW(double*, double*, double*, double*, double*, double);
+//int outlierGpsVelocity(double, double, double, double);
 
 // Static variables for threads
 static double sensorRawDataPosition[3]; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
@@ -114,7 +121,7 @@ void *threadReadBeacon (void *arg){
 	int n;
 	double hedgehogReading[1] = {0};
 	int beaconFlag = 0;
-	int beaconsCoordinates = 0;
+	//int beaconsCoordinates = 0;
 	//double dummy = 0.0;
 	int fdBeacon;
 	
@@ -501,200 +508,6 @@ static void *threadPWMControl(void *arg){
 /******************************************************************/
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
-// Outlier GPS Velocity
-int outlierGpsVelocity(double ymeas, double x_pred, double velMax, double Ts){
-	if(fabs(ymeas-x_pred)>velMax*Ts){
-		printf("Velocity outlier active\n");
-		return 1;
-	}
-	else{
-		return 0;
-	}
-}
-
-// Kalman filter (Constant Velocity model)
-void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, double Ts, int flag){
-	// Declare filter variables
-	double A_cv[4]={1,0,Ts,1}; // model augmented with bias in position
-	double Q_cv[4]={pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,2)*q/2,Ts*q}; // Covariance
-	double x_pred[2]={0,0}, P_pred[4]={0,0,0,0}, P_temp[4]={0,0,0,0}, S_temp[4], S[2], fone=1, fzero=0, C[2]={1,0}, K[2]={0,0}, V=0;
-	
-	// x[k|k-1]=A*x[k-1|k-1]; State prediction
-	int ione=1, n=2, k=2, m=2;
-	F77_CALL(dgemv)("n",&m,&n,&fone,A_cv,&m,x,&ione,&fzero,x_pred,&ione);
-	
-	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
-	n=2; k=2; m=2;
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_cv,&m,P,&k,&fzero,P_temp,&m);
-	n=2; k=2; m=2;
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_cv,&n,&fzero,P_pred,&m);
-	P_pred[0]+=Q_cv[0];
-	P_pred[1]+=Q_cv[1];
-	P_pred[2]+=Q_cv[2];
-	P_pred[3]+=Q_cv[3];	
-	
-	// S=C*P*C'+R; Innovation covariance
-	double C_temp[4]={1,0,0,0};
-	n=2; k=2; m=2;
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
-	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
-	S[0]+=r;
-	
-	// K=P*C'*S^-1; Kalman gain
-	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
-	K[0]/=S[0];
-	K[1]/=S[0];
-	
-	// V=yk-C*x;
-	// Check if ymeas is new data
-	if(flag==1 || outlierGpsVelocity(ymeas, x_pred[0], 0.5, Ts)==1){
-		V=0;
-		//printf("Old data\n");
-	}
-	else{
-		V=ymeas-x_pred[0];
-	}
-	
-	// x=x+K*v;
-	x[0]=x_pred[0]+K[0]*V;
-	x[1]=x_pred[1]+K[1]*V;
-	
-	// P=P-K*S*K';
-	double K_tempS[4]={K[0]*S[0],K[1]*S[0],0,0};
-	double K_temp[4]={K[0],K[1],0,0};
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
-	P[0]=P_pred[0]-P_temp[0];
-	P[1]=P_pred[1]-P_temp[1];
-	P[2]=P_pred[2]-P_temp[2];
-	P[3]=P_pred[3]-P_temp[3];
-}
-
-// Kalman filter (Constant Acceleration model)
-void kalmanFilterCA(double *x, double *P, double q, double r, double ymeas, double Ts){
-// Declare filter variables
-	double A_ca[9]={1,0,0,Ts,1,0,pow(Ts,2)/2,Ts,1}; // model augmented with bias in position
-	double Q_ca[9]={pow(Ts,5)*q/20,pow(Ts,4)*q/8,pow(Ts,3)*q/6,pow(Ts,4)*q/8,pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,3)*q/6,pow(Ts,2)*q/2,Ts*q}; // Covariance
-	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9], S[3], fone=1, fzero=0, C[3]={1,0,0}, K[3]={0,0,0}, V=0;
-	
-	// x[k|k-1]=A*x[k-1|k-1]; State prediction
-	int ione=1, n=3, k=3, m=3;
-	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
-	
-	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
-	P_pred[0]+=Q_ca[0];
-	P_pred[1]+=Q_ca[1];
-	P_pred[2]+=Q_ca[2];
-	P_pred[3]+=Q_ca[3];
-	P_pred[4]+=Q_ca[4];
-	P_pred[5]+=Q_ca[5];
-	P_pred[6]+=Q_ca[6];
-	P_pred[7]+=Q_ca[7];
-	P_pred[8]+=Q_ca[8];	
-	
-	// S=C*P*C'+R; Innovation covariance
-	double C_temp[9]={1,0,0,0,0,0,0,0,0};
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
-	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
-	S[0]+=r;
-	
-	// K=P*C'*S^-1; Kalman gain
-	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
-	K[0]/=S[0];
-	K[1]/=S[0];
-	K[2]/=S[0];
-	
-	// V=yk-C*x; 
-	V=ymeas-x_pred[0];
-	
-	// x=x+K*v;
-	x[0]=x_pred[0]+K[0]*V;
-	x[1]=x_pred[1]+K[1]*V;
-	x[2]=x_pred[2]+K[2]*V;
-	
-	// P=P-K*S*K';
-	double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
-	double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
-	P[0]=P_pred[0]-P_temp[0];
-	P[1]=P_pred[1]-P_temp[1];
-	P[2]=P_pred[2]-P_temp[2];
-	P[3]=P_pred[3]-P_temp[3];
-	P[4]=P_pred[4]-P_temp[4];
-	P[5]=P_pred[5]-P_temp[5];
-	P[6]=P_pred[6]-P_temp[6];
-	P[7]=P_pred[7]-P_temp[7];
-	P[8]=P_pred[8]-P_temp[8];
-}
-
-// Kalman filter (Random Walk model)
-void kalmanFilterRW(double *x, double *P, double *q, double *r, double *ymeas, double Ts){
-// Declare filter variables
-	double A_ca[9]={1,0,0,0,1,0,0,0,1}; // random walk model (identity)
-	double Q_ca[9]={q[0],0,0,0,q[1],0,0,0,q[2]}; // Covariance
-	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9]={0,0,0,0,0,0,0,0,0}, S[9]={0,0,0,0,0,0,0,0,0}, fone=1, fzero=0, C[9]={1,0,0,0,1,0,0,0,1}, K[9]={0,0,0,0,0,0,0,0,0}, V[3];
-	
-	// x[k|k-1]=A*x[k-1|k-1]; State prediction
-	int ione=1, n=3, k=3, m=3;
-	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
-	
-	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
-	P_pred[0]+=Q_ca[0];
-	P_pred[1]+=Q_ca[1];
-	P_pred[2]+=Q_ca[2];
-	P_pred[3]+=Q_ca[3];
-	P_pred[4]+=Q_ca[4];
-	P_pred[5]+=Q_ca[5];
-	P_pred[6]+=Q_ca[6];
-	P_pred[7]+=Q_ca[7];
-	P_pred[8]+=Q_ca[8];	
-	
-	// S=C*P*C'+R; Innovation covariance
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,P_pred,&k,&fzero,S_temp,&m);
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,S_temp,&m,C,&k,&fzero,S,&m);
-	S[0]+=r[0];
-	S[4]+=r[1];
-	S[8]+=r[2];
-	
-	
-	// K=P*C'*S^-1; Kalman gain
-	double K_temp[9];
-	double S_inv[9];
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_pred,&m,C,&k,&fzero,K_temp,&m);
-	mInverse(S,S_inv);
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
-	
-	// V=yk-C*x; 
-	V[0]=ymeas[0]-x_pred[0];
-	V[1]=ymeas[1]-x_pred[1];
-	V[2]=ymeas[2]-x_pred[2];
-	
-	// x=x+K*v;
-	double x_temp[3];
-	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
-	x[0]=x_pred[0]+x_temp[0];
-	x[1]=x_pred[1]+x_temp[1];
-	x[2]=x_pred[2]+x_temp[2];
-	
-	// P=P-K*S*K';
-	//double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
-	//double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
-	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m);	
-	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&k,&fzero,P_temp,&m);	
-	P[0]=P_pred[0]-P_temp[0];
-	P[1]=P_pred[1]-P_temp[1];
-	P[2]=P_pred[2]-P_temp[2];
-	P[3]=P_pred[3]-P_temp[3];
-	P[4]=P_pred[4]-P_temp[4];
-	P[5]=P_pred[5]-P_temp[5];
-	P[6]=P_pred[6]-P_temp[6];
-	P[7]=P_pred[7]-P_temp[7];
-	P[8]=P_pred[8]-P_temp[8];
-}
-
 // Accelerometer part: mu_g
 void accelerometerUpdate(double *q, double *P, double *yacc, double *g0, double *Ra){
 	// local variables
@@ -1254,3 +1067,284 @@ void printBits(size_t const size, void const * const ptr)
     }
     puts("");
 }
+
+// State Observer - Extended Kalman Filter
+void EKF(){
+	// Local variables
+	double C[108]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+/*
+% Prediction Step
+x_hat=fx_aug(x_hat_prev,u_prev); % State
+P_hat = Jfx_aug(x_hat_prev,u_prev)*P_hat_prev*Jfx_aug(x_hat_prev,u_prev)' + control.All.Q; % Covariance
+
+% Update step
+S = C*P_hat*C' + control.All.R; % Innovation Covariance
+K = P_hat*C'*S^-1; % Kalman Gagin
+V = y_meas - C*x_hat; % Innovation
+
+x_hat = x_hat + K*V; % State update
+P_hat = P_hat - K*S*K'; % Covariance update
+
+% x_hat(13:19)=[i_xx;i_yy;i_zz;c_m; 0;0;-g];
+% x_hat(13:16)=[i_xx;i_yy;i_zz;c_m]; % 0;0;-g];
+
+%% Output vectors
+x_hat_states=x_hat(1:12); % only output the 12 first states
+% x_hat_states=[x_hat(1:12);x_hat(17:19)]; % output the 12 first states + disturbances
+d_hat=x_hat(13:18);
+% P_hat_vec=zeros(18,1);
+% for i=1:18
+%     P_hat_vec(i)=P_hat(i,i);
+% end
+	*/
+}
+
+// Nonlinear Model
+void fx(double *xhat, double *xhat_prev, double *u, double Ts){
+	xhat[0]=xhat_prev[0]+Ts*xhat_prev[3]; // position x
+    xhat[1]=xhat_prev[1]+Ts*xhat_prev[4]; // position y
+    xhat[2]=xhat_prev[2]+Ts*xhat_prev[5]; // position z
+    xhat[3]=xhat_prev[3]+Ts*(-par_k_d/par_mass*xhat_prev[3] + (par_k*par_c_m)/par_mass*(sin(xhat_prev[8])*sin(xhat_prev[6]) + cos(xhat_prev[8])*cos(xhat_prev[6])*sin(xhat_prev[7]))*(pow(u[0],2)+pow(u[1],2)+pow(u[2],2)+pow(u[3],2)) + xhat_prev[15]);
+    xhat[4]=xhat_prev[4]+Ts*(-par_k_d/par_mass*xhat_prev[4] + (par_k*par_c_m)/par_mass*(cos(xhat_prev[6])*sin(xhat_prev[8])*sin(xhat_prev[7]) - cos(xhat_prev[8])*sin(xhat_prev[6]))*(pow(u[0],2)+pow(u[1],2)+pow(u[2],2)+pow(u[3],2)) + xhat_prev[16]);
+    xhat[5]=xhat_prev[5]+Ts*(-par_k_d/par_mass*xhat_prev[5] + (par_k*par_c_m)/par_mass*(cos(xhat_prev[7])*cos(xhat_prev[6]))*(pow(u[0],2)+pow(u[1],2)+pow(u[2],2)+pow(u[3],2)) + xhat_prev[17]);
+    xhat[6]=xhat_prev[6]+Ts*(xhat_prev[9] + xhat_prev[10]*sin(xhat_prev[6])*tan(xhat_prev[7])+xhat_prev[11]*cos(xhat_prev[6])*tan(xhat_prev[7]));
+    xhat[7]=xhat_prev[7]+Ts*(xhat_prev[10]*cos(xhat_prev[6]) - xhat_prev[11]*sin(xhat_prev[6]));
+    xhat[8]=xhat_prev[8]+Ts*(sin(xhat_prev[6])/cos(xhat_prev[7])*xhat_prev[10] + cos(xhat_prev[6])/cos(xhat_prev[7])*xhat_prev[11]);
+    xhat[9]=xhat_prev[9]+Ts*((par_L*par_k*par_c_m)/xhat_prev[12]*(pow(u[0],2)-pow(u[2],2))-((xhat_prev[13]-xhat_prev[14])/xhat_prev[12])*xhat_prev[10]*xhat_prev[11]);
+    xhat[10]=xhat_prev[10]+Ts*((par_L*par_k*par_c_m)/xhat_prev[13]*(pow(u[1],2)-pow(u[3],2))-((xhat_prev[14]-xhat_prev[12])/xhat_prev[13])*xhat_prev[9]*xhat_prev[11]);
+    xhat[11]=xhat_prev[11]+Ts*(par_b*par_c_m/xhat_prev[14]*(pow(u[0],2)-pow(u[1],2)+pow(u[2],2)-pow(u[3],2))-((xhat_prev[12]-xhat_prev[13])/xhat_prev[14])*xhat_prev[9]*xhat_prev[10]);
+    xhat[12]=xhat_prev[12]; // inertia i_xx
+    xhat[13]=xhat_prev[13]; // inertia i_yy
+    xhat[14]=xhat_prev[14]; // inertia i_zz
+    xhat[15]=xhat_prev[15]; // disturbance x
+    xhat[16]=xhat_prev[16]; // disturbance y
+    xhat[17]=xhat_prev[17]; // disturbance z (including gravity)
+}
+
+// Jacobian of model
+void Jfx(double *A, double *xhat, double *u, double Ts){
+	A[0]=1;		A[18]=0;	A[36]=0;	A[54]=Ts;            	A[72]=0;                A[90]=0;                A[108]=0;                                                                                                      							A[126]=0;                                                                                                 						A[144]=0;                                         																						A[162]=0;                                         			A[180]=0;                                         			A[198]=0;                                                 A[216]=0;                                                                                           					A[234]=0;                                                                                                     		A[252]=0; 	 																														A[270]=0;  	A[288]=0;  	A[306]=0;
+    A[1]=0;		A[19]=1; 	A[37]=0;	A[55]=0;                A[73]=Ts;               A[91]=0;                A[109]=0;                                                                                                      							A[127]=0;                                                                                                 						A[145]=0;                                         																						A[163]=0;                                         			A[181]=0;                                         			A[199]=0;                                                 A[217]=0;                                                                                           					A[235]=0;                                                                                                     		A[253]=0;  																															A[271]=0;  	A[289]=0;  	A[307]=0;
+    A[2]=0;		A[20]=0; 	A[38]=1;	A[56]=0;                A[74]=0;                A[92]=Ts;               A[110]=0;                                                                                                      							A[128]=0;                                                                                                 						A[146]=0;                                         																						A[164]=0;                                         			A[182]=0;                                         			A[200]=0;                                                 A[218]=0;                                                                                           					A[236]=0;                                                                                                     		A[254]=0;  																															A[272]=0;  	A[290]=0;  	A[308]=0;
+    A[3]=0; 	A[21]=0; 	A[39]=0; 	A[57]=1-(Ts*par_k_d)/par_mass;	A[75]=0;                A[93]=0;  				A[111]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(xhat[8]) - cos(xhat[8])*sin(xhat[6])*sin(xhat[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;   A[129]=(Ts*par_c_m*par_k*cos(xhat[6])*cos(xhat[7])*cos(xhat[8])*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/par_mass;							A[147]=(Ts*par_c_m*par_k*(cos(xhat[8])*sin(xhat[6]) - cos(xhat[6])*sin(xhat[7])*sin(xhat[8]))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/par_mass;   A[165]=0;                                         			A[183]=0;                                         			A[201]=0;                                                 A[219]=0;                                                                                           					A[237]=0;                                                                                                     		A[255]=0; 																															A[273]=Ts;	A[291]=0;  	A[309]=0;
+    A[4]=0; 	A[22]=0; 	A[40]=0;	A[58]=0; 				A[76]=1-(Ts*k_d)/mass;  A[94]=0; 				A[112]=-(Ts*c_m*k*(cos(x_hat(7))*cos(x_hat(9)) + sin(x_hat(7))*sin(x_hat(8))*sin(x_hat(9)))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/mass;  A[130]=(Ts*c_m*k*cos(x_hat(7))*cos(x_hat(8))*sin(x_hat(9))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/mass; 							A[148]=(Ts*c_m*k*(sin(x_hat(7))*sin(x_hat(9)) + cos(x_hat(7))*cos(x_hat(9))*sin(x_hat(8)))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/mass;   A[166]=0;          	            	                   		A[184]=0;                                         			A[202]=0;                                                 A[220]=0;                                                                                           					A[238]=0;                                                                                                     		A[256]=0;  																															A[274]=0; 	A[292]=Ts;  A[310]=0;
+    A[5]=0; 	A[23]=0; 	A[41]=0;	A[59]=0;                A[77]=0; 				A[95]=1-(Ts*k_d)/mass;  A[113]=-(Ts*c_m*k*cos(x_hat(8))*sin(x_hat(7))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/mass;                                   				A[131]=-(Ts*c_m*k*cos(x_hat(7))*sin(x_hat(8))*(u(1)^2 + u(2)^2 + u(3)^2 + u(4)^2))/mass;                  						A[149]=0;                                         																						A[167]=0;           	                              		A[185]=0;                                         			A[203]=0;                                                 A[221]=0;                                                                                           					A[239]=0;                                                                                                     		A[257]=0;  																															A[275]=0;  	A[293]=0; 	A[311]=Ts;
+    A[6]=0; 	A[24]=0; 	A[42]=0;	A[60]=0;                A[78]=0;                A[96]=0;                A[114]=Ts*(x_hat(11)*cos(x_hat(7))*tan(x_hat(8)) - x_hat(12)*sin(x_hat(7))*tan(x_hat(8))) + 1;                 							A[132]=Ts*(x_hat(12)*cos(x_hat(7))*(tan(x_hat(8))^2 + 1) + x_hat(11)*sin(x_hat(7))*(tan(x_hat(8))^2 + 1));						A[150]=0;                                        																						A[168]=Ts;              	  								A[186]=Ts*sin(x_hat(7))*tan(x_hat(8));                		A[204]=Ts*cos(x_hat(7))*tan(x_hat(8));					  A[222]=0;                                                                                           					A[240]=0;                                                                                                     		A[258]=0;  																															A[276]=0;  	A[294]=0;  	A[312]=0;
+    A[7]=0; 	A[25]=0; 	A[43]=0;	A[61]=0;                A[79]=0;                A[97]=0;                A[115]=-Ts*(x_hat(12)*cos(x_hat(7)) + x_hat(11)*sin(x_hat(7)));                                                                         A[133]=1;                                                                                                     					A[151]=0;                                         																						A[169]=0;                   	         					A[187]=Ts*cos(x_hat(7));                           			A[205]=-Ts*sin(x_hat(7));                                 A[223]=0;                                                                                           					A[241]=0;                                                                                                     		A[259]=0;  																															A[277]=0;  	A[295]=0;  	A[313]=0;
+    A[8]=0; 	A[26]=0; 	A[44]=0;	A[62]=0;                A[80]=0;                A[98]=0;                A[116]=Ts*((x_hat(11)*cos(x_hat(7)))/cos(x_hat(8)) - (x_hat(12)*sin(x_hat(7)))/cos(x_hat(8)));											A[134]=Ts*((x_hat(12)*cos(x_hat(7))*sin(x_hat(8)))/cos(x_hat(8))^2 + (x_hat(11)*sin(x_hat(7))*sin(x_hat(8)))/cos(x_hat(8))^2);  A[152]=1;                                         																						A[170]=0;              										A[188]=(Ts*sin(x_hat(7)))/cos(x_hat(8));					A[206]=(Ts*cos(x_hat(7)))/cos(x_hat(8));                  A[224]=0;                                                                                           					A[242]=0;                                                                                                     		A[260]=0;  																															A[278]=0;  	A[296]=0;  	A[314]=0;
+    A[9]=0; 	A[27]=0; 	A[45]=0;	A[63]=0;                A[81]=0;                A[99]=0;                A[117]=0;                                                                                                      							A[135]=0;                                                                                                           			A[153]=0;                                         																						A[171]=1; 													A[189]=-(Ts*x_hat(12)*(x_hat(14) - x_hat(15)))/x_hat(13); 	A[207]=-(Ts*x_hat(11)*(x_hat(14) - x_hat(15)))/x_hat(13); A[225]=-Ts*((c_m*k*(u(1)^2 - u(3)^2))/(8*x_hat(13)^2) - (x_hat(11)*x_hat(12)*(x_hat(14) - x_hat(15)))/x_hat(13)^2);	A[243]=-(Ts*x_hat(11)*x_hat(12))/x_hat(13);                                                                         A[261]=(Ts*x_hat(11)*x_hat(12))/x_hat(13);  																						A[279]=0;  	A[297]=0;  	A[315]=0;
+    A[10]=0; 	A[28]=0; 	A[46]=0;	A[64]=0;                A[82]=0;                A[100]=0;               A[118]=0;                                                                                                      							A[136]=0;                                                                                                           			A[154]=0;  																																A[172]=(Ts*x_hat(12)*(x_hat(13) - x_hat(15)))/x_hat(14);	A[190]=1;													A[208]=(Ts*x_hat(10)*(x_hat(13) - x_hat(15)))/x_hat(14);  A[226]=(Ts*x_hat(10)*x_hat(12))/x_hat(14); 																			A[244]=-Ts*((c_m*k*(u(2)^2 - u(4)^2))/(8*x_hat(14)^2) + (x_hat(10)*x_hat(12)*(x_hat(13) - x_hat(15)))/x_hat(14)^2); A[262]=-(Ts*x_hat(10)*x_hat(12))/x_hat(14);  																						A[280]=0;  	A[298]=0;  	A[316]=0;
+    A[11]=0; 	A[29]=0; 	A[47]=0;	A[65]=0;                A[83]=0;                A[101]=0;               A[119]=0;                                                                                                      							A[137]=0;                                                                                                           			A[155]=0; 																																A[173]=-(Ts*x_hat(11)*(x_hat(13) - x_hat(14)))/x_hat(15);	A[191]=-(Ts*x_hat(10)*(x_hat(13) - x_hat(14)))/x_hat(15);   A[209]=1;												  A[227]=-(Ts*x_hat(10)*x_hat(11))/x_hat(15);                                                                			A[245]=(Ts*x_hat(10)*x_hat(11))/x_hat(15);																			A[263]=-Ts*((b*c_m*(u(1)^2 - u(2)^2 + u(3)^2 - u(4)^2))/x_hat(15)^2 - (x_hat(10)*x_hat(11)*(x_hat(13) - x_hat(14)))/x_hat(15)^2);	A[281]=0;	A[299]=0;	A[317]=0;
+    A[12]=0; 	A[30]=0; 	A[48]=0;	A[66]=0;                A[84]=0;                A[102]=0;               A[120]=0;                                                                                                      							A[138]=0;                                                                                                           			A[156]=0;                                         																						A[174]=0;          		                               		A[192]=0;                                         			A[210]=0;                					              A[228]=1;                                                                                           					A[246]=0;                                                                                                     		A[264]=0;  																															A[282]=0;  	A[300]=0;  	A[318]=0;
+    A[13]=0; 	A[31]=0; 	A[49]=0;	A[67]=0;                A[85]=0;                A[103]=0;               A[121]=0;                                                                                                      							A[139]=0;                                                                                                           			A[157]=0;                                         																						A[175]=0;               	                          		A[193]=0;                                         			A[211]=0;                                                 A[229]=0;                                                                                           					A[247]=1;                                                                                                     		A[265]=0;  																															A[283]=0;  	A[301]=0;  	A[319]=0;
+    A[14]=0; 	A[32]=0; 	A[50]=0;	A[68]=0;                A[86]=0;                A[104]=0;               A[122]=0;                                                                                                      							A[140]=0;                                                                                                           			A[158]=0;                                         																						A[176]=0;                   	                      		A[194]=0;                                         			A[212]=0;                                                 A[230]=0;                                                                                           					A[248]=0;                                                                                                     		A[266]=1;  																															A[284]=0;  	A[302]=0;  	A[320]=0;
+    A[15]=0; 	A[33]=0; 	A[51]=0;	A[69]=0;                A[87]=0;                A[105]=0;               A[123]=0;                                                                                                      							A[141]=0;                                                                                                           			A[159]=0;                                         																						A[177]=0;                       	                  		A[195]=0;                                         			A[213]=0;                                                 A[231]=0;                                                                                           					A[249]=0;                                                                                                     		A[267]=0;  																															A[285]=1;  	A[303]=0;  	A[321]=0;
+    A[16]=0; 	A[34]=0; 	A[52]=0;	A[70]=0;                A[88]=0;                A[106]=0;               A[124]=0;                                                                                                      							A[142]=0;                                                                                                           			A[160]=0;                                         																						A[178]=0;                           	              		A[196]=0;                                         			A[214]=0;                                                 A[232]=0;                                                                                           					A[250]=0;                                                                                                     		A[268]=0;  																															A[286]=0;  	A[304]=1;  	A[322]=0;
+    A[17]=0; 	A[35]=0; 	A[53]=0;	A[71]=0;                A[89]=0;                A[107]=0;               A[125]=0;                                                                                                      							A[143]=0;                                                                                                           			A[161]=0;                                         																						A[179]=0;                               	          		A[197]=0;                                         			A[215]=0;                                                 A[233]=0;                                                                                           					A[251]=0;                                                                                                     		A[269]=0;  																															A[287]=0;	A[305]=0;  	A[323]=1;
+
+	
+	
+	
+	
+}
+
+
+// Kalman filters
+/*
+// Outlier GPS Velocity
+int outlierGpsVelocity(double ymeas, double x_pred, double velMax, double Ts){
+	if(fabs(ymeas-x_pred)>velMax*Ts){
+		printf("Velocity outlier active\n");
+		return 1;
+	}
+	else{
+		return 0;
+	}
+}
+
+// Kalman filter (Constant Velocity model)
+void kalmanFilterCV(double *x, double *P, double q, double r, double ymeas, double Ts, int flag){
+	// Declare filter variables
+	double A_cv[4]={1,0,Ts,1}; // model augmented with bias in position
+	double Q_cv[4]={pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,2)*q/2,Ts*q}; // Covariance
+	double x_pred[2]={0,0}, P_pred[4]={0,0,0,0}, P_temp[4]={0,0,0,0}, S_temp[4], S[2], fone=1, fzero=0, C[2]={1,0}, K[2]={0,0}, V=0;
+	
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=2, k=2, m=2;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_cv,&m,x,&ione,&fzero,x_pred,&ione);
+	
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_cv,&m,P,&k,&fzero,P_temp,&m);
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_cv,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_cv[0];
+	P_pred[1]+=Q_cv[1];
+	P_pred[2]+=Q_cv[2];
+	P_pred[3]+=Q_cv[3];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	double C_temp[4]={1,0,0,0};
+	n=2; k=2; m=2;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
+	S[0]+=r;
+	
+	// K=P*C'*S^-1; Kalman gain
+	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
+	K[0]/=S[0];
+	K[1]/=S[0];
+	
+	// V=yk-C*x;
+	// Check if ymeas is new data
+	if(flag==1 || outlierGpsVelocity(ymeas, x_pred[0], 0.5, Ts)==1){
+		V=0;
+		//printf("Old data\n");
+	}
+	else{
+		V=ymeas-x_pred[0];
+	}
+	
+	// x=x+K*v;
+	x[0]=x_pred[0]+K[0]*V;
+	x[1]=x_pred[1]+K[1]*V;
+	
+	// P=P-K*S*K';
+	double K_tempS[4]={K[0]*S[0],K[1]*S[0],0,0};
+	double K_temp[4]={K[0],K[1],0,0};
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
+}
+
+// Kalman filter (Constant Acceleration model)
+void kalmanFilterCA(double *x, double *P, double q, double r, double ymeas, double Ts){
+// Declare filter variables
+	double A_ca[9]={1,0,0,Ts,1,0,pow(Ts,2)/2,Ts,1}; // model augmented with bias in position
+	double Q_ca[9]={pow(Ts,5)*q/20,pow(Ts,4)*q/8,pow(Ts,3)*q/6,pow(Ts,4)*q/8,pow(Ts,3)*q/3,pow(Ts,2)*q/2,pow(Ts,3)*q/6,pow(Ts,2)*q/2,Ts*q}; // Covariance
+	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9], S[3], fone=1, fzero=0, C[3]={1,0,0}, K[3]={0,0,0}, V=0;
+	
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=3, k=3, m=3;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
+	
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_ca[0];
+	P_pred[1]+=Q_ca[1];
+	P_pred[2]+=Q_ca[2];
+	P_pred[3]+=Q_ca[3];
+	P_pred[4]+=Q_ca[4];
+	P_pred[5]+=Q_ca[5];
+	P_pred[6]+=Q_ca[6];
+	P_pred[7]+=Q_ca[7];
+	P_pred[8]+=Q_ca[8];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	double C_temp[9]={1,0,0,0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C_temp,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemv)("t",&m,&n,&fone,S_temp,&m,C,&ione,&fzero,S,&ione);
+	S[0]+=r;
+	
+	// K=P*C'*S^-1; Kalman gain
+	F77_CALL(dgemv)("t",&m,&n,&fone,P_pred,&m,C,&ione,&fzero,K,&ione);
+	K[0]/=S[0];
+	K[1]/=S[0];
+	K[2]/=S[0];
+	
+	// V=yk-C*x; 
+	V=ymeas-x_pred[0];
+	
+	// x=x+K*v;
+	x[0]=x_pred[0]+K[0]*V;
+	x[1]=x_pred[1]+K[1]*V;
+	x[2]=x_pred[2]+K[2]*V;
+	
+	// P=P-K*S*K';
+	double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
+	double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_tempS,&m,K_temp,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
+	P[4]=P_pred[4]-P_temp[4];
+	P[5]=P_pred[5]-P_temp[5];
+	P[6]=P_pred[6]-P_temp[6];
+	P[7]=P_pred[7]-P_temp[7];
+	P[8]=P_pred[8]-P_temp[8];
+}
+
+// Kalman filter (Random Walk model)
+void kalmanFilterRW(double *x, double *P, double *q, double *r, double *ymeas, double Ts){
+// Declare filter variables
+	double A_ca[9]={1,0,0,0,1,0,0,0,1}; // random walk model (identity)
+	double Q_ca[9]={q[0],0,0,0,q[1],0,0,0,q[2]}; // Covariance
+	double x_pred[3]={0,0,0}, P_pred[9]={0,0,0,0,0,0,0,0,0}, P_temp[9]={0,0,0,0,0,0,0,0,0}, S_temp[9]={0,0,0,0,0,0,0,0,0}, S[9]={0,0,0,0,0,0,0,0,0}, fone=1, fzero=0, C[9]={1,0,0,0,1,0,0,0,1}, K[9]={0,0,0,0,0,0,0,0,0}, V[3];
+	
+	// x[k|k-1]=A*x[k-1|k-1]; State prediction
+	int ione=1, n=3, k=3, m=3;
+	F77_CALL(dgemv)("n",&m,&n,&fone,A_ca,&m,x,&ione,&fzero,x_pred,&ione);
+	
+	// P[k|k-1]=A*P[k-1|k-1]*A'+Q; Covariance prediction
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A_ca,&m,P,&k,&fzero,P_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_temp,&m,A_ca,&n,&fzero,P_pred,&m);
+	P_pred[0]+=Q_ca[0];
+	P_pred[1]+=Q_ca[1];
+	P_pred[2]+=Q_ca[2];
+	P_pred[3]+=Q_ca[3];
+	P_pred[4]+=Q_ca[4];
+	P_pred[5]+=Q_ca[5];
+	P_pred[6]+=Q_ca[6];
+	P_pred[7]+=Q_ca[7];
+	P_pred[8]+=Q_ca[8];	
+	
+	// S=C*P*C'+R; Innovation covariance
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,P_pred,&k,&fzero,S_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,S_temp,&m,C,&k,&fzero,S,&m);
+	S[0]+=r[0];
+	S[4]+=r[1];
+	S[8]+=r[2];
+	
+	
+	// K=P*C'*S^-1; Kalman gain
+	double K_temp[9];
+	double S_inv[9];
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,P_pred,&m,C,&k,&fzero,K_temp,&m);
+	mInverse(S,S_inv);
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
+	
+	// V=yk-C*x; 
+	V[0]=ymeas[0]-x_pred[0];
+	V[1]=ymeas[1]-x_pred[1];
+	V[2]=ymeas[2]-x_pred[2];
+	
+	// x=x+K*v;
+	double x_temp[3];
+	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
+	x[0]=x_pred[0]+x_temp[0];
+	x[1]=x_pred[1]+x_temp[1];
+	x[2]=x_pred[2]+x_temp[2];
+	
+	// P=P-K*S*K';
+	//double K_tempS[9]={K[0]*S[0],K[1]*S[0],K[2]*S[0],0,0,0,0,0,0};
+	//double K_temp[9]={K[0],K[1],K[2],0,0,0,0,0,0};
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m);	
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&k,&fzero,P_temp,&m);	
+	P[0]=P_pred[0]-P_temp[0];
+	P[1]=P_pred[1]-P_temp[1];
+	P[2]=P_pred[2]-P_temp[2];
+	P[3]=P_pred[3]-P_temp[3];
+	P[4]=P_pred[4]-P_temp[4];
+	P[5]=P_pred[5]-P_temp[5];
+	P[6]=P_pred[6]-P_temp[6];
+	P[7]=P_pred[7]-P_temp[7];
+	P[8]=P_pred[8]-P_temp[8];
+}
+*/
+
+

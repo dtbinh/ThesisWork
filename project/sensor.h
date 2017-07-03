@@ -1,7 +1,6 @@
 #ifndef _SENSOR_
 #define _SENSOR_
 
-
 typedef struct _structAcc structAcc;
 typedef struct _structGyr structGyr;
 typedef struct _structMag structMag;
