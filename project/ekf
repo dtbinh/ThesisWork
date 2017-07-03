@@ -15,6 +15,30 @@ sim_struct.parameters.Ts=1/20; % sampling
 sim_struct.parameters.Simulation_Time=20;
 
 
+
+
+C =
+
+     1     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0
+     0     1     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0
+     0     0     1     0     0     0     0     0     0     0     0     0     0     0     0     0     0     0
+     0     0     0     0     0     0     1     0     0     0     0     0     0     0     0     0     0     0
+     0     0     0     0     0     0     0     1     0     0     0     0     0     0     0     0     0     0
+     0     0     0     0     0     0     0     0     1     0     0     0     0     0     0     0     0     0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 %% Augmented Nonlinear Model
 fx_aug=@(x_hat,u)[x_hat(1)+Ts*x_hat(4)
     x_hat(2)+Ts*x_hat(5)
