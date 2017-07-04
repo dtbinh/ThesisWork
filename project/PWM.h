@@ -26,7 +26,7 @@
 #define OUTDRV 0x04
 
 void enablePWM(int, int);
-void setPWM(int, float*);
+void setPWM(int, double*);
 
 
 #endif

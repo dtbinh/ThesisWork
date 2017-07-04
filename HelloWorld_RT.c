@@ -28,10 +28,10 @@ void stack_prefault(void) {
 
 int main(int argc, char* argv[])
 {
-        struct timespec t;
+        struct timespec t, t_start, t_stop;
         struct sched_param param;
         int interval = 800000000; /* 50us*/
-        int interval_s = 1;
+        //int interval_s = 1.5;
 
         /* Declare ourself as a real time task */
 
@@ -51,23 +51,33 @@ int main(int argc, char* argv[])
         stack_prefault();
 
         clock_gettime(CLOCK_MONOTONIC ,&t);
+		clock_gettime(CLOCK_MONOTONIC ,&t_start);
         /* start after one second */
         t.tv_sec++;
 
         while(1) {
-                /* wait until next shot */
-                clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			// Time it
+			//clock_gettime(CLOCK_MONOTONIC ,&t);
+			//printf("Elapsed time [s]: %f\n",((double)(t.tv_nsec-t_old.tv_nsec))/NSEC_PER_SEC);
+			/* wait until next shot */
 
-                /* do the stuff */
-                printf("PREEMT_RT timer of %f seconds\n", (float)interval_s);
+			clock_gettime(CLOCK_MONOTONIC ,&t_stop);
+			printf("Elapsed time [s]: %f\n",((double)(t_stop.tv_nsec-t_start.tv_nsec)));
+			clock_gettime(CLOCK_MONOTONIC ,&t_start);
+			
+			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
 
-                /* calculate next shot */
-                //t.tv_nsec += interval;
-                t.tv_sec += interval_s;
+			/* do the stuff */
+			printf("PREEMT_RT timer of %f seconds\n", (float)interval);
 
-                while (t.tv_nsec >= NSEC_PER_SEC) {
-                       t.tv_nsec -= NSEC_PER_SEC;
-                        t.tv_sec++;
-                }
+			/* calculate next shot */
+			t.tv_nsec += interval;
+			//t.tv_sec += interval_s;
+
+			while (t.tv_nsec >= NSEC_PER_SEC) {
+				   t.tv_nsec -= NSEC_PER_SEC;
+					t.tv_nsec++;
+			}
    }
 }

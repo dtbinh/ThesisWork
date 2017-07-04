@@ -70,10 +70,8 @@ int main(int argc, char **argv)
 			if (close(pipeSensorCommunication.parent[0])==-1) printf("close error - parent to child write\n");
 			if (close(pipeSensorCommunication.child[1])==-1) printf("close error - child to parent read\n");
 			
-			//printf("Sensor child pipe ready...\n");
-			
 			// Call Sensor Fusion process
-			//startSensors(&pipeSensorController, &pipeSensorCommunication);
+			startSensors(&pipeSensorController, &pipeSensorCommunication);
 		break;
 		
 		default:

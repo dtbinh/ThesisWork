@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 
-static void scalePWM(float*, int*);
+static void scalePWM(double*, int*);
 
 // Function for enabling Gyroscope sensor
 void enablePWM(int fd, int freq){
@@ -45,7 +45,7 @@ void enablePWM(int fd, int freq){
 
 
 // Function for setting PWM output
-void setPWM(int fd, float* value){
+void setPWM(int fd, double* value){
 	int pwm[4];
 	scalePWM(value, pwm); // 0-100% = 2047-4095
 	
@@ -60,7 +60,7 @@ void setPWM(int fd, float* value){
 
 
 // Function for scaling 0-100% throttel to 12 bit PWM value
-static void scalePWM(float* input, int* pwm){
+static void scalePWM(double* input, int* pwm){
 	for(int i=0;i<4;i++){
 		pwm[i]=(int)((4095-2047)/(100-0))*input[i]+2047; // ((pmax-pmin)/(%max-%min))*input+pmin
 	}
