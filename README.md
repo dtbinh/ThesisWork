@@ -1,4 +1,4 @@
-# ThesisWork (Alexander Waldejer)
+# ThesisWork (Alexander Waldejer, Ashkan Ghodrati)
 
 ********** OBS! FILES ARE UNDER CONSTRUCTION AT ANY TIME AND MIGHT NOT BUILD THAT CURRENT TIME **********
 
