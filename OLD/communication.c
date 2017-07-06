@@ -19,6 +19,11 @@
 #include <arpa/inet.h>
 #include <string.h>
 
+// PREEMPT_RT
+//#include <time.h>
+#include <sched.h>
+#include <sys/mman.h>
+
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
 /******************************************************************/
@@ -177,10 +182,8 @@ static void *threadUdpRead(void *arg)
 static void *threadUdpWrite()
 {
 	// Local variables
-	double agentData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	//float agentData[3]={0,0,0};
-	//float agentData[9]={0,0,0,0,0,0,0,0,0};
-	printf("updwrite\n");
+	double agentData[19]={0,0,0,0,0,0,0,0,0,0,0,0};
+	
 	// Loop forever streaming data
 	while(1){
 		if(socketReady==1){
@@ -188,7 +191,7 @@ static void *threadUdpWrite()
 			pthread_mutex_lock(&mutexSensorData);
 				memcpy(agentData, sensorData, sizeof(sensorData));
 			pthread_mutex_unlock(&mutexSensorData);
-			
+			//printf("threadUdpWrite: %f\n", agentData[18]);
 			//printf("Communication 2 ID: %d, Recieved Sensor data: %f\n", (int)getpid(), agentData[0]);
 			/*
 			pthread_mutex_lock(&mutexControllerData);
@@ -197,10 +200,7 @@ static void *threadUdpWrite()
 			*/
 			
 				
-			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",
-			agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15] ,agentData[16] ,agentData[17] ,agentData[18]);
-			//sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0], agentData[1], agentData[2]);
-			//sprintf(writeBuff,"A1A6DA%05.2f,%05.2f,%05.2f",agentData[0], agentData[1], agentData[2]);
+			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
 			//printf("%s\n", writeBuff);
 			// Send data over UDP
 			usleep(20000);
@@ -260,7 +260,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=1;
+	socketReady=0;
 }
 
 /*

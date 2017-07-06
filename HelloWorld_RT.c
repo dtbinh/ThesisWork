@@ -18,7 +18,7 @@
                                    guaranteed safe to access without
                                    faulting */
 
-#define NSEC_PER_SEC    (1000000000) /* The number of nsecs per sec. */
+#define NSEC_PER_SEC 1E9 /* The number of nsecs per sec. */
 
 void stack_prefault(void) {
         unsigned char dummy[MAX_SAFE_STACK];
@@ -30,8 +30,9 @@ int main(int argc, char* argv[])
 {
         struct timespec t, t_start, t_stop;
         struct sched_param param;
-        int interval = 800000000; /* 50us*/
-        //int interval_s = 1.5;
+        int interval = 50000000; /* 0.05s*/
+        double accum;
+        //int interval_s = 2;
 
         /* Declare ourself as a real time task */
 
@@ -42,7 +43,7 @@ int main(int argc, char* argv[])
         }
 
         /* Lock memory */
-        if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
+        if(mlockall(MCL_CURRENT) == -1) {
                 perror("mlockall failed");
                 exit(-2);
         }
@@ -51,25 +52,21 @@ int main(int argc, char* argv[])
         stack_prefault();
 
         clock_gettime(CLOCK_MONOTONIC ,&t);
-		clock_gettime(CLOCK_MONOTONIC ,&t_start);
+		
+		
         /* start after one second */
         t.tv_sec++;
 
         while(1) {
 			// Time it
-			//clock_gettime(CLOCK_MONOTONIC ,&t);
-			//printf("Elapsed time [s]: %f\n",((double)(t.tv_nsec-t_old.tv_nsec))/NSEC_PER_SEC);
-			/* wait until next shot */
-
-			clock_gettime(CLOCK_MONOTONIC ,&t_stop);
-			printf("Elapsed time [s]: %f\n",((double)(t_stop.tv_nsec-t_start.tv_nsec)));
-			clock_gettime(CLOCK_MONOTONIC ,&t_start);
+			clock_gettime(CLOCK_MONOTONIC, &t_start);
 			
+			/* wait until next shot */			
 			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
 			
 
 			/* do the stuff */
-			printf("PREEMT_RT timer of %f seconds\n", (float)interval);
+			//printf("PREEMT_RT timer of %f seconds\n", (float)interval);
 
 			/* calculate next shot */
 			t.tv_nsec += interval;
@@ -77,7 +74,11 @@ int main(int argc, char* argv[])
 
 			while (t.tv_nsec >= NSEC_PER_SEC) {
 				   t.tv_nsec -= NSEC_PER_SEC;
-					t.tv_nsec++;
+					t.tv_sec++;
 			}
+			
+			clock_gettime(CLOCK_MONOTONIC, &t_stop);
+			accum=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+			printf("%lf\n",accum);
    }
 }

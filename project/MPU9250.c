@@ -87,10 +87,11 @@ void getMres(){
 }
 
 // Function for enabling MPU9250 sensor
-void enableMPU9250(){
+int enableMPU9250(){
 	fdMPU9250=wiringPiI2CSetup(MPU9250_ADDRESS);
 	if(fdAK8963==-1){ 
 	 printf("Error setup the I2C device MPU9250\n");
+	 return -1;
 	}
 	else{
 		// Read the WHO_AM_I register of the accelerometer and gyroscope
@@ -102,32 +103,28 @@ void enableMPU9250(){
 			MPU9250SelfTest();
 			calibrateMPU9250();
 			initMPU9250();
+			return 0;
 		}
+		
 		else{
 			printf("MPU9250 Communication failed, abort!\n\n");
+			return -1;
 		}
 	}
 }
 
 // Function for enabling AK8963 sensor (within MPU9250, hence enableMPU9250() must execute first)
-void enableAK8963(){
+int enableAK8963(){
 	fdAK8963=wiringPiI2CSetup(AK8963_ADDRESS);
 	if(fdAK8963==-1){ 
 	 printf("Error setup the I2C device AK8963\n");
+	 return -1;
 	}
 	else{
-		// Read the WHO_AM_I register of the accelerometer and gyroscope
-		//d = wiringPiI2CReadReg8(fdAK8963,WHO_AM_I_AK8963); // (NOTE DOES NOT WORK!)
-		//printf("AK8963 I AM %i\n", d);
-		//printf("I should be %i\n",0x48);
-		//if (d==0x48){
-			printf("AK8963 is online...\n");
-			initAK8963();
-			magCalMPU9250();
-		//}
-		//else{
-		//	printf("AK8963 Communication failed, abort!\n\n");
-		//}
+		printf("AK8963 is online...\n");
+		initAK8963();
+		magCalMPU9250();
+		return 0;
 	}
 }
 

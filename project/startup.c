@@ -122,3 +122,20 @@ int main(int argc, char **argv)
 /******************************************************************/
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
+
+// Matrix print function
+void printmat(double *A, int m, int n){
+    double *dptr;
+    int j, i;
+    dptr = A;
+    for (j = 0; j < m; j++)
+    {
+        for (i = 0; i < n; i++)
+        {
+            printf("%6.4f\t", *(dptr+m*i+j));
+        }
+        printf("\n");
+    }
+    //printf("\n");
+    return;
+}

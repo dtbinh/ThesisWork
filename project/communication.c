@@ -31,22 +31,26 @@
 // Predeclarations
 static void *threadPipeControllerToComm(void*);
 static void *threadPipeSensorToCommunication(void*);
+static void *threadPipeCommunicationtoController(void*);
 static void *threadUdpRead(void*);
 static void *threadUdpWrite();
 static void openSocketCommunication(void);
+static void *threadKeyReading( void* );
+// Functions
+static void keyReading( int );
 
 
 // Static variables for threads
-static float controllerData[9]={0,0,0,0,0,0,0,0,0};
+static double controllerData[9]={0,0,0,0,0,0,0,0,0};
 static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-
+static double keyboardData[4]={0,0,0,0};
 
 static int socketReady=0;
-/*
-static float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
-static float constraints[] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
-static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
-*/
+
+//static float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
+//static double constraints[6] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
+//static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
+
 static int fdsocket_read, fdsocket_write;
 static struct sockaddr_in addr_read, addr_write;
 static socklen_t fromlen = sizeof(addr_read);
@@ -70,8 +74,8 @@ void startCommunication(void *arg1, void *arg2)
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpR, threadUdpW;
-	int res1, res2, res3, res4;
+	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpR, threadUdpW, threadkeyRead;
+	int res1, res2, res3, res4, res5;
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
@@ -80,12 +84,14 @@ void startCommunication(void *arg1, void *arg2)
 	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
 	res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
 	res4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	res5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, NULL);
 	
 	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
 	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
 	if (!res3) pthread_join( threadUdpR, NULL);
 	if (!res4) pthread_join( threadUdpW, NULL);
+	if (!res5) pthread_join( threadkeyRead, NULL);
 }
 
 
@@ -103,7 +109,7 @@ static void *threadPipeControllerToComm(void *arg)
 	// Loop forever reading/waiting for data
 	while(1){
 		// Read data from controller process
-		if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
+		//if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
 		//else printf("Communication ID: %d, Recieved Controller data: %f\n", (int)getpid(), controllerDataBuffer[0]);
 		
 		// Put new data in to global variable in communication.c
@@ -139,13 +145,36 @@ static void *threadPipeSensorToCommunication(void *arg)
 }
 
 
+// Thread - Pipe Communication to Controller write
+static void *threadPipeCommunicationtoController(void *arg)
+{
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	double sensorDataBuffer[19];
+	
+	// Loop forever reading/waiting for data
+	while(1){
+		// Read data from sensor process
+		if(read(ptrPipe->parent[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in communication from sensor\n");
+		//else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
+		
+		// Put new data in to global variable in communication.c
+		pthread_mutex_lock(&mutexSensorData);
+			memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
+		pthread_mutex_unlock(&mutexSensorData);
+	}
+	return NULL;
+}
+
+
+
 // UDP read thread
 static void *threadUdpRead(void *arg)
 {
 	// Get pipe array and define local variables
-	pipeArray *pipeArray1 = arg;
-	structPipe *ptrPipe1 = pipeArray1->pipe1;
-	structPipe *ptrPipe2 = pipeArray1->pipe2;
+	//pipeArray *pipeArray1 = arg;
+	//structPipe *ptrPipe1 = pipeArray1->pipe1;
+	//structPipe *ptrPipe2 = pipeArray1->pipe2;
 	float udpDataBuffer[6]={2,2,2,2,2,2};
 	
 	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
@@ -193,11 +222,11 @@ static void *threadUdpWrite()
 			pthread_mutex_unlock(&mutexSensorData);
 			//printf("threadUdpWrite: %f\n", agentData[18]);
 			//printf("Communication 2 ID: %d, Recieved Sensor data: %f\n", (int)getpid(), agentData[0]);
-			/*
-			pthread_mutex_lock(&mutexControllerData);
-			memcpy(agentData+sizeof(sensorData), controllerData, sizeof(controllerData));
-			pthread_mutex_unlock(&mutexControllerData);
-			*/
+			
+			//pthread_mutex_lock(&mutexControllerData);
+			//memcpy(agentData+sizeof(sensorData), controllerData, sizeof(controllerData));
+			//pthread_mutex_unlock(&mutexControllerData);
+			
 			
 				
 			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
@@ -215,6 +244,17 @@ static void *threadUdpWrite()
 			
 	}
 	return NULL;
+}
+
+// Thread - reading from the keyboard from the stand-alone computer
+static void *threadKeyReading( void *arg ) {
+	
+	while(1) {
+		printf("threadKeyReading \n");
+		
+		keyReading(NULL);
+		
+	}
 }
 
 /******************************************************************/
@@ -260,7 +300,38 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=1;
+	socketReady=0;
+}
+
+/* Read in PWM value */
+void keyReading( int arg ) {
+	char input_char[10];
+	double keyboardDataBuffer[4]={0,0,0,0}; // {ref_x,ref_y,ref_z,sk}
+	
+	printf("I read %f \n", atof(input_char));
+	
+	
+	
+	
+	
+	
+	pthread_mutex_lock(&mutexSensorData);
+		memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer));
+	pthread_mutex_unlock(&mutexSensorData);
+	
+	
+	
+	/*
+	double input, value[4];
+	printf("Enter PWM value:\n");
+	fgets(input, 10, stdin);
+	value[0] = atof(input);
+	printf("Value: %f\n", value[0]);
+	
+	for (int i=1;i<4;i++){
+		value[i]=value[0];
+	}
+	*/
 }
 
 /*
