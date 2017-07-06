@@ -1,5 +1,7 @@
 # ThesisWork (Alexander Waldejer)
 
+********** OBS! FILES ARE UNDER CONSTRUCTION AT ANY TIME AND MIGHT NOT BUILD THAT CURRENT TIME **********
+
 The files are a part of a larger master thesis at Chalmers University of Technology, in collaboration with ÅF Embedded Systems, Gothenburg.
 
 Keywords: Model Predictive Control (fmpc), Sensor Fusion, IMU, Kalman Filter, Extended Kalman Filter
@@ -18,20 +20,6 @@ http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html
 http://ozzmaker.com/guide-to-interfacing-a-gyro-and-accelerometer-with-a-raspberry-pi/
 
 https://web.stanford.edu/~boyd/fast_mpc/
-
-
-
-
-
-
-
-
-Files are under construction.
-
-CURRENTLY WORKING FILES TESTED IN RPI:
-sensor.c
-controller.c
-udp.c
 
 
 
