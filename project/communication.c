@@ -32,13 +32,13 @@
 static void *threadPipeControllerToComm(void*);
 static void *threadPipeSensorToCommunication(void*);
 static void *threadPipeCommunicationtoController(void*);
-static void *threadUdpRead(void*);
+//static void *threadUdpRead(void*);
 static void *threadUdpWrite();
 static void openSocketCommunication(void);
 static void *threadKeyReading( void* );
+
 // Functions
 static void keyReading( int );
-
 
 // Static variables for threads
 static double controllerData[9]={0,0,0,0,0,0,0,0,0};
@@ -55,13 +55,14 @@ static int fdsocket_read, fdsocket_write;
 static struct sockaddr_in addr_read, addr_write;
 static socklen_t fromlen = sizeof(addr_read);
 static int broadcast=1;
-static char readBuff[BUFFER_LENGTH];
 static char writeBuff[BUFFER_LENGTH];
 
 static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexUdpReadData = PTHREAD_MUTEX_INITIALIZER;
 
-//static void messageDecode(char*);
+
+static void messageDecode(char*);
 
 
 /******************************************************************/
@@ -82,14 +83,14 @@ void startCommunication(void *arg1, void *arg2)
 
 	res1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
 	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
-	res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
+	//res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
 	res4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
 	res5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, NULL);
 	
 	// If threads created successful, start them
 	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
 	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
-	if (!res3) pthread_join( threadUdpR, NULL);
+	//if (!res3) pthread_join( threadUdpR, NULL);
 	if (!res4) pthread_join( threadUdpW, NULL);
 	if (!res5) pthread_join( threadkeyRead, NULL);
 }
@@ -104,20 +105,21 @@ static void *threadPipeControllerToComm(void *arg)
 {
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	float controllerDataBuffer[9];
+	double posX_all[6*10];
 	
 	// Loop forever reading/waiting for data
 	while(1){
 		// Read data from controller process
-		//if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
+		//if(read(ptrPipe->parent[0], posX_all, sizeof(posX_all)) == -1) printf("read error in communication from controller\n");
 		//else printf("Communication ID: %d, Recieved Controller data: %f\n", (int)getpid(), controllerDataBuffer[0]);
 		
-		// Put new data in to global variable in communication.c
-		pthread_mutex_lock(&mutexControllerData);
-			memcpy(controllerData, controllerDataBuffer, sizeof(controllerDataBuffer));
-		pthread_mutex_unlock(&mutexControllerData);
+		//printmat(posX_all, 6,10);
 		
-		sleep(1);
+		// Put new data in to global variable in communication.c
+		//pthread_mutex_lock(&mutexControllerData);
+			//memcpy(controllerData, controllerDataBuffer, sizeof(controllerDataBuffer));
+		//pthread_mutex_unlock(&mutexControllerData);
+		sleep(5);
 	}
 	return NULL;
 }
@@ -169,42 +171,27 @@ static void *threadPipeCommunicationtoController(void *arg)
 
 
 // UDP read thread
-static void *threadUdpRead(void *arg)
-{
-	// Get pipe array and define local variables
-	//pipeArray *pipeArray1 = arg;
-	//structPipe *ptrPipe1 = pipeArray1->pipe1;
-	//structPipe *ptrPipe2 = pipeArray1->pipe2;
-	float udpDataBuffer[6]={2,2,2,2,2,2};
+/*
+static void *threadUdpRead(){
+	// Local variable
+	double udpDataBuffer[4*10];
+	static char readBuff[BUFFER_LENGTH];
 	
 	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
 	while(1){
-		/*
+		
 		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
 			perror("read");
 		}
-		else{*/
-			// Call messageDecode
-			//messageDecode(readBuff);
-			
-			// Write data to Controller process
-			//if (write(ptrPipe1->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
-			//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), udpDataBuffer[0]);
-			
-			// Clear readBuffer
-			//memset(&readBuff[0], 0, sizeof(readBuff));
-			
-			// Write data to Sensor process
-			//float sensorTuning[3]={9,9,9};
-			//if (write(ptrPipe2->child[1], sensorTuning, sizeof(sensorTuning)) != sizeof(sensorTuning)) printf("write error in parent\n");
-			//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), sensorTuning[0]);
-			sleep(5);
-				
-		//}
+		else{
+		pthread_mutex_lock(&mutexUdpReadData);
+			memcpy(udpDataBuffer, readBuff, sizeof(udpDataBuffer));
+		pthread_mutex_unlock(&mutexUdpReadData);
+		}
 	}
 	
 	return NULL;
-}
+}*/
 
 
 // UDP write thread
@@ -226,10 +213,8 @@ static void *threadUdpWrite()
 			//pthread_mutex_lock(&mutexControllerData);
 			//memcpy(agentData+sizeof(sensorData), controllerData, sizeof(controllerData));
 			//pthread_mutex_unlock(&mutexControllerData);
-			
-			
 				
-			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
+			//sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
 			//printf("%s\n", writeBuff);
 			// Send data over UDP
 			usleep(20000);
@@ -251,10 +236,11 @@ static void *threadKeyReading( void *arg ) {
 	
 	while(1) {
 		printf("threadKeyReading \n");
-		
 		keyReading(NULL);
 		
 	}
+	
+	return NULL;
 }
 
 /******************************************************************/
@@ -307,7 +293,7 @@ static void openSocketCommunication(){
 void keyReading( int arg ) {
 	char input_char[10];
 	double keyboardDataBuffer[4]={0,0,0,0}; // {ref_x,ref_y,ref_z,sk}
-	
+	fgets(input_char, 10, stdin);
 	printf("I read %f \n", atof(input_char));
 	
 	
@@ -335,7 +321,6 @@ void keyReading( int arg ) {
 }
 
 /*
-
 // Data messages decoded with respect to the documentation i sharelatex
 static void messageDecode(char *input)
 {
@@ -470,6 +455,4 @@ static void messageDecode(char *input)
 		printf("Error. Bad device code\n");
 	}
 }
-
 */
-

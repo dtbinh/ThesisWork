@@ -22,7 +22,7 @@
 #define PRIORITY_SENSOR_FUSION 39
 
 // Sampling Time
-#define tsController 500000000 // 0.5s
+#define tsController 50000000 // 0.5s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
 #define tsSensorsFusion 500000000 // 0.5s

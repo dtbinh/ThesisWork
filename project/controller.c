@@ -111,7 +111,7 @@ const static double AltTs = 0.05*(1e+9); 	//nano for RPi implementation
 // Predeclarations
 static void *threadUpdateMeasurements(void*);
 static void *threadController(void*);
-static void *threadControllerWatchdog(void*);
+//static void *threadControllerWatchdog(void*);
 
 // static void *threadUpdateConstraints(void*);
 // static void *threadControllerPos(void*);
@@ -152,7 +152,7 @@ static void dnudz(double *A, double *B, double *At, double *Bt, double *eyen,
 // Predeclare thread mutexes
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexPWM = PTHREAD_MUTEX_INITIALIZER;
 
 
@@ -168,13 +168,13 @@ static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
  	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 };
  	
  	// Create threads
- 	pthread_t threadUpdateMeas, threadCtrl, threadCtrlWD; // threadUpdateConstr //hreadCtrlPos, threadCtrlAtt, threadCtrlAlt, threadCtrlWDPos, threadCtrlWDAtt, threadCtrlWDAlt;
- 	int threadPID1, threadPID3, threadPID4; // threadPID2 //, res5, res6, res7, res8;
+ 	pthread_t threadUpdateMeas, threadCtrl; // threadUpdateConstr //hreadCtrlPos, threadCtrlAtt, threadCtrlAlt, threadCtrlWDPos, threadCtrlWDAtt, threadCtrlWDAlt;
+ 	int threadPID1, threadPID3; // threadPID2 //, res5, res6, res7, res8;
  	
  	threadPID1=pthread_create(&threadUpdateMeas, NULL, &threadUpdateMeasurements, arg1);
  	//threadPID2=pthread_create(&threadUpdateConstr, NULL, &threadUpdateConstraints, arg2);
 	threadPID3=pthread_create(&threadCtrl, NULL, &threadController, &pipeArrayStruct);
- 	threadPID4=pthread_create(&threadCtrlWD, NULL, &threadControllerWatchdog, arg2);
+ 	//threadPID4=pthread_create(&threadCtrlWD, NULL, &threadControllerWatchdog, arg2);
  	// res3=pthread_create(&threadCtrlPos, NULL, &threadControllerPos, &pipeArrayStruct);
  	// res4=pthread_create(&threadCtrlWDPos, NULL, &threadControllerWatchdogPos, NULL);
  	// res5=pthread_create(&threadCtrlAtt, NULL, &threadControllerAtt, &pipeArrayStruct);
@@ -183,22 +183,22 @@ static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
  	// res8=pthread_create(&threadCtrlWDAlt, NULL, &threadControllerWatchdogAlt, NULL);
  	
 	/// Set up thread scheduler priority for real time tasks
-	struct sched_param paramThread1, paramThread3, paramThread4; // paramThread2
+	struct sched_param paramThread1, paramThread3; // paramThread2
 	paramThread1.sched_priority = PRIORITY_CONTROLLER_STATE_UPDATE; // set priorities
 	//paramThread2.sched_priority = PRIORITY_CONTROLLER_CONSTRAINTS_UPDATE;
 	paramThread3.sched_priority = PRIORITY_CONTROLLER_MPC;
-	paramThread4.sched_priority = PRIORITY_CONTROLLER_WATCHDOG;
+	//paramThread4.sched_priority = PRIORITY_CONTROLLER_WATCHDOG;
 	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
 	//if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
 	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
-	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID4");exit(-1);}
+	//if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID4");exit(-1);}
  	
  	
  	// If threads created successful, start them
  	if (!threadPID1) pthread_join( threadUpdateMeas, NULL);
  	// if (!res2) pthread_join( threadUpdateConstr, NULL);
  	if (!threadPID3) pthread_join( threadCtrl, NULL);
- 	if (!threadPID4) pthread_join( threadCtrlWD, NULL);
+ 	//if (!threadPID4) pthread_join( threadCtrlWD, NULL);
 	// if (!threadPID3) pthread_join( threadCtrlPos, NULL);
  	// if (!threadPID4) pthread_join( threadCtrlWDPos, NULL);
  	// if (!res5) pthread_join( threadCtrlAtt, NULL);
@@ -277,6 +277,7 @@ void *threadController( void *arg ) {
 		.umin = { -6*PI/180, -6*PI/180 },
 		.n = 6, .m = 2, .T = 10, .niters = 5, .kappa = 1e-1
 	};	
+	
 	posX_all = calloc(posParams.n*posParams.T, sizeof(double));
 	posU_all = calloc(posParams.m*posParams.T, sizeof(double));
 	
@@ -290,6 +291,7 @@ void *threadController( void *arg ) {
 		.umin = { -.1,-.1,-.1 },
 		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
 	};
+	
 	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
 	attU_all = calloc(attParams.m*attParams.T, sizeof(double));
 	
@@ -303,17 +305,19 @@ void *threadController( void *arg ) {
 		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
 		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
 	};
+	
 	altX_all = calloc(altParams.n*altParams.T, sizeof(double));
 	altU_all = calloc(altParams.m*altParams.T, sizeof(double));
 		    
 	// Get pipe array and define local variables
 	pipeArray *pipeArrayStruct = arg;
 	structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
-	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
 	double tsTrue=tsController;
+	int mpcMissedDeadlines=0;
 
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -323,6 +327,8 @@ void *threadController( void *arg ) {
 	/// Start after 1 second
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	t.tv_sec++;
+	
+	
 	
 		// Loop forever at specific sampling rate
 		while(1){
@@ -339,19 +345,19 @@ void *threadController( void *arg ) {
 			
 			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
 			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
-			//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+			//else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
 		
 			// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
-			//if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+			//if (write(ptrPipe2->parent[1], posX_all, sizeof(posX_all)) != sizeof(posX_all)) printf("write error in controller to communication\n");
 			//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
 
 			//// Update watchdog
-			pthread_mutex_lock(&mutexWatchdog);
-				globalWatchdog++;
-			pthread_mutex_unlock(&mutexWatchdog);
+			//pthread_mutex_lock(&mutexWatchdog);
+			//	globalWatchdog++;
+			//pthread_mutex_unlock(&mutexWatchdog);
 			
 			/// Calculate next shot
-			t.tv_sec += tsSensorsFusion;
+			t.tv_nsec += tsController;
 			while (t.tv_nsec >= NSEC_PER_SEC) {
 				t.tv_nsec -= NSEC_PER_SEC;
 				t.tv_sec++;
@@ -360,7 +366,12 @@ void *threadController( void *arg ) {
 			/// Print true sampling rate
 			clock_gettime(CLOCK_MONOTONIC, &t_stop);
 			tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
-			printf("Sampling time [s] sensor fusion: %lf\n",tsTrue);
+			//printf("Sampling time [s] mpc: %lf\n",tsTrue);
+			
+			if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
+				//printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
+			}
+			
 		}
 	
 	return NULL;
@@ -368,35 +379,29 @@ void *threadController( void *arg ) {
 	}
 
 // Thread - Watchdog for all controllers to flag if sampling time is not satisfied.
-void *threadControllerWatchdog(void *arg){
-// Get pipe and define local variables
-	struct timespec t;
-	struct sched_param param;
+/*void *threadControllerWatchdog(void *arg){
+	// Local Variables
 	int watchdog_current, watchdog_prev=0;
 
-	// Declare ourself as a real time task
-	param.sched_priority = 40;
-	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		perror("sched_setscheduler failed");
+	/// Setup timer variables for real time
+	struct timespec t,t_start,t_stop;
+	double tsTrue=tsController;
+
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadSensorFusion");
 	}
 	
-	// Lock memory
-	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		perror("mlockall failed");
-	}
-	
-	// Pre-fault our stack
-	//stack_prefault();
-	
-	// Start after 1 second
+	/// Start after 1 second
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	t.tv_sec++;
 	
 	// Run controller algorithm
 	while(1){
-		// Wait until next shot
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-		
+		/// Time it and wait until next shot
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+			
 		// Get watchdog status
 		pthread_mutex_lock(&mutexWatchdog);
 			watchdog_current=globalWatchdog; // current
@@ -411,17 +416,22 @@ void *threadControllerWatchdog(void *arg){
 		// Update previous watchdog to current
 		watchdog_prev++;
 		
-		// Calculate next shot
-		t.tv_sec += PosTs;
+		/// Calculate next shot
+		t.tv_nsec += tsWatchdog;
 		while (t.tv_nsec >= NSEC_PER_SEC) {
 			t.tv_nsec -= NSEC_PER_SEC;
 			t.tv_sec++;
-		}
+		}	
+		
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		printf("Sampling time [s] mpc watchdog: %lf\n",tsTrue);
 	}
 	
 	return NULL;
 }
-
+*/
 
 
 
