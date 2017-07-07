@@ -83,7 +83,7 @@ int main(int argc, char **argv)
 				case -1:
 					printf("#2 Fork() error\n");
 				break;
-				
+				 
 				case 0:	
 					printf("Communication process ID: %d\n", (int)getpid());
 					

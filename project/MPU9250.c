@@ -638,7 +638,7 @@ void magCalMPU9250(){
 
 	// Make sure resolution has been calculated
 	getMres();
-	printf("4 seconds to get ready followed by 15 seconds of samplingn");
+	printf("4 seconds to get ready followed by 15 seconds of sampling\n");
 	usleep(4000000);
 
 	// shoot for ~fifteen seconds of mag data

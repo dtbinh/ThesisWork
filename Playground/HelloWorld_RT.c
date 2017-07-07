@@ -183,6 +183,12 @@ int main(int argc, char* argv[])
         /* start after sampling time */
         t.tv_sec++;
 
+			printmat(Racc,1,9);
+			printmat(Rmag,1,12);
+			printmat(Rgyr,1,15);
+			printmat(Rekf,1,18);
+
+
         while(1) {
 			// Time it
 			clock_gettime(CLOCK_MONOTONIC, &t_start);
@@ -194,10 +200,10 @@ int main(int argc, char* argv[])
 			/* do the stuff */
 
 			
-			printmat(Racc,1,9);
-			printmat(Rmag,1,12);
-			printmat(Rgyr,1,15);
-			printmat(Rekf,1,18);
+			//printmat(Racc,1,9);
+			//printmat(Rmag,1,12);
+			//printmat(Rgyr,1,15);
+			//printmat(Rekf,1,18);
 			
 			
 			// try to load settings
@@ -212,6 +218,10 @@ int main(int argc, char* argv[])
 			saveSettings(Rgyr,"Rgyr",sizeof(Rgyr)/sizeof(double));
 			saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double));
 			
+			printmat(Racc,1,9);
+			printmat(Rmag,1,12);
+			printmat(Rgyr,1,15);
+			printmat(Rekf,1,18);
 
 			//saveSettings(Racc,"Racc",sizeof(Racc)/sizeof(double));
 			//printf("Size of Racc: %i\n", sizeof(Racc)/sizeof(double));

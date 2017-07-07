@@ -19,14 +19,14 @@
 
 #define PRIORITY_SENSOR_BEACON 38
 #define PRIORITY_SENSOR_PWM 40
-#define PRIORITY_SENSOR_FUSION 39
+#define PRIORITY_SENSOR_FUSION 50
 
 // Sampling Time
 #define tsController 50000000 // 0.5s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
-#define tsSensorsFusion 500000000 // 0.5s
-#define tsReadBeacon 500000000 // 0.5s
+#define tsSensorsFusion 25000000 // 0.05s
+#define tsReadBeacon 50000000 // 0.05s
 
 /******************************/
 
