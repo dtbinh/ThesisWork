@@ -5,7 +5,7 @@
 #define SERVERPORT 4950
 #define BUFFER_LENGTH 200
 
-#define SUPERVISOR "A0"
+#define SUPERVISOR "SU"
 #define AGENT1 "A1"
 #define AGENT2 "A2"
 #define AGENT3 "A3"

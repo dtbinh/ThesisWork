@@ -39,15 +39,15 @@
 #define PI 3.141592653589793
 
 
-
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
 /******************************************************************/
 // Static variables for threads
 // static float globalSensorData[6]={0,0,0,0,0,0};
 // static float globalConstraintsData[6]={0,0,0,0,0,0};
+static double keyboardData[7]= { 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print}
 static double PWM[4] = { 0, 0, 0, 0 };
-static int globalWatchdog=0;
+//static int globalWatchdog=0;
 static const int ione = 1;
 static const int itwo = 2;
 static const int ithree = 3;
@@ -98,7 +98,9 @@ struct PosInputs posInputs = {
 double references[12] = { 0,0,0,	0,0,0,	NAN,NAN,0,	0,0,0 };
 double references_formation[2] = { 0,0 };
 double measurements[12] = { 0,0,0,	0,0,0,	0,0,0,	0,0,0 };
-double disturbances [3] = { 0,0,0 };	// x , y and z disturbances
+double disturbances [3] = { 0,0,-par_g };	// x , y and z disturbances
+double inertias[3] = {par_i_xx,par_i_yy,par_i_zz};
+int sensorInitReady=0; // ekfReady[0=not, 1=mpc can start]
  
 // Controller variables
 const static double PosTsSec = 0.05;
@@ -111,9 +113,9 @@ const static double AltTs = 0.05*(1e+9); 	//nano for RPi implementation
 // Predeclarations
 static void *threadUpdateMeasurements(void*);
 static void *threadController(void*);
-//static void *threadControllerWatchdog(void*);
+static void *threadUpdateConstraintsSettingsReferences(void*);
 
-// static void *threadUpdateConstraints(void*);
+//static void *threadControllerWatchdog(void*);
 // static void *threadControllerPos(void*);
 // static void *threadControllerWatchdogPos(void*);
 // static void *threadControllerAtt(void*);
@@ -121,14 +123,12 @@ static void *threadController(void*);
 // static void *threadControllerAlt(void*);
 // static void *threadControllerWatchdogAlt(void*);
 
-static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
-static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
-static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
+static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
+static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref);
+static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
 static void altFmpc( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
-
-//void printmat(double *A, int m, int n);
 
 // FMPC functions
 static void fmpcsolve(double *A, double *B, double *At, double *Bt, double *eyen, 
@@ -151,29 +151,28 @@ static void dnudz(double *A, double *B, double *At, double *Bt, double *eyen,
 
 // Predeclare thread mutexes
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_mutex_t mutexPWM = PTHREAD_MUTEX_INITIALIZER;
-
 
 /******************************************************************/
 /*************************START PROCESS****************************/
 /******************************************************************/
 
-
 // Function to start the sensor process threads
 
  void startController(void *arg1, void *arg2){
  	// Create pipe array
- 	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 };
+ 	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 }; //arg1 to sensor, arg2 to comm
  	
  	// Create threads
- 	pthread_t threadUpdateMeas, threadCtrl; // threadUpdateConstr //hreadCtrlPos, threadCtrlAtt, threadCtrlAlt, threadCtrlWDPos, threadCtrlWDAtt, threadCtrlWDAlt;
- 	int threadPID1, threadPID3; // threadPID2 //, res5, res6, res7, res8;
+ 	pthread_t threadUpdateMeas, threadCtrl, threadUpdateConstr; //hreadCtrlPos, threadCtrlAtt, threadCtrlAlt, threadCtrlWDPos, threadCtrlWDAtt, threadCtrlWDAlt;
+ 	int threadPID1, threadPID3, threadPID2; //, res5, res6, res7, res8;
  	
  	threadPID1=pthread_create(&threadUpdateMeas, NULL, &threadUpdateMeasurements, arg1);
- 	//threadPID2=pthread_create(&threadUpdateConstr, NULL, &threadUpdateConstraints, arg2);
+ 	threadPID2=pthread_create(&threadUpdateConstr, NULL, &threadUpdateConstraintsSettingsReferences, arg2);
 	threadPID3=pthread_create(&threadCtrl, NULL, &threadController, &pipeArrayStruct);
+	
  	//threadPID4=pthread_create(&threadCtrlWD, NULL, &threadControllerWatchdog, arg2);
  	// res3=pthread_create(&threadCtrlPos, NULL, &threadControllerPos, &pipeArrayStruct);
  	// res4=pthread_create(&threadCtrlWDPos, NULL, &threadControllerWatchdogPos, NULL);
@@ -183,20 +182,21 @@ static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
  	// res8=pthread_create(&threadCtrlWDAlt, NULL, &threadControllerWatchdogAlt, NULL);
  	
 	/// Set up thread scheduler priority for real time tasks
-	struct sched_param paramThread1, paramThread3; // paramThread2
+	struct sched_param paramThread1, paramThread3, paramThread2;
+	
 	paramThread1.sched_priority = PRIORITY_CONTROLLER_STATE_UPDATE; // set priorities
-	//paramThread2.sched_priority = PRIORITY_CONTROLLER_CONSTRAINTS_UPDATE;
+	paramThread2.sched_priority = PRIORITY_CONTROLLER_CONSTRAINTS_UPDATE;
 	paramThread3.sched_priority = PRIORITY_CONTROLLER_MPC;
+	
 	//paramThread4.sched_priority = PRIORITY_CONTROLLER_WATCHDOG;
 	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
-	//if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
+	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
 	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	//if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID4");exit(-1);}
  	
- 	
  	// If threads created successful, start them
  	if (!threadPID1) pthread_join( threadUpdateMeas, NULL);
- 	// if (!res2) pthread_join( threadUpdateConstr, NULL);
+	if (!threadPID2) pthread_join( threadUpdateConstr, NULL);
  	if (!threadPID3) pthread_join( threadCtrl, NULL);
  	//if (!threadPID4) pthread_join( threadCtrlWD, NULL);
 	// if (!threadPID3) pthread_join( threadCtrlPos, NULL);
@@ -215,37 +215,43 @@ static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 
 //Thread - Update constriants from other drones (pipe from communication process).
 //Includes any updates on setpoints or MPC settings from computer
- /*
- void *threadUpdateConstraints(void *arg)
- {	
- 	// Get pipe and define local variables
- 	structPipe *ptrPipe = arg;
- 	float constraintsDataBuffer[6] = {0,0,0,0,0,0};
- 	
- 	//// Loop forever streaming data
- 	while(1){
- 		// Read data from communication process
- 		if(read(ptrPipe->child[0], constraintsDataBuffer, sizeof(constraintsDataBuffer)) == -1) printf("read error in controller from communication\n");
- 		//else printf("Controller ID: %d, Recieved Communication data: %f\n", (int)getpid(), constraintDataBuffer[0]);
- 		
- 		// Put new constraints data in to global data in controller.c such that controller thread can access and use it.
- 		pthread_mutex_lock(&mutexConstraintsData);
- 			memcpy(globalConstraintsData, constraintsDataBuffer, sizeof(constraintsDataBuffer));
- 		pthread_mutex_unlock(&mutexConstraintsData);
- 	}
- 	
- 	return NULL;
- }
-*/
+
+void *threadUpdateConstraintsSettingsReferences(void *arg)
+{	
+	// Get pipe and define local variables
+	//pipeArray *pipeArrayStruct = arg;
+	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
+	structPipe *ptrPipe = arg; // to comm
+
+	double keyboardDataBuffer[7];
+	
+	//// Loop forever streaming data
+	while(1){
+		// Read data from Communication process
+		if (read(ptrPipe->child[0], keyboardDataBuffer, sizeof(keyboardDataBuffer)) != sizeof(keyboardDataBuffer) ) printf("Error in reading 'keyboardData' from Communication to Controller\n");
+		//else printf("Controller ID: %d, Read: %f from Communication\n", (int)getpid(), keyboardDataLoal[0]);
+		
+		// Put new constraints data in to global data in controller.c such that controller thread can access and use it.
+		pthread_mutex_lock(&mutexConstraintsData);
+			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/7); // {ref_x,ref_y,ref_z}
+			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)); // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print}
+			//keyboardTrigger=(int)keyboardDataBuffer[3]; // switch [0=STOP, 1=FLY]
+		pthread_mutex_unlock(&mutexConstraintsData);
+		
+		//printf("keyboardDataLoal %f, %f, %f, %f \n", keyboardData[0], keyboardData[1], keyboardData[2], keyboardData[3]);
+}
+
+return NULL;
+}
+
 
 //Thread - Update local variables with any new sensor measurements (pipe from sensor process)
-
  void *threadUpdateMeasurements(void *arg)
  {
  	// Get pipe and define local variables
  	structPipe *ptrPipe = arg;
  	
- 	double sensorDataBuffer[18] = {NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN};
+ 	double sensorDataBuffer[19] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // {x,y,z,xdot,ydot,zdot,phi,theta,psi,omegax,omegay,omegaz,ixx,iyy,izz,dx,dy,dz,ekfReady[0=not,1=mpc can start]}
  	
  	while(1){
  		// Read data from sensor process. Data should always be available for controller.
@@ -254,10 +260,14 @@ static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
  		
  		// Put new sensor data in to global data in controller.c such that controller thread can access and use it.
  		pthread_mutex_lock(&mutexSensorData);
- 			memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/18);
+ 			//memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/18);
+ 			inertias[0]=sensorDataBuffer[12];
+ 			inertias[1]=sensorDataBuffer[13];
+ 			inertias[2]=sensorDataBuffer[14];
  			disturbances[0]=sensorDataBuffer[15];
  			disturbances[1]=sensorDataBuffer[16];
  			disturbances[2]=sensorDataBuffer[17];
+ 			sensorInitReady=(int)sensorDataBuffer[18]; // ekfReady[0=not, 1=mpc can start]
  		pthread_mutex_unlock(&mutexSensorData);
  	}
  	
@@ -267,6 +277,7 @@ static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 
 /* Thread - Controller algorithm for all three (with pipe to sensor (PWM) and communication process) */
 void *threadController( void *arg ) {
+	// Initialize local structures
 	struct PosParams posParams = { 
 		.A = { 1,0,0,0,0,0,		PosTsSec,1,0,0,PosTsSec,0,		0,0,1,0,0,0,		0,0,PosTsSec,1,0,PosTsSec,		0,0,0,0,1,0,		0,0,0,0,0,1 },
 		.B = { 0,mdl_param.g*PosTsSec,0,0,0,0,		0,0,0,-mdl_param.g*PosTsSec,0,0 },
@@ -312,12 +323,17 @@ void *threadController( void *arg ) {
 	// Get pipe array and define local variables
 	pipeArray *pipeArrayStruct = arg;
 	structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
-	structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+
+	// Local variables to store global data in to using mutexes
+	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3];
+	int triggerFly, sensorReady, pwmPrint;
+	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
 	double tsTrue=tsController;
-	int mpcMissedDeadlines=0;
+	//int mpcMissedDeadlines=0;
 
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -328,96 +344,65 @@ void *threadController( void *arg ) {
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	t.tv_sec++;
 	
-	
-	
-		// Loop forever at specific sampling rate
-		while(1){
-			/// Time it and wait until next shot
-			clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
-			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
-				
-			/* Run controllers 
-			 * NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST) */
-			controllerPos( &posParams, &posInputs, posX_all, posU_all );
-			controllerAlt( &altParams, &altInputs, altX_all, altU_all );
-			controllerAtt( &attParams, &attInputs, attX_all, attU_all );
-
-			
-			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
-			//else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
-		
-			// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
-			//if (write(ptrPipe2->parent[1], posX_all, sizeof(posX_all)) != sizeof(posX_all)) printf("write error in controller to communication\n");
-			//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-
-			//// Update watchdog
-			//pthread_mutex_lock(&mutexWatchdog);
-			//	globalWatchdog++;
-			//pthread_mutex_unlock(&mutexWatchdog);
-			
-			/// Calculate next shot
-			t.tv_nsec += tsController;
-			while (t.tv_nsec >= NSEC_PER_SEC) {
-				t.tv_nsec -= NSEC_PER_SEC;
-				t.tv_sec++;
-			}	
-			
-			/// Print true sampling rate
-			clock_gettime(CLOCK_MONOTONIC, &t_stop);
-			tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
-			//printf("Sampling time [s] mpc: %lf\n",tsTrue);
-			
-			if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
-				//printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
-			}
-			
-		}
-	
-	return NULL;
-	
-	}
-
-// Thread - Watchdog for all controllers to flag if sampling time is not satisfied.
-/*void *threadControllerWatchdog(void *arg){
-	// Local Variables
-	int watchdog_current, watchdog_prev=0;
-
-	/// Setup timer variables for real time
-	struct timespec t,t_start,t_stop;
-	double tsTrue=tsController;
-
-	/// Lock memory
-	if(mlockall(MCL_CURRENT) == -1){
-		perror("mlockall failed in threadSensorFusion");
-	}
-	
-	/// Start after 1 second
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
-	
-	// Run controller algorithm
+	// Loop forever at specific sampling rate
 	while(1){
 		/// Time it and wait until next shot
 		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+		
+		// Get measurements, disturbance and inertias (xhat)
+		pthread_mutex_lock(&mutexSensorData);
+			memcpy(measBuffer, measurements, sizeof(measurements));
+			memcpy(distBuffer, disturbances, sizeof(disturbances));
+			memcpy(inertBuffer, inertias, sizeof(inertias));
+			sensorReady=sensorInitReady;
+		pthread_mutex_unlock(&mutexSensorData);
+		
+		// Get references (keyboard for now)
+		pthread_mutex_lock(&mutexConstraintsData);
+			memcpy(refBuffer, references, sizeof(references));
+			memcpy(ref_formBuffer, references_formation, sizeof(references_formation));
+			triggerFly=(int)keyboardData[3];
+			pwmPrint=(int)keyboardData[4];
+		pthread_mutex_unlock(&mutexConstraintsData);
+					
+		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
+		if(sensorReady){
+			// Check keyboard fly trigger is true	
+			if(triggerFly){
+				printf("references-> ");
+				printmat(refBuffer, 1, 12);
+				
+				/* Run controllers 
+				 * NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST) */
+				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
+				controllerAlt( &altParams, &altInputs, altX_all, altU_all, measBuffer, refBuffer, distBuffer);
+				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer);
+			}
+			// If false, force PWM outputs to zero.
+			else{
+				if(sensorReady){
+					//printf("MPC not running: key start = %i\n", triggerFly);
+				}
+				
+				memcpy(PWM, PWM0, sizeof(PWM));
+			}
+		
+			// Print PWM signal sent to motors
+			if(pwmPrint){
+				printf("PWM: %3.4f %3.4f %3.4f %3.4f\n", PWM[0], PWM[1], PWM[2], PWM[3]);
+			}
 			
-		// Get watchdog status
-		pthread_mutex_lock(&mutexWatchdog);
-			watchdog_current=globalWatchdog; // current
-			globalWatchdog=watchdog_prev+1; // update to new
-		pthread_mutex_unlock(&mutexWatchdog);
-		
-		// Check if deadline was met
-		if (watchdog_current==watchdog_prev){
-			printf("MPC did NOT meet deadline2\n");
+			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
+			//else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
 		}
-		
-		// Update previous watchdog to current
-		watchdog_prev++;
-		
+		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
+		//if (write(ptrPipe2->parent[1], posX_all, sizeof(posX_all)) != sizeof(posX_all)) printf("write error in controller to communication\n");
+		//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
 		/// Calculate next shot
-		t.tv_nsec += tsWatchdog;
+		t.tv_nsec += tsController;
 		while (t.tv_nsec >= NSEC_PER_SEC) {
 			t.tv_nsec -= NSEC_PER_SEC;
 			t.tv_sec++;
@@ -426,534 +411,23 @@ void *threadController( void *arg ) {
 		/// Print true sampling rate
 		clock_gettime(CLOCK_MONOTONIC, &t_stop);
 		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
-		printf("Sampling time [s] mpc watchdog: %lf\n",tsTrue);
-	}
-	
-	return NULL;
-}
-*/
-
-
-
-/* Individual controllers if we want to run them at different sampling rates
-// Thread - Controller algorithm for Position (with pipe to sensor (PWM) and communication process)
- void *threadControllerPos(void *arg) {
-	struct PosParams posParams = { 
-		.A = { 1,0,0,0,0,0,		PosTsSec,1,0,0,PosTsSec,0,		0,0,1,0,0,0,		0,0,PosTsSec,1,0,PosTsSec,		0,0,0,0,1,0,		0,0,0,0,0,1 },
-		.B = { 0,mdl_param.g*PosTsSec,0,0,0,0,		0,0,0,-mdl_param.g*PosTsSec,0,0 },
-		.Q =  { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
-		.Qf = { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
-		.R = { 100,0,		0,100 },
-		.umax = { 6*PI/180, 6*PI/180 },
-		.umin = { -6*PI/180, -6*PI/180 },
-		.n = 6, .m = 2, .T = 10, .niters = 5, .kappa = 1e-1
-	};	
-	
-	posX_all = calloc(posParams.n*posParams.T, sizeof(double));
-	posU_all = calloc(posParams.m*posParams.T, sizeof(double));
-	int i;
-    
-    ////printf("size of a double is %i", sizeof(double));
-   
-    ////for (i = 0; i < posParams.n*posParams.T; i++) {
-		////posX_all[i] = i;
-		////}
-		////printmat(posX_all, posParams.n, posParams.T);
-		    
-	//// Get pipe array and define local variables
-	////pipeArray *pipeArrayStruct = arg;
-	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
-	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
-	
-	//// Get pipe and define local variables
-	//struct timespec t;
-	//struct sched_param param;
-
-	//// Declare ourself as a real time task
-	//param.sched_priority = 39;
-	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		//perror("sched_setscheduler failed");
-	//}
-
-	//// Lock memory
-	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		//perror("mlockall failed");
-	//}
-	
-	//// Pre-fault our stack
-	////stack_prefault();
-	
-	//// Start after 1 second
-	//clock_gettime(CLOCK_MONOTONIC, &t);
-	//t.tv_sec++;
-	
-	//// Loop forever at specific sampling rate
-	//while(1){
-		//// Wait until next shot
-		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-			
-		// Run controller
-
-		// Warm start before running the controller
-		//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
-		//memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 	
-		for ( i = posParams.n*posParams.T-posParams.n; i < posParams.n*posParams.T; i++ ) {
-			posInputs.X0_all[i] = 0;
-			}
-		for ( i = posParams.m*posParams.T-posParams.m; i < posParams.m*posParams.T; i++ ) {
-			posInputs.U0_all[i] = 0;
-			}
-			
-		posInputs.x0[0] = measurements[0] - references[0];		// x
-		posInputs.x0[1] = measurements[3] - references[3];		// xdot
-		posInputs.x0[2] = measurements[1] - references[1];		// y
-		posInputs.x0[3] = measurements[4] - references[4];		// ydot
-		posInputs.x0[4] = measurements[0] - references_formation[0];		// x_formation
-		posInputs.x0[5] = measurements[1] - references_formation[1];		// y_formation
-
-
-		//printf("posInputs.X0_all\n");
-		//printmat(&posInputs.X0_all[0], posParams.n, posParams.T);
-		//printf("posInputs.U0_all\n");
-		//printmat(&posInputs.U0_all[0], posParams.m, posParams.T);
+		//printf("Sampling time [s] mpc: %lf\n",tsTrue);
 		
-		posFmpc(&posParams, &posInputs, posX_all, posU_all);
-		
-		
-		//printf("posX_all\n");
-		//printmat(posX_all, posParams.n, posParams.T);
-		//printf("posU_all\n");
-		//printmat(posU_all, posParams.m, posParams.T);
-	
-		theta_dist = posU_all[0]-disturbances[0]/mdl_param.g;		//theta with disturbance compensation
-		phi_dist = posU_all[1]-disturbances[1]/mdl_param.g;			//phi with disturbance compensation
-
-		
-		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-	
-		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
-		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-
-		//// Update watchdog
-		//pthread_mutex_lock(&mutexWatchdog);
-			//globalWatchdog++;
-		//pthread_mutex_unlock(&mutexWatchdog);
-		
-		//// Calculate next shot
-		//t.tv_nsec += PosTs;	//	nanosec sampling time
-		//while (t.tv_nsec >= NSEC_PER_SEC) {
-			//t.tv_nsec -= NSEC_PER_SEC;
-			//t.tv_sec++;
-		//}
-	//}
-	
-	return NULL;
-}
-
-// Thread - Watchdog for Position controller to flag if sampling time is not satisfied.
-
-void *threadControllerWatchdogPos(void *arg) {	
-	// Get pipe and define local variables
-	struct timespec t;
-	struct sched_param param;
-	int watchdog_current, watchdog_prev=0;
-
-	// Declare ourself as a real time task
-	param.sched_priority = 40;
-	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		perror("sched_setscheduler failed");
-	}
-	
-	// Lock memory
-	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		perror("mlockall failed");
-	}
-	
-	// Pre-fault our stack
-	//stack_prefault();
-	
-	// Start after 1 second
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
-	
-	// Run controller algorithm
-	while(1){
-		// Wait until next shot
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-		
-		// Get watchdog status
-		pthread_mutex_lock(&mutexWatchdog);
-			watchdog_current=globalWatchdog; // current
-			globalWatchdog=watchdog_prev+1; // update to new
-		pthread_mutex_unlock(&mutexWatchdog);
-		
-		// Check if deadline was met
-		if (watchdog_current==watchdog_prev){
-			printf("MPC did NOT meet deadline2\n");
+		if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
+			//printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
 		}
 		
-		// Update previous watchdog to current
-		watchdog_prev++;
-		
-		// Calculate next shot
-		t.tv_sec += PosTs;
-		while (t.tv_nsec >= NSEC_PER_SEC) {
-			t.tv_nsec -= NSEC_PER_SEC;
-			t.tv_sec++;
-		}
 	}
 	
 	return NULL;
 }
-
-
-// Thread - Controller algorithm for Attitude (with pipe to sensor (PWM) and communication process)
- void *threadControllerAtt(void *arg) {
-	struct AttParams attParams = { 
-		.A = { 1,0,0,0,0,0,		AttTsSec,1,0,0,0,0,	0,0,1,0,0,0,	0,0,AttTsSec,1,0,0,	0,0,0,0,1,0,	0,0,0,0,AttTsSec,1 },
-		.B = { 0,AttTsSec/mdl_param.i_xx,0,0,0,0,	0,0,0,AttTsSec/mdl_param.i_yy,0,0,	0,0,0,0,0,AttTsSec/mdl_param.i_zz },
-		.Q =  { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
-		.Qf = { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
-		.R = { 1000,0,0,	0,1000,0,	0,0,1000 },
-		.umax = {  .1, .1, .1 },
-		.umin = { -.1,-.1,-.1 },
-		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
-	};
-	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
-	attU_all = calloc(attParams.m*attParams.T, sizeof(double));
-    int i;
-    double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
-
-	//// Get pipe array and define local variables
-	////pipeArray *pipeArrayStruct = arg;
-	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
-	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
-	
-	//// Get pipe and define local variables
-	//struct timespec t;
-	//struct sched_param param;
-
-	//// Declare ourself as a real time task
-	//param.sched_priority = 39;
-	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		//perror("sched_setscheduler failed");
-	//}
-
-	//// Lock memory
-	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		//perror("mlockall failed");
-	//}
-	
-	//// Pre-fault our stack
-	////stack_prefault();
-	
-	//// Start after 1 second
-	//clock_gettime(CLOCK_MONOTONIC, &t);
-	//t.tv_sec++;
-	
-	//// Loop forever at specific sampling rate
-	//while(1){
-		//// Wait until next shot
-		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-			
-		// Run controller
-
-		// Warm start before running the controller
-		//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
-		//memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
-		for ( i = attParams.n*attParams.T-attParams.n; i < attParams.n*attParams.T; i++ ) {
-			attInputs.X0_all[i] = 0;
-			}
-		for ( i = attParams.m*attParams.T-attParams.m; i < attParams.m*attParams.T; i++ ) {
-			attInputs.U0_all[i] = 0;
-			}
-		
-		attInputs.x0[0] = measurements[6] - phi_dist;			//phi - coming from the pos controller
-		attInputs.x0[1] = measurements[9] - references[9];		//phidot
-		attInputs.x0[2] = measurements[7] - theta_dist;			//theta - coming from the pos controller
-		attInputs.x0[3] = measurements[10] - references[10];	//thetadot
-		attInputs.x0[4] = measurements[8] - references[8];		//psi
-		attInputs.x0[5] = measurements[11] - references[11];	//psidot
-		
-		attFmpc(&attParams, &attInputs, attX_all, attU_all);
-		
-		////printf("attX_all\n");
-		////printmat(attX_all, attParams.n, attParams.T);
-		////printf("attU_all\n");
-		////printmat(attU_all, attParams.m, attParams.T);
-		
-		tau_x = attU_all[0];		// theta or phi?!
-		tau_y = attU_all[1];		// theta or phi?!
-		tau_z = attU_all[2];		// psi
-		
-		//pthread_mutex_lock(&mutexPWM);
-			PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		//pthread_mutex_unlock(&mutexPWM);
-
-			
-		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-	
-		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
-		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-
-		//// Update watchdog
-		//pthread_mutex_lock(&mutexWatchdog);
-			//globalWatchdog++;
-		//pthread_mutex_unlock(&mutexWatchdog);
-		
-		//// Calculate next shot
-		//t.tv_nsec += AttTs;	//	nanosec sampling time
-		//while (t.tv_nsec >= NSEC_PER_SEC) {
-			//t.tv_nsec -= NSEC_PER_SEC;
-			//t.tv_sec++;
-		//}
-	//}
-	
-	return NULL;
-}
-
-// Thread - Watchdog for Attitude controller to flag if sampling time is not satisfied.
-
-void *threadControllerWatchdogAtt(void *arg) {	
-	// Get pipe and define local variables
-	struct timespec t;
-	struct sched_param param;
-	int watchdog_current, watchdog_prev=0;
-
-	// Declare ourself as a real time task
-	param.sched_priority = 40;
-	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		perror("sched_setscheduler failed");
-	}
-	
-	// Lock memory
-	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		perror("mlockall failed");
-	}
-	
-	// Pre-fault our stack
-	//stack_prefault();
-	
-	// Start after 1 second
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
-	
-	// Run controller algorithm
-	while(1){
-		// Wait until next shot
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-		
-		// Get watchdog status
-		pthread_mutex_lock(&mutexWatchdog);
-			watchdog_current=globalWatchdog; // current
-			globalWatchdog=watchdog_prev+1; // update to new
-		pthread_mutex_unlock(&mutexWatchdog);
-		
-		// Check if deadline was met
-		if (watchdog_current==watchdog_prev){
-			printf("MPC did NOT meet deadline2\n");
-		}
-		
-		// Update previous watchdog to current
-		watchdog_prev++;
-		
-		// Calculate next shot
-		t.tv_sec += AttTs;
-		while (t.tv_nsec >= NSEC_PER_SEC) {
-			t.tv_nsec -= NSEC_PER_SEC;
-			t.tv_sec++;
-		}
-	}
-	
-	return NULL;
-}
-
-
-// Thread - Controller algorithm for Altitude (with pipe to sensor (PWM) and communication process)
- void *threadControllerAlt(void *arg) {
-	
-    struct AltParams altParams = { 
-		.A = { 1, 0, AltTsSec, 1 },
-		.B = { 0, AltTsSec },
-		.Q =  { 100000, 0, 0, 100 },
-		.Qf = { 100000, 0, 0, 100 },
-		.R = { .1 },
-		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
-		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
-		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
-	};
-	altX_all = calloc(altParams.n*altParams.T, sizeof(double));
-	altU_all = calloc(altParams.m*altParams.T, sizeof(double));
-
-    int i;
-	//double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
-    
-	//// Get pipe array and define local variables
-	////pipeArray *pipeArrayStruct = arg;
-	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
-	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
-	
-	//// Get pipe and define local variables
-	//struct timespec t;
-	//struct sched_param param;
-
-	//// Declare ourself as a real time task
-	//param.sched_priority = 39;
-	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		//perror("sched_setscheduler failed");
-	//}
-
-	//// Lock memory
-	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		//perror("mlockall failed");
-	//}
-	
-	//// Pre-fault our stack
-	////stack_prefault();
-	
-	//// Start after 1 second
-	//clock_gettime(CLOCK_MONOTONIC, &t);
-	//t.tv_sec++;
-	
-	//// Loop forever at specific sampling rate
-	//while(1){
-		//// Wait until next shot
-		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-			
-
-		// Run controller
-
-		
-		// Warm start before running the controller
-		//memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
-		//memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
-		for ( i = altParams.n*altParams.T-altParams.n; i < altParams.n*altParams.T; i++ ) {
-			altInputs.X0_all[i] = 0;
-			}
-		for ( i = altParams.m*altParams.T-altParams.m; i < altParams.m*altParams.T; i++ ) {
-			altInputs.U0_all[i] = 0;
-			}
-	
-		altInputs.x0[0] = measurements[2] - references[2];
-		altInputs.x0[1] = measurements[5] - references[5];
-		
-		//printf("altInputs.U0_all\n");
-		//printmat(&altInputs.U0_all[0], 1, 10);		
-		//printf("altInputs.X0_all\n");
-		//printmat(&altInputs.X0_all[0], 2, 10);
-		
-		altFmpc(&altParams, &altInputs, altX_all, altU_all);
-		
-		//printf("altX_all\n");
-		//printmat(altX_all, altParams.n, altParams.T);
-		//printf("altU_all\n");
-		//printmat(altU_all, altParams.m, altParams.T);
-		
-		thrust = (altU_all[0]+mdl_param.g)*mdl_param.mass;	// gravity compensation
-		
-		//pthread_mutex_lock(&mutexPWM);
-			//PWM[0] = sqrt( ( 2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			//PWM[1] = sqrt( ( 2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-			//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		//pthread_mutex_unlock(&mutexPWM);	
-			
-		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-	
-		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
-		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
-		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
-
-		//// Update watchdog
-		//pthread_mutex_lock(&mutexWatchdog);
-			//globalWatchdog++;
-		//pthread_mutex_unlock(&mutexWatchdog);
-		
-		//// Calculate next shot
-		//t.tv_nsec += AltTs;	//	nanosec sampling time
-		//while (t.tv_nsec >= NSEC_PER_SEC) {
-			//t.tv_nsec -= NSEC_PER_SEC;
-			//t.tv_sec++;
-		//}
-	//}
-	
-	return NULL;
-}
-
-// Thread - Watchdog for Altitude controller to flag if sampling time is not satisfied.
-
-void *threadControllerWatchdogAlt(void *arg) {	
-	// Get pipe and define local variables
-	struct timespec t;
-	struct sched_param param;
-	int watchdog_current, watchdog_prev=0;
-
-	// Declare ourself as a real time task
-	param.sched_priority = 40;
-	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
-		perror("sched_setscheduler failed");
-	}
-	
-	// Lock memory
-	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
-		perror("mlockall failed");
-	}
-	
-	// Pre-fault our stack
-	//stack_prefault();
-	
-	// Start after 1 second
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
-	
-	// Run controller algorithm
-	while(1){
-		// Wait until next shot
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
-		
-		// Get watchdog status
-		pthread_mutex_lock(&mutexWatchdog);
-			watchdog_current=globalWatchdog; // current
-			globalWatchdog=watchdog_prev+1; // update to new
-		pthread_mutex_unlock(&mutexWatchdog);
-		
-		// Check if deadline was met
-		if (watchdog_current==watchdog_prev){
-			printf("MPC did NOT meet deadline2\n");
-		}
-		
-		// Update previous watchdog to current
-		watchdog_prev++;
-		
-		// Calculate next shot
-		t.tv_sec += AltTs;
-		while (t.tv_nsec >= NSEC_PER_SEC) {
-			t.tv_nsec -= NSEC_PER_SEC;
-			t.tv_sec++;
-		}
-	}
-	
-	return NULL;
-}
-*/
 
 /******************************************************************/
 /*************************   FUNCTIONS   **************************/
 /******************************************************************/
 
 /* The same as threadControllerPos but here as a function and not a thread with sample rate */
-static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all ) {
+static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist ) {
 	int i;
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
@@ -964,29 +438,31 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 	for ( i = posParams->m*posParams->T-posParams->m; i < posParams->m*posParams->T; i++ ) {
 		posInputs->U0_all[i] = 0;
 		}
+		
 	// Get measurements and references from global data
-	pthread_mutex_lock(&mutexSensorData);
-		posInputs->x0[0] = measurements[0] - references[0];		// x
-		posInputs->x0[1] = measurements[3] - references[3];		// xdot
-		posInputs->x0[2] = measurements[1] - references[1];		// y
-		posInputs->x0[3] = measurements[4] - references[4];		// ydot
-		posInputs->x0[4] = measurements[0] - references_formation[0];		// x_formation
-		posInputs->x0[5] = measurements[1] - references_formation[1];		// y_formation
-	pthread_mutex_unlock(&mutexSensorData);
+	//pthread_mutex_lock(&mutexSensorData);
+		posInputs->x0[0] = meas[0] - ref[0];		// x
+		posInputs->x0[1] = meas[3] - ref[3];		// xdot
+		posInputs->x0[2] = meas[1] - ref[1];		// y
+		posInputs->x0[3] = meas[4] - ref[4];		// ydot
+		posInputs->x0[4] = meas[0] - ref_form[0];		// x_formation
+		posInputs->x0[5] = meas[1] - ref_form[1];		// y_formation
+	//pthread_mutex_unlock(&mutexSensorData);
 	
 	posFmpc(posParams, posInputs, posX_all, posU_all);
 		
 	// Get measurements and references from global data
-	pthread_mutex_lock(&mutexSensorData);
-		theta_dist = posU_all[0]-disturbances[0]/mdl_param.g;		//theta with disturbance compensation
-		phi_dist = posU_all[1]-disturbances[1]/mdl_param.g;			//phi with disturbance compensation
-	pthread_mutex_unlock(&mutexSensorData);
+	//pthread_mutex_lock(&mutexSensorData);
+		theta_dist = posU_all[0]-dist[0]/mdl_param.g;		//theta with disturbance compensation
+		phi_dist = posU_all[1]-dist[1]/mdl_param.g;			//phi with disturbance compensation
+	//pthread_mutex_unlock(&mutexSensorData);
 }
 	
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
-static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all  ) {
+static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref) {
 	int i;
     double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+    //const double PWM0[4] = { 0,0,0,0 };
 	
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
@@ -999,14 +475,14 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		}
 	
 	// Get measurements and references from global data
-	pthread_mutex_lock(&mutexSensorData);
-		attInputs->x0[0] = measurements[6] - phi_dist;			//phi - coming from the pos controller
-		attInputs->x0[1] = measurements[9] - references[9];		//phidot
-		attInputs->x0[2] = measurements[7] - theta_dist;			//theta - coming from the pos controller
-		attInputs->x0[3] = measurements[10] - references[10];	//thetadot
-		attInputs->x0[4] = measurements[8] - references[8];		//psi
-		attInputs->x0[5] = measurements[11] - references[11];	//psidot
-	pthread_mutex_unlock(&mutexSensorData);
+	//pthread_mutex_lock(&mutexSensorData);
+		attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
+		attInputs->x0[1] = meas[9] - ref[9];		//phidot
+		attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
+		attInputs->x0[3] = meas[10] - ref[10];	//thetadot
+		attInputs->x0[4] = meas[8] - ref[8];		//psi
+		attInputs->x0[5] = meas[11] - ref[11];	//psidot
+	//pthread_mutex_unlock(&mutexSensorData);
 	
 	attFmpc(attParams, attInputs, attX_all, attU_all);
 	
@@ -1015,15 +491,20 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	tau_z = attU_all[2];		// psi
 	
 	//pthread_mutex_lock(&mutexPWM);
+	//if ( keyboardData[3] == 1 ) {
 		PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 		PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 		PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 		PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+	//}
+	//else if ( keyboardData[3] == 0 ) {
+		//memcpy(PWM, PWM0, sizeof(PWM));
+	//}
 	//pthread_mutex_unlock(&mutexPWM);
 }
 	
 /* The same as threadControllerAlt but here as a function and not a thread with sample rate */
-static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all ) {
+static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *meas, double *ref, double *dist) {
 	int i;
 
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
@@ -1037,14 +518,14 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 		}
 
 	// Get measurements and references from global data
-	pthread_mutex_lock(&mutexSensorData);
-		altInputs->x0[0] = measurements[2] - references[2];
-		altInputs->x0[1] = measurements[5] - references[5];
-	pthread_mutex_unlock(&mutexSensorData);
+	//pthread_mutex_lock(&mutexSensorData);
+		altInputs->x0[0] = meas[2] - ref[2];
+		altInputs->x0[1] = meas[5] - ref[5];
+	//pthread_mutex_unlock(&mutexSensorData);
 	
 	altFmpc(altParams, altInputs, altX_all, altU_all);
 	
-	thrust = (altU_all[0]+mdl_param.g)*mdl_param.mass;	// gravity compensation
+	thrust = (altU_all[0]+dist[2])*mdl_param.mass;	// gravity compensation
 }
 
 /* interact with fast MPC POS */
@@ -1614,24 +1095,6 @@ static void altFmpc( struct AltParams *altParams, struct AltInputs *altInputs, d
     free(z); free(x); free(zmax); free(zmin); free(zmaxp); free(zminp);
     return;
 }
-
-/* printmat
-void printmat(double *A, int m, int n)
-{
-    double *dptr;
-    int j, i;
-    dptr = A;
-    for (j = 0; j < m; j++)
-    {
-        for (i = 0; i < n; i++)
-        {
-            printf("%5.4f\t", *(dptr+m*i+j));
-        }
-        printf("\n");
-    }
-    return;
-}
-*/
 
 void fmpcsolve(double *A, double *B, double *At, double *Bt, double *eyen,
          double *eyem, double *Q, double *R, double *Qf, double *zmax, double *zmin, 
@@ -2281,3 +1744,582 @@ void resdresp(double *rd, double *rp, int T, int n, int nz, double *resd,
     *res = sqrt((*resp)*(*resp)+(*resd)*(*resd));
     return;
 }
+
+
+
+
+
+
+/******************************************************************/
+/********************* Individual controllers  ********************/
+/******************************************************************/
+
+
+// Thread - Watchdog for all controllers to flag if sampling time is not satisfied.
+/*void *threadControllerWatchdog(void *arg){
+	// Local Variables
+	int watchdog_current, watchdog_prev=0;
+
+	/// Setup timer variables for real time
+	struct timespec t,t_start,t_stop;
+	double tsTrue=tsController;
+
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadSensorFusion");
+	}
+	
+	/// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		/// Time it and wait until next shot
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+			
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		/// Calculate next shot
+		t.tv_nsec += tsWatchdog;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}	
+		
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		printf("Sampling time [s] mpc watchdog: %lf\n",tsTrue);
+	}
+	
+	return NULL;
+}
+*/
+
+
+/* Individual controllers if we want to run them at different sampling rates
+// Thread - Controller algorithm for Position (with pipe to sensor (PWM) and communication process)
+ void *threadControllerPos(void *arg) {
+	struct PosParams posParams = { 
+		.A = { 1,0,0,0,0,0,		PosTsSec,1,0,0,PosTsSec,0,		0,0,1,0,0,0,		0,0,PosTsSec,1,0,PosTsSec,		0,0,0,0,1,0,		0,0,0,0,0,1 },
+		.B = { 0,mdl_param.g*PosTsSec,0,0,0,0,		0,0,0,-mdl_param.g*PosTsSec,0,0 },
+		.Q =  { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
+		.Qf = { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
+		.R = { 100,0,		0,100 },
+		.umax = { 6*PI/180, 6*PI/180 },
+		.umin = { -6*PI/180, -6*PI/180 },
+		.n = 6, .m = 2, .T = 10, .niters = 5, .kappa = 1e-1
+	};	
+	
+	posX_all = calloc(posParams.n*posParams.T, sizeof(double));
+	posU_all = calloc(posParams.m*posParams.T, sizeof(double));
+	int i;
+    
+    ////printf("size of a double is %i", sizeof(double));
+   
+    ////for (i = 0; i < posParams.n*posParams.T; i++) {
+		////posX_all[i] = i;
+		////}
+		////printmat(posX_all, posParams.n, posParams.T);
+		    
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+		// Run controller
+
+		// Warm start before running the controller
+		//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
+		//memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 	
+		for ( i = posParams.n*posParams.T-posParams.n; i < posParams.n*posParams.T; i++ ) {
+			posInputs.X0_all[i] = 0;
+			}
+		for ( i = posParams.m*posParams.T-posParams.m; i < posParams.m*posParams.T; i++ ) {
+			posInputs.U0_all[i] = 0;
+			}
+			
+		posInputs.x0[0] = measurements[0] - references[0];		// x
+		posInputs.x0[1] = measurements[3] - references[3];		// xdot
+		posInputs.x0[2] = measurements[1] - references[1];		// y
+		posInputs.x0[3] = measurements[4] - references[4];		// ydot
+		posInputs.x0[4] = measurements[0] - references_formation[0];		// x_formation
+		posInputs.x0[5] = measurements[1] - references_formation[1];		// y_formation
+
+
+		//printf("posInputs.X0_all\n");
+		//printmat(&posInputs.X0_all[0], posParams.n, posParams.T);
+		//printf("posInputs.U0_all\n");
+		//printmat(&posInputs.U0_all[0], posParams.m, posParams.T);
+		
+		posFmpc(&posParams, &posInputs, posX_all, posU_all);
+		
+		
+		//printf("posX_all\n");
+		//printmat(posX_all, posParams.n, posParams.T);
+		//printf("posU_all\n");
+		//printmat(posU_all, posParams.m, posParams.T);
+	
+		theta_dist = posU_all[0]-disturbances[0]/mdl_param.g;		//theta with disturbance compensation
+		phi_dist = posU_all[1]-disturbances[1]/mdl_param.g;			//phi with disturbance compensation
+
+		
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += PosTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Position controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogPos(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += PosTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+
+
+// Thread - Controller algorithm for Attitude (with pipe to sensor (PWM) and communication process)
+ void *threadControllerAtt(void *arg) {
+	struct AttParams attParams = { 
+		.A = { 1,0,0,0,0,0,		AttTsSec,1,0,0,0,0,	0,0,1,0,0,0,	0,0,AttTsSec,1,0,0,	0,0,0,0,1,0,	0,0,0,0,AttTsSec,1 },
+		.B = { 0,AttTsSec/mdl_param.i_xx,0,0,0,0,	0,0,0,AttTsSec/mdl_param.i_yy,0,0,	0,0,0,0,0,AttTsSec/mdl_param.i_zz },
+		.Q =  { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
+		.Qf = { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
+		.R = { 1000,0,0,	0,1000,0,	0,0,1000 },
+		.umax = {  .1, .1, .1 },
+		.umin = { -.1,-.1,-.1 },
+		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
+	};
+	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
+	attU_all = calloc(attParams.m*attParams.T, sizeof(double));
+    int i;
+    double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+		// Run controller
+
+		// Warm start before running the controller
+		//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
+		//memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
+		for ( i = attParams.n*attParams.T-attParams.n; i < attParams.n*attParams.T; i++ ) {
+			attInputs.X0_all[i] = 0;
+			}
+		for ( i = attParams.m*attParams.T-attParams.m; i < attParams.m*attParams.T; i++ ) {
+			attInputs.U0_all[i] = 0;
+			}
+		
+		attInputs.x0[0] = measurements[6] - phi_dist;			//phi - coming from the pos controller
+		attInputs.x0[1] = measurements[9] - references[9];		//phidot
+		attInputs.x0[2] = measurements[7] - theta_dist;			//theta - coming from the pos controller
+		attInputs.x0[3] = measurements[10] - references[10];	//thetadot
+		attInputs.x0[4] = measurements[8] - references[8];		//psi
+		attInputs.x0[5] = measurements[11] - references[11];	//psidot
+		
+		attFmpc(&attParams, &attInputs, attX_all, attU_all);
+		
+		////printf("attX_all\n");
+		////printmat(attX_all, attParams.n, attParams.T);
+		////printf("attU_all\n");
+		////printmat(attU_all, attParams.m, attParams.T);
+		
+		tau_x = attU_all[0];		// theta or phi?!
+		tau_y = attU_all[1];		// theta or phi?!
+		tau_z = attU_all[2];		// psi
+		
+		//pthread_mutex_lock(&mutexPWM);
+			PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//pthread_mutex_unlock(&mutexPWM);
+
+			
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += AttTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Attitude controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogAtt(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += AttTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+
+
+// Thread - Controller algorithm for Altitude (with pipe to sensor (PWM) and communication process)
+ void *threadControllerAlt(void *arg) {
+	
+    struct AltParams altParams = { 
+		.A = { 1, 0, AltTsSec, 1 },
+		.B = { 0, AltTsSec },
+		.Q =  { 100000, 0, 0, 100 },
+		.Qf = { 100000, 0, 0, 100 },
+		.R = { .1 },
+		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
+		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
+		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
+	};
+	altX_all = calloc(altParams.n*altParams.T, sizeof(double));
+	altU_all = calloc(altParams.m*altParams.T, sizeof(double));
+
+    int i;
+	//double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+    
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+
+		// Run controller
+
+		
+		// Warm start before running the controller
+		//memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
+		//memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
+		for ( i = altParams.n*altParams.T-altParams.n; i < altParams.n*altParams.T; i++ ) {
+			altInputs.X0_all[i] = 0;
+			}
+		for ( i = altParams.m*altParams.T-altParams.m; i < altParams.m*altParams.T; i++ ) {
+			altInputs.U0_all[i] = 0;
+			}
+	
+		altInputs.x0[0] = measurements[2] - references[2];
+		altInputs.x0[1] = measurements[5] - references[5];
+		
+		//printf("altInputs.U0_all\n");
+		//printmat(&altInputs.U0_all[0], 1, 10);		
+		//printf("altInputs.X0_all\n");
+		//printmat(&altInputs.X0_all[0], 2, 10);
+		
+		altFmpc(&altParams, &altInputs, altX_all, altU_all);
+		
+		//printf("altX_all\n");
+		//printmat(altX_all, altParams.n, altParams.T);
+		//printf("altU_all\n");
+		//printmat(altU_all, altParams.m, altParams.T);
+		
+		thrust = (altU_all[0]+mdl_param.g)*mdl_param.mass;	// gravity compensation
+		
+		//pthread_mutex_lock(&mutexPWM);
+			//PWM[0] = sqrt( ( 2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[1] = sqrt( ( 2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//pthread_mutex_unlock(&mutexPWM);	
+			
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += AltTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Altitude controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogAlt(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += AltTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+*/

@@ -27,7 +27,7 @@
 #include <sys/mman.h>
 
 #define PI 3.141592653589793
-#define CALIBRATION 100
+#define CALIBRATION 500
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -37,6 +37,7 @@
 static void *threadReadBeacon (void*);
 static void *threadSensorFusion (void*);
 static void *threadPWMControl (void*);
+static void *threadPipeCommunicationToSensor(void*);
 
 void Qq(double*, double*);
 void dQqdq(double*, double*, double*, double*, double*, double*, double*);
@@ -65,6 +66,7 @@ void Jfx(double*, double*, double*, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[4]={1,1,1,1}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion
+static double keyboardData[7]= { 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print}
 
 // Variables
 static int beaconConnected=0;
@@ -73,6 +75,7 @@ static int beaconConnected=0;
 static pthread_mutex_t mutexPositionSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexI2CBusy = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexControlData = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexKeyboardData = PTHREAD_MUTEX_INITIALIZER;
 
 
 /******************************************************************/
@@ -85,12 +88,13 @@ void startSensors(void *arg1, void *arg2){
 	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 };
 	
 	// Create thread
-	pthread_t threadSenFus, threadPWMCtrl,threadReadPos;
-	int threadPID1, threadPID2, threadPID3;
+	pthread_t threadSenFus, threadPWMCtrl,threadReadPos, threadCommToSens;
+	int threadPID1, threadPID2, threadPID3, threadPID4;
 	
 	//threadPID1=pthread_create(&threadReadPos, NULL, &threadReadBeacon, NULL);
 	threadPID2=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
 	threadPID3=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
+	threadPID4=pthread_create(&threadCommToSens, NULL, &threadPipeCommunicationToSensor, arg2);
 	
 	// Set up thread scheduler priority for real time tasks
 	struct sched_param paramThread1, paramThread2, paramThread3;
@@ -105,6 +109,7 @@ void startSensors(void *arg1, void *arg2){
 	//if (!threadPID1) pthread_join( threadReadPos, NULL);
 	if (!threadPID2) pthread_join( threadSenFus, NULL);
 	if (!threadPID3) pthread_join( threadPWMCtrl, NULL);
+	if (!threadPID4) pthread_join( threadCommToSens, NULL);
 }
 
 
@@ -112,6 +117,28 @@ void startSensors(void *arg1, void *arg2){
 /*****************************THREADS******************************/
 /******************************************************************/
 
+// Thread - Commnication.c to Sensor.c with keyobard inputs
+static void *threadPipeCommunicationToSensor(void *arg)
+{
+	// Get pipe and define local variables
+	structPipe *ptrPipe = arg;
+	double keyboardDataBuffer[7];
+	
+	// Loop forever reading/waiting for data
+	while(1){
+		// Read data from controller process
+		if(read(ptrPipe->child[0], keyboardDataBuffer, sizeof(keyboardDataBuffer)) == -1) printf("read error in sensor from communication\n");
+		//else printf("Sensor ID: %d, Recieved Communication data: %f\n", (int)getpid(), keyboardDataBuffer[0]);
+		
+		// Put new data in to global variable in communication.c
+		pthread_mutex_lock(&mutexKeyboardData);
+			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer));
+		pthread_mutex_unlock(&mutexKeyboardData);
+		
+		sleep(1);
+	}
+	return NULL;
+}
 
 // Thread - Read position values
 void *threadReadBeacon (void *arg){
@@ -374,27 +401,30 @@ static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
 	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, Patt[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0}; // sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[18]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double tsTrue=tsSensorsFusion; // true sampling time measured using clock_gettime()
 	int calibrationCounter=0, calibrationCounterEKF=0, calibrationLoaded=0, posRawOldFlag=0, enableMPU9250Flag=-1, enableAK8963Flag=-1;
 	double ekf0[6]={0,0,0,0,0,0}, ekfCal[6*CALIBRATION];
 	
-	// Average sampling
-	int tsAverageCounter=0, tsAverageReadyEKF=0; // tsAverageReadyEKF is used for to give orientation filter som time to converge before calibration of EKF starts collecting data
-	double tsAverageAccum=0;
-	double tsAverage=tsSensorsFusion;
-	
 	// EKF variables
 	double Pekf[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	double xhat[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,9.81};
+	double xhat[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g};
 	double uControl[4]={70,70,70,70};
-	double Qekf[18]={10,10,10,	.1,.1,.1,		1,1,1, 	.1,.1,.1,		.00001,.00001,.00001,	.00001,.00001,.00001};
+	double Qekf[18]={10,10,10,	.1,.1,.1,		1,1,1, 	.1,.1,.1,		.0000001,.0000001,.0000001,	.00001,.00001,.00001};
 	double Rekf[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	//double ymeas[6]={1,1,1,1,1,1};
 	double ymeas[6];
+	
+	int timerPrint=0;
+	int ekfPrint=0;
 			
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
+
+	/// Average sampling
+	int tsAverageCounter=0, tsAverageReadyEKF=0; // tsAverageReadyEKF is used for to give orientation filter som time to converge before calibration of EKF starts collecting data
+	double tsAverageAccum=0;
+	double tsAverage=tsSensorsFusion;
 
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -442,6 +472,12 @@ static void *threadSensorFusion (void *arg){
 					memcpy(uControl, controlData, sizeof(controlData));		
 				pthread_mutex_unlock(&mutexControlData);
 				
+				// Get keyboard input data
+				pthread_mutex_lock(&mutexKeyboardData);
+					timerPrint=(int)keyboardData[5];
+					ekfPrint=(int)keyboardData[6];
+				pthread_mutex_unlock(&mutexKeyboardData);
+				
 				// Convert sensor data to correct (filter) units:
 				// Acc: g -> m/s² Factor: 9.81
 				// Gyr: degrees/s -> radians/s Factor: (PI/180)
@@ -482,12 +518,12 @@ static void *threadSensorFusion (void *arg){
 				if (calibrationCounter==0){
 					printf("Sensor Calibration started\n");
 					sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-					printf("calibrationCounter: %i\n", calibrationCounter);
+					//printf("calibrationCounter: %i\n", calibrationCounter);
 					calibrationCounter++;
 				}
 				else if(calibrationCounter<CALIBRATION){
 					sensorCalibration(Racc, Rgyr, Rmag, acc0, gyr0, mag0, accCal, gyrCal, magCal, accRaw, gyrRaw, magRawRot, calibrationCounter);
-					printf("calibrationCounter: %i\n", calibrationCounter);
+					//printf("calibrationCounter: %i\n", calibrationCounter);
 					calibrationCounter++;
 				}
 				else if(calibrationCounter==CALIBRATION){
@@ -558,12 +594,12 @@ static void *threadSensorFusion (void *arg){
 						if (calibrationCounterEKF==0){
 							printf("EKF Calibration started\n");
 							ekfCalibration(Rekf, ekf0, ekfCal, ymeas, calibrationCounterEKF);
-							printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
+							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 							calibrationCounterEKF++;
 						}
 						else if(calibrationCounterEKF<CALIBRATION){
 							ekfCalibration(Rekf, ekf0, ekfCal, ymeas, calibrationCounterEKF);
-							printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
+							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 							calibrationCounterEKF++;
 							
 						}
@@ -576,10 +612,18 @@ static void *threadSensorFusion (void *arg){
 							
 							//printf("calibrationCounterEKF: %i\n", calibrationCounterEKF);
 							
-							printf("\nRekf[1:3]: %lf, %lf, %lf\n", Rekf[21], Rekf[28], Rekf[35]);
+							printf("\nRekf[1:3]: %f, %f, %f\n", Rekf[21], Rekf[28], Rekf[35]);
 							
 							printf("EKF Calibration finish\n");
 							calibrationCounterEKF++;
+							
+							printf("Initialize EKF xhat with current measurments for position and orientation");
+							xhat[0]=ymeas[0];
+							xhat[1]=ymeas[1];
+							xhat[2]=ymeas[2];
+							xhat[6]=ymeas[3];
+							xhat[7]=ymeas[4];
+							xhat[8]=ymeas[5];
 						}
 						// State Estimator
 						else{
@@ -626,14 +670,15 @@ static void *threadSensorFusion (void *arg){
 							stateDataBuffer[15]=xhat[15]; // disturbance x
 							stateDataBuffer[16]=xhat[16]; // disturbance y
 							stateDataBuffer[17]=xhat[17]; // disturbance z
+							stateDataBuffer[18]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							
-							
-							printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.8f %1.8f %1.8f %1.4f %1.4f %1.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14],xhat[15],xhat[16],xhat[17]);
-								
+							if(ekfPrint){
+								printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.8f %1.8f %1.8f %1.4f %1.4f %1.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14],xhat[15],xhat[16],xhat[17], uControl[0], uControl[1], uControl[2], uControl[3]);
+							}
 							//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f (EKF)\n", stateDataBuffer[0], stateDataBuffer[1], stateDataBuffer[2], stateDataBuffer[6], stateDataBuffer[7], stateDataBuffer[8]);	
 								
 							// Write to Controller process
-							//if (write(ptrPipe1->child[1], stateDataBuffer, sizeof(stateDataBuffer)) != sizeof(stateDataBuffer)) printf("pipe write error in Sensor to Controller\n");
+							if (write(ptrPipe1->child[1], stateDataBuffer, sizeof(stateDataBuffer)) != sizeof(stateDataBuffer)) printf("pipe write error in Sensor to Controller\n");
 							//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
 							
 							// Write to Communication process
@@ -658,7 +703,7 @@ static void *threadSensorFusion (void *arg){
 				tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
 				//printf("True sampling time [s] sensor fusion: %lf\n",tsTrue);
 				
-				// Get average sampling time
+				/// Get average sampling time
 				if(tsAverageCounter<50){
 					tsAverageAccum+=tsTrue;
 					tsAverageCounter++;
@@ -667,9 +712,11 @@ static void *threadSensorFusion (void *arg){
 					//printf("tsAverageAccum: %lf\n", tsAverageAccum);
 					tsAverageAccum/=50;
 					tsAverage=tsAverageAccum;
-					printf("tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+					if(timerPrint){
+						printf("EKF: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+					}
 					
-					// Activate EKF calibration after tsAverage has been within limit for a number of times. (allows orientation filter to converge)
+					/// Activate EKF calibration after tsAverage has been within limit for a number of times. (allows orientation filter to converge)
 					if(tsAverage>(tsSensorsFusion/NSEC_PER_SEC)*0.9 && tsAverage<(tsSensorsFusion/NSEC_PER_SEC)*1.1 && tsAverageReadyEKF<10){
 						tsAverageReadyEKF++;
 						printf("tsAverage within limit for EKF to start %i times\n",tsAverageReadyEKF);
@@ -682,7 +729,7 @@ static void *threadSensorFusion (void *arg){
 
 	
 				//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f (ymeas) TsTrue: %lf\n", ymeas[0], ymeas[1], ymeas[2], ymeas[3], ymeas[4], ymeas[5], tsTrue);
-				printf("euler (meas): %3.4f %3.4f %3.4f (ekf) %3.4f %3.4f %3.4f\n", euler[2]*(180/PI), euler[1]*(180/PI), euler[0]*(180/PI), stateDataBuffer[6]*(180/PI), stateDataBuffer[7]*(180/PI), stateDataBuffer[8]*(180/PI));
+				//printf("euler (meas): %3.4f %3.4f %3.4f (ekf) %3.4f %3.4f %3.4f\n", euler[2]*(180/PI), euler[1]*(180/PI), euler[0]*(180/PI), stateDataBuffer[6]*(180/PI), stateDataBuffer[7]*(180/PI), stateDataBuffer[8]*(180/PI));
 
 				//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f (EKF) TsTrue: %lf\n", stateDataBuffer[0], stateDataBuffer[1], stateDataBuffer[2], stateDataBuffer[6], stateDataBuffer[7], stateDataBuffer[8], tsTrue);	
 
@@ -710,8 +757,14 @@ static void *threadPWMControl(void *arg){
 	 printf("Error setup the I2C PWM connection\n");
 	}
 	
-	/// Setup timer variables for real time
+	/// Setup timer variables for real time performance check
 	struct timespec t_start,t_stop;
+	
+	/// Average sampling
+	int tsAverageCounter=0;
+	double tsAverageAccum=0;
+	double tsAverage=tsController;
+	int timerPrint=0;
 	
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -722,14 +775,19 @@ static void *threadPWMControl(void *arg){
 
 		// Initialize PWM board
 		pthread_mutex_lock(&mutexI2CBusy);
-			//enablePWM(fdPWM,500);
+			enablePWM(fdPWM,500);
 		pthread_mutex_unlock(&mutexI2CBusy);
 		printf("PWM initialization complete\n");
 		
 		// Run forever and set PWM when controller computes new values
 		while(1){
-			/// Time it and wait until next shot
+			/// Time it
 			clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+			
+			// Get keyboard input data
+			pthread_mutex_lock(&mutexKeyboardData);
+				timerPrint=(int)keyboardData[5];
+			pthread_mutex_unlock(&mutexKeyboardData);
 			
 			// Read data from controller process
 			if(read(ptrPipe->parent[0], pwmValueBuffer, sizeof(pwmValueBuffer)) == -1) printf("read error in sensor from controller\n");
@@ -749,6 +807,22 @@ static void *threadPWMControl(void *arg){
 			clock_gettime(CLOCK_MONOTONIC, &t_stop);
 			tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
 			//printf("Sampling time [s] PWM received: %lf\n",tsTrue);
+			
+			/// Get average sampling time
+				if(tsAverageCounter<50){
+					tsAverageAccum+=tsTrue;
+					tsAverageCounter++;
+				}
+				else{
+					tsAverageAccum/=50;
+					tsAverage=tsAverageAccum;
+					if(timerPrint){
+						printf("PWM: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+					}
+					tsAverageCounter=0;
+					tsAverageAccum=0;
+					
+				}
 			
 		}
 	}
@@ -1415,25 +1489,25 @@ void saveSettings(double *data, char* name, int size){
 	char string[20];
 	int finish=0;
 	
-	// Open file and prepare for write
-	fpRead=fopen("settings.txt", "r");
+	//// Open file and prepare for write
+	//fpRead=fopen("settings.txt", "r");
 
-	// Check to see that file has opened
-	if(fpRead==NULL){
-		printf("File could not be opened for write\n");
-	}
-	else{
-		// check that variable does not exist in settings file
-		while((fgets(string,20,fpRead)) != NULL && !finish){
+	//// Check to see that file has opened
+	//if(fpRead==NULL){
+		//printf("File could not be opened for write\n");
+	//}
+	//else{
+		//// check that variable does not exist in settings file
+		//while((fgets(string,20,fpRead)) != NULL && !finish){
 			
-			if(strstr(string,name) != NULL){
-				finish=1; // found variable
-			}
-		}
-	}
+			//if(strstr(string,name) != NULL){
+				//finish=1; // found variable
+			//}
+		//}
+	//}
 	
-	// Close file
-	fclose(fpRead);
+	//// Close file
+	//fclose(fpRead);
 	
 	// Open file and prepare for write
 	fpWrite=fopen("settings.txt", "a"); // "a" means append
