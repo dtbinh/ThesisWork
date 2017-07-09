@@ -260,7 +260,7 @@ return NULL;
  		
  		// Put new sensor data in to global data in controller.c such that controller thread can access and use it.
  		pthread_mutex_lock(&mutexSensorData);
- 			//memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/18);
+ 			memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/19);
  			inertias[0]=sensorDataBuffer[12];
  			inertias[1]=sensorDataBuffer[13];
  			inertias[2]=sensorDataBuffer[14];
@@ -368,13 +368,13 @@ void *threadController( void *arg ) {
 		pthread_mutex_unlock(&mutexConstraintsData);
 					
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
-		if(!sensorReady){		
+		if(sensorReady){		
 			// Check keyboard fly trigger is true	
 			if(triggerFly){
 				//printf("references-> ");
 				//printmat(refBuffer, 1, 12);
 				
-				printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 
+				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 
 				
 				/* Run controllers 
 				 * NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST) */
@@ -457,8 +457,8 @@ void *threadController( void *arg ) {
 static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist ) {
 	int i;
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
-	//memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 
+	memcpy(&posInputs->X0_all[0], &posX_all[posParams->n], sizeof(double)*posParams->n*posParams->T-posParams->n); 	
+	memcpy(&posInputs->U0_all[0], &posU_all[posParams->m], sizeof(double)*posParams->m*posParams->T-posParams->m); 
 	for ( i = posParams->n*posParams->T-posParams->n; i < posParams->n*posParams->T; i++ ) {
 		posInputs->X0_all[i] = 0;
 		}
@@ -492,8 +492,8 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
     //const double PWM0[4] = { 0,0,0,0 };
 	
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
-	//memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
+	memcpy(&attInputs->X0_all[0], &attX_all[attParams->n], sizeof(double)*attParams->n*attParams->T-attParams->n); 	
+	memcpy(&attInputs->U0_all[0], &attU_all[attParams->m], sizeof(double)*attParams->m*attParams->T-attParams->m); 	
 	for ( i = attParams->n*attParams->T-attParams->n; i < attParams->n*attParams->T; i++ ) {
 		attInputs->X0_all[i] = 0;
 		}
@@ -524,9 +524,9 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 		//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 		
-		//PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 4
-		//PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 3
-		//PWM[1] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 1
+		PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 4
+		PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 3
+		PWM[1] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 1
 		PWM[0] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 2
 	
 	//}
@@ -541,8 +541,8 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 	int i;
 
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	//memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
-	//memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
+	memcpy(&altInputs->X0_all[0], &altX_all[altParams->n], sizeof(double)*altParams->n*altParams->T-altParams->n); 	
+	memcpy(&altInputs->U0_all[0], &altU_all[altParams->m], sizeof(double)*altParams->m*altParams->T-altParams->m); 	
 	for ( i = altParams->n*altParams->T-altParams->n; i < altParams->n*altParams->T; i++ ) {
 		altInputs->X0_all[i] = 0;
 		}
