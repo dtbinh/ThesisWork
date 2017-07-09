@@ -574,6 +574,8 @@ static void *threadSensorFusion (void *arg){
 						//ymeas[4]=0;
 						//ymeas[5]=0;
 						
+						// Flip direction of rotation around y-axis to match model
+						ymeas[4]*=-1; // flip theta (y-axis)						
 						
 						//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f\n", ymeas[0], ymeas[1], ymeas[2], ymeas[3], ymeas[4], ymeas[5]);
 						
@@ -793,9 +795,15 @@ static void *threadPWMControl(void *arg){
 			if(read(ptrPipe->parent[0], pwmValueBuffer, sizeof(pwmValueBuffer)) == -1) printf("read error in sensor from controller\n");
 			//printf("Data received: %f\n", pwmValueBuffer[0]);
 			
+			// Adjust PWM for testing
+			//pwmValueBuffer[0]*=0.2;
+			//pwmValueBuffer[0]*=0.2;
+			//pwmValueBuffer[0]*=0.2;
+			//pwmValueBuffer[0]*=0.2;
+			
 			// Set PWM
 			pthread_mutex_lock(&mutexI2CBusy);
-				setPWM(fdPWM, pwmValueBuffer);
+				//setPWM(fdPWM, pwmValueBuffer);
 			pthread_mutex_unlock(&mutexI2CBusy);
 
 			// Copy control signal over to global memory for EKF to use during next state estimation
@@ -818,6 +826,7 @@ static void *threadPWMControl(void *arg){
 					tsAverage=tsAverageAccum;
 					if(timerPrint){
 						printf("PWM: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+						printf("PWM received: %3.4f %3.4f %3.4f %3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
 					}
 					tsAverageCounter=0;
 					tsAverageAccum=0;
@@ -1202,7 +1211,6 @@ void ekfCalibration(double *Rekf, double *ekf0, double *ekfCal, double *ymeas, i
 		ekfCal[counterCal*3+5]=ymeas[5];
 	}		
 }
-
 
 // S(q) matrix
 void Sq(double *Gm, double *q, double T){
