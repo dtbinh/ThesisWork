@@ -329,6 +329,7 @@ void *threadController( void *arg ) {
 	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3];
 	int triggerFly, sensorReady, pwmPrint;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
+	int i;
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -367,11 +368,13 @@ void *threadController( void *arg ) {
 		pthread_mutex_unlock(&mutexConstraintsData);
 					
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
-		if(sensorReady){
+		if(!sensorReady){		
 			// Check keyboard fly trigger is true	
 			if(triggerFly){
-				printf("references-> ");
-				printmat(refBuffer, 1, 12);
+				//printf("references-> ");
+				//printmat(refBuffer, 1, 12);
+				
+				printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 
 				
 				/* Run controllers 
 				 * NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST) */
@@ -385,6 +388,30 @@ void *threadController( void *arg ) {
 					//printf("MPC not running: key start = %i\n", triggerFly);
 				}
 				
+				// Update initial MPC conditions Xall state such that they are ready for when triggerFly is true again
+				for ( i = 0; i < posParams.T-1; i++ ) {
+					posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
+					posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
+					posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
+					posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
+					posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+					posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+				}
+				
+				for ( i = 0; i < altParams.T-1; i++ ) {
+					altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
+					altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
+				}
+				
+				for ( i = 0; i < attParams.T-1; i++ ) {
+					attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
+					attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
+					attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
+					attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
+					attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
+					attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
+				}
+								
 				memcpy(PWM, PWM0, sizeof(PWM));
 			}
 		
@@ -525,7 +552,7 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 	
 	altFmpc(altParams, altInputs, altX_all, altU_all);
 	
-	thrust = (altU_all[0]+dist[2])*mdl_param.mass;	// gravity compensation
+	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
 }
 
 /* interact with fast MPC POS */
@@ -1744,6 +1771,10 @@ void resdresp(double *rd, double *rp, int T, int n, int nz, double *resd,
     *res = sqrt((*resp)*(*resp)+(*resd)*(*resd));
     return;
 }
+
+
+
+
 
 
 
