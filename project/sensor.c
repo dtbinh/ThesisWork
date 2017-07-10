@@ -69,7 +69,7 @@ void Jfx_bias(double*, double*, double*, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[4]={1,1,1,1}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion
-static double keyboardData[7]= { 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print}
+static double keyboardData[9]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states}
 
 // Variables
 static int beaconConnected=0;
@@ -125,7 +125,7 @@ static void *threadPipeCommunicationToSensor(void *arg)
 {
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double keyboardDataBuffer[7];
+	double keyboardDataBuffer[9];
 	
 	// Loop forever reading/waiting for data
 	while(1){
@@ -410,17 +410,25 @@ static void *threadSensorFusion (void *arg){
 	double ekf0[6]={0,0,0,0,0,0}, ekfCal[6*CALIBRATION];
 	
 	// EKF variables
-	//double Pekf[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	double Pekf[441]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	double xhat[21]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g,0,0,0};
-	double uControl[4]={70,70,70,70};
-	double Qekf[21]={.001,.001,.001,	.1,.1,.1,		.001,.001,.001, 	.1,.1,.1,		.0000001,.0000001,.0000001,	.00001,.00001,.00001,	.0000001, .0000001, 0000001};
+	double Pekf[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	//double Pekf[441]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	double xhat[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g};
+	double uControl[4]={.1,.1,.1,.1};
+	double PekfInit[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	double xhatInit[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g};
+	double uControlInit[4]={.1,.1,.1,.1};
+	
+	
+	
+	double Qekf[18]={.00001,.00001,.00001,	.01,.01,.01,		.00001,.00001,.00001, 	.01,.01,.01,		.00000000001,.00000000001,.00000000001,	.000001,.000001,.000001};
 	double Rekf[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	//double ymeas[6]={1,1,1,1,1,1};
 	double ymeas[6];
 	
 	int timerPrint=0;
 	int ekfPrint=0;
+	int ekfReset=0;
+	int ekfPrint6States=0;
 			
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -480,6 +488,8 @@ static void *threadSensorFusion (void *arg){
 				pthread_mutex_lock(&mutexKeyboardData);
 					timerPrint=(int)keyboardData[5];
 					ekfPrint=(int)keyboardData[6];
+					ekfReset=(int)keyboardData[7];
+					ekfPrint6States=(int)keyboardData[8];
 				pthread_mutex_unlock(&mutexKeyboardData);
 				
 				// Convert sensor data to correct (filter) units:
@@ -557,7 +567,7 @@ static void *threadSensorFusion (void *arg){
 					
 					beaconConnected=1;
 							
-					if(beaconConnected==1 && tsAverageReadyEKF==10){
+					if(beaconConnected==1 && tsAverageReadyEKF==2){
 						// Check if raw position data is new or old
 						if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
 							posRawOldFlag=1;
@@ -579,7 +589,8 @@ static void *threadSensorFusion (void *arg){
 						//ymeas[5]=0; // psi (z-axis)
 						
 						// Flip direction of rotation around y-axis to match model
-						ymeas[4]*=-1; // flip theta (y-axis)						
+						ymeas[3]*=-1; // flip theta (x-axis)						
+						ymeas[4]*=-1; // flip theta (y-axis)	
 						
 						//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f\n", ymeas[0], ymeas[1], ymeas[2], ymeas[3], ymeas[4], ymeas[5]);
 						
@@ -633,56 +644,74 @@ static void *threadSensorFusion (void *arg){
 						}
 						// State Estimator
 						else{
-							// Run Extended Kalman Filter (state estimator) using position and orientation data
-							EKF_bias(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
+							// Run EKF as long as ekfReset keyboard input is false
+							if(!ekfReset){
+								// Run Extended Kalman Filter (state estimator) using position and orientation data
+								EKF(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
 
-							// Move over data to communication.c via pipe
-							//sensorDataBuffer[0]=gyrRaw[0];
-							//sensorDataBuffer[1]=gyrRaw[1];
-							//sensorDataBuffer[2]=gyrRaw[2];
-							//sensorDataBuffer[3]=accRaw[0];
-							//sensorDataBuffer[4]=accRaw[1];
-							//sensorDataBuffer[5]=accRaw[2];
-							//sensorDataBuffer[6]=magRaw[0];
-							//sensorDataBuffer[7]=magRaw[1];
-							//sensorDataBuffer[8]=magRaw[2];
-							//sensorDataBuffer[9]=euler[0];
-							//sensorDataBuffer[10]=euler[1];
-							//sensorDataBuffer[11]=euler[2];
-							//sensorDataBuffer[12]=q[0];
-							//sensorDataBuffer[13]=q[1];
-							//sensorDataBuffer[14]=q[2];
-							//sensorDataBuffer[15]=q[3];
-							//sensorDataBuffer[16]=posRaw[0];
-							//sensorDataBuffer[17]=posRaw[1];
-							//sensorDataBuffer[18]=posRaw[2];
+								// Move over data to communication.c via pipe
+								//sensorDataBuffer[0]=gyrRaw[0];
+								//sensorDataBuffer[1]=gyrRaw[1];
+								//sensorDataBuffer[2]=gyrRaw[2];
+								//sensorDataBuffer[3]=accRaw[0];
+								//sensorDataBuffer[4]=accRaw[1];
+								//sensorDataBuffer[5]=accRaw[2];
+								//sensorDataBuffer[6]=magRaw[0];
+								//sensorDataBuffer[7]=magRaw[1];
+								//sensorDataBuffer[8]=magRaw[2];
+								//sensorDataBuffer[9]=euler[0];
+								//sensorDataBuffer[10]=euler[1];
+								//sensorDataBuffer[11]=euler[2];
+								//sensorDataBuffer[12]=q[0];
+								//sensorDataBuffer[13]=q[1];
+								//sensorDataBuffer[14]=q[2];
+								//sensorDataBuffer[15]=q[3];
+								//sensorDataBuffer[16]=posRaw[0];
+								//sensorDataBuffer[17]=posRaw[1];
+								//sensorDataBuffer[18]=posRaw[2];
+									
+								stateDataBuffer[18]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+							}
+							// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
+							else{
+								memcpy(Pekf, PekfInit, sizeof(PekfInit));	
+								memcpy(xhat, xhatInit, sizeof(xhatInit));
+								memcpy(uControl, uControlInit, sizeof(uControlInit));
+								stateDataBuffer[18]=0; // set ready flag for MPC false during reset
+							}
+									
+								// Move over data to controller.c via pipe
+								stateDataBuffer[0]=xhat[0]; // position x
+								stateDataBuffer[1]=xhat[1]; // position y
+								stateDataBuffer[2]=xhat[2]; // position z
+								stateDataBuffer[3]=xhat[3]; // velocity x
+								stateDataBuffer[4]=xhat[4]; // velocity y
+								stateDataBuffer[5]=xhat[5]; // velocity z
+								stateDataBuffer[6]=xhat[6]; // phi (x-axis)
+								stateDataBuffer[7]=xhat[7]; // theta (y-axis)
+								stateDataBuffer[8]=xhat[8]; // psi (z-axis)
+								stateDataBuffer[9]=xhat[9]; // omega x
+								stateDataBuffer[10]=xhat[10]; // omega y
+								stateDataBuffer[11]=xhat[11]; // omega z
+								stateDataBuffer[12]=xhat[12]; // inertia x
+								stateDataBuffer[13]=xhat[13]; // inertia y
+								stateDataBuffer[14]=xhat[14]; // inertia z
+								stateDataBuffer[15]=xhat[15]; // disturbance x
+								stateDataBuffer[16]=xhat[16]; // disturbance y
+								stateDataBuffer[17]=xhat[17]; // disturbance z
+								//stateDataBuffer[18]=xhat[18]; // bias phi x
+								//stateDataBuffer[19]=xhat[19]; // bias theta y
+								//stateDataBuffer[20]=xhat[20]; // bias psi z
+								//stateDataBuffer[18]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+
 								
-							// Move over data to controller.c via pipe
-							stateDataBuffer[0]=xhat[0]; // position x
-							stateDataBuffer[1]=xhat[1]; // position y
-							stateDataBuffer[2]=xhat[2]; // position z
-							stateDataBuffer[3]=xhat[3]; // velocity x
-							stateDataBuffer[4]=xhat[4]; // velocity y
-							stateDataBuffer[5]=xhat[5]; // velocity z
-							stateDataBuffer[6]=xhat[6]; // phi (x-axis)
-							stateDataBuffer[7]=xhat[7]; // theta (y-axis)
-							stateDataBuffer[8]=xhat[8]; // psi (z-axis)
-							stateDataBuffer[9]=xhat[9]; // omega x
-							stateDataBuffer[10]=xhat[10]; // omega y
-							stateDataBuffer[11]=xhat[11]; // omega z
-							stateDataBuffer[12]=xhat[12]; // inertia x
-							stateDataBuffer[13]=xhat[13]; // inertia y
-							stateDataBuffer[14]=xhat[14]; // inertia z
-							stateDataBuffer[15]=xhat[15]; // disturbance x
-							stateDataBuffer[16]=xhat[16]; // disturbance y
-							stateDataBuffer[17]=xhat[17]; // disturbance z
-							//stateDataBuffer[18]=xhat[18]; // bias phi x
-							//stateDataBuffer[19]=xhat[19]; // bias theta y
-							//stateDataBuffer[20]=xhat[20]; // bias psi z
-							stateDataBuffer[18]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							
 							if(ekfPrint){
-								printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.8f %1.8f %1.8f %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14],xhat[15],xhat[16],xhat[17],xhat[18],xhat[19],xhat[20], uControl[0], uControl[1], uControl[2], uControl[3]);
+								printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.8f %1.8f %1.8f %1.4f %1.4f %1.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14],xhat[15],xhat[16],xhat[17], uControl[0], uControl[1], uControl[2], uControl[3]);
+							}
+							
+							if(ekfPrint6States){
+								printf("xhat: %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3]);
 							}
 							//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f (EKF)\n", stateDataBuffer[0], stateDataBuffer[1], stateDataBuffer[2], stateDataBuffer[6], stateDataBuffer[7], stateDataBuffer[8]);	
 								
@@ -726,7 +755,7 @@ static void *threadSensorFusion (void *arg){
 					}
 					
 					/// Activate EKF calibration after tsAverage has been within limit for a number of times. (allows orientation filter to converge)
-					if(tsAverage>(tsSensorsFusion/NSEC_PER_SEC)*0.9 && tsAverage<(tsSensorsFusion/NSEC_PER_SEC)*1.1 && tsAverageReadyEKF<10){
+					if(tsAverage>(tsSensorsFusion/NSEC_PER_SEC)*0.9 && tsAverage<(tsSensorsFusion/NSEC_PER_SEC)*1.1 && tsAverageReadyEKF<2){
 						tsAverageReadyEKF++;
 						printf("tsAverage within limit for EKF to start %i times\n",tsAverageReadyEKF);
 					}
@@ -826,7 +855,7 @@ static void *threadPWMControl(void *arg){
 			
 			// Set PWM
 			pthread_mutex_lock(&mutexI2CBusy);
-				//setPWM(fdPWM, pwmValueBuffer);
+				setPWM(fdPWM, pwmValueBuffer);
 			pthread_mutex_unlock(&mutexI2CBusy);
 			
 			/// Print true sampling rate
@@ -1526,7 +1555,7 @@ void saveSettings(double *data, char* name, int size){
 		if(!finish){	// if variable does not exist
 			fprintf(fpWrite, "%s\n", name); // append variable name
 			for(i=0;i<size;i++){
-				fprintf(fpWrite, "%f\n", data[i]); // append content
+				fprintf(fpWrite, "%2.15f\n", data[i]); // append content
 			}
 			fprintf(fpWrite, "\n"); // newline
 			printf("%s settings saved\n",name);

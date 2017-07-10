@@ -43,7 +43,7 @@ static void keyReading( void );
 // Static variables for threads
 static double controllerData[9]={0,0,0,0,0,0,0,0,0};
 static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static double keyboardData[7]={0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print}
+static double keyboardData[9]={0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states}
 
 static int socketReady=0;
 
@@ -437,8 +437,34 @@ void keyReading( void ) {
 			}
 		break;
 		
+		case 'w' :
+			if (keyboardData[8]==0){
+				keyboardData[8]=1;
+				printf("EKF print 6 states toggle: %i\n", (int)keyboardData[8]);
+			}
+			else if(keyboardData[8]==1){
+				keyboardData[8]=0;
+				printf("EKF print 6 states toggle: %i\n", (int)keyboardData[8]);
+			}
+		break;
+		
+		case 'n' :
+			if (keyboardData[7]==0){
+				keyboardData[7]=1;
+				printf("Reset EKF/MPC toggle: %i. Set EKF/MPC toggle back to restart\n", (int)keyboardData[7]);
+				if ( keyboardData[3] == 1 ) {
+					keyboardData[3] = 0;
+					printf("Set to STOP now!\n");
+				}
+			}
+			else if(keyboardData[7]==1){
+				keyboardData[7]=0;
+				printf("Reset EKF/MPC toggle: %i. EKF restarted. MPC ready when fly is commanded\n", (int)keyboardData[7]);
+			}
+		break;
+		
 		case 'h' :
-			printf(" [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n");
+			printf(" [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n");
 			break;
 				
 		default :

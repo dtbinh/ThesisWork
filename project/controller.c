@@ -45,7 +45,7 @@
 // Static variables for threads
 // static float globalSensorData[6]={0,0,0,0,0,0};
 // static float globalConstraintsData[6]={0,0,0,0,0,0};
-static double keyboardData[7]= { 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print}
+static double keyboardData[9]= { 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states}
 static double PWM[4] = { 0, 0, 0, 0 };
 //static int globalWatchdog=0;
 static const int ione = 1;
@@ -223,7 +223,7 @@ void *threadUpdateConstraintsSettingsReferences(void *arg)
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
 	structPipe *ptrPipe = arg; // to comm
 
-	double keyboardDataBuffer[7];
+	double keyboardDataBuffer[9];
 	
 	//// Loop forever streaming data
 	while(1){
@@ -233,8 +233,8 @@ void *threadUpdateConstraintsSettingsReferences(void *arg)
 		
 		// Put new constraints data in to global data in controller.c such that controller thread can access and use it.
 		pthread_mutex_lock(&mutexConstraintsData);
-			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/7); // {ref_x,ref_y,ref_z}
-			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)); // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print}
+			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/9); // {ref_x,ref_y,ref_z}
+			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)); // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, reset ekf/mpc}
 			//keyboardTrigger=(int)keyboardDataBuffer[3]; // switch [0=STOP, 1=FLY]
 		pthread_mutex_unlock(&mutexConstraintsData);
 		
@@ -313,7 +313,7 @@ void *threadController( void *arg ) {
 		.Qf = { 100000, 0, 0, 100 },
 		.R = { .1 },
 		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
-		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
+		.umin = { .15*-mdl_param.g+(0)/mdl_param.mass },
 		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
 	};
 	
@@ -383,33 +383,57 @@ void *threadController( void *arg ) {
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer);
 			}
 			// If false, force PWM outputs to zero.
-			else{
-				if(sensorReady){
-					//printf("MPC not running: key start = %i\n", triggerFly);
-				}
-				
+			else{	
+				//printf("triggerFly false\n");
+							
 				// Update initial MPC conditions Xall state such that they are ready for when triggerFly is true again
-				for ( i = 0; i < posParams.T-1; i++ ) {
-					posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
-					posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
-					posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
-					posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
-					posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
-					posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+				for ( i = 0; i < posParams.T; i++ ) {
+					//posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
+					//posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
+					//posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
+					//posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
+					//posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+					//posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+					
+					posX_all[i*posParams.n+0] = measBuffer[0];		// x
+					posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
+					posX_all[i*posParams.n+2] = measBuffer[1];		// y
+					posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
+					posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+					posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+					
+					posU_all[i*posParams.m+0] = 0;
+					posU_all[i*posParams.m+1] = 0;
 				}
 				
-				for ( i = 0; i < altParams.T-1; i++ ) {
-					altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
-					altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
+				for ( i = 0; i < altParams.T; i++ ) {
+					//altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
+					//altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
+					
+					altX_all[i*altParams.n+0] = measBuffer[2];		// z
+					altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
+					
+					altU_all[i*altParams.m+0] = 0;
 				}
 				
-				for ( i = 0; i < attParams.T-1; i++ ) {
-					attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
-					attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
-					attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
-					attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
-					attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
-					attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
+				for ( i = 0; i < attParams.T; i++ ) {
+					//attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
+					//attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
+					//attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
+					//attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
+					//attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
+					//attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
+					
+					attX_all[i*attParams.n+0] = measBuffer[6];		// phi
+					attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
+					attX_all[i*attParams.n+2] = measBuffer[7];		// theta
+					attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
+					attX_all[i*attParams.n+4] = measBuffer[8];		// psi
+					attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
+					
+					attU_all[i*attParams.m+0] = 0;
+					attU_all[i*attParams.m+1] = 0;
+					attU_all[i*attParams.m+2] = 0;
 				}
 								
 				memcpy(PWM, PWM0, sizeof(PWM));
@@ -423,6 +447,62 @@ void *threadController( void *arg ) {
 			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
 			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
 			//else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
+		}
+		// Reset MPC inital conditions to current measurments 
+		else{
+			//printf("sensorReady false\n");
+		
+			// Update initial MPC conditions Xall state such that they are ready for when triggerFly is true again
+			for ( i = 0; i < posParams.T; i++ ) {
+				//posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
+				//posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
+				//posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
+				//posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
+				//posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+				//posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+				
+				posX_all[i*posParams.n+0] = measBuffer[0];		// x
+				posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
+				posX_all[i*posParams.n+2] = measBuffer[1];		// y
+				posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
+				posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+				posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+				
+				posU_all[i*posParams.m+0] = 0;
+				posU_all[i*posParams.m+1] = 0;
+			}
+			
+			for ( i = 0; i < altParams.T; i++ ) {
+				//altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
+				//altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
+				
+				altX_all[i*altParams.n+0] = measBuffer[2];		// z
+				altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
+				
+				altU_all[i*altParams.m+0] = 0;
+			}
+			
+			for ( i = 0; i < attParams.T; i++ ) {
+				//attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
+				//attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
+				//attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
+				//attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
+				//attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
+				//attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
+				
+				attX_all[i*attParams.n+0] = measBuffer[6];		// phi
+				attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
+				attX_all[i*attParams.n+2] = measBuffer[7];		// theta
+				attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
+				attX_all[i*attParams.n+4] = measBuffer[8];		// psi
+				attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
+				
+				attU_all[i*attParams.m+0] = 0;
+				attU_all[i*attParams.m+1] = 0;
+				attU_all[i*attParams.m+2] = 0;
+			}
+							
+			memcpy(PWM, PWM0, sizeof(PWM));
 		}
 		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
 		//if (write(ptrPipe2->parent[1], posX_all, sizeof(posX_all)) != sizeof(posX_all)) printf("write error in controller to communication\n");
@@ -483,6 +563,25 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 		theta_dist = posU_all[0]-dist[0]/mdl_param.g;		//theta with disturbance compensation
 		phi_dist = posU_all[1]-dist[1]/mdl_param.g;			//phi with disturbance compensation
 	//pthread_mutex_unlock(&mutexSensorData);
+	
+	// Saturation of signal to prevent too aggressive references passed on to attitude controller
+	if(theta_dist>posParams->umax[0]){
+		theta_dist=posParams->umax[0];
+	}
+	else if(theta_dist<posParams->umin[0]){
+		theta_dist=posParams->umin[0];
+	}
+	
+	if(phi_dist>posParams->umax[1]){
+		phi_dist=posParams->umax[1];
+	}
+	else if(phi_dist<posParams->umin[1]){
+		phi_dist=posParams->umin[1];
+	}
+	
+	// Testing of angle control only
+	theta_dist=0;
+	phi_dist=0;
 }
 	
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
