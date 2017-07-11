@@ -72,7 +72,7 @@ void Jfx_no_inertia(double*, double*, double*, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[4]={1,1,1,1}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion
-static double keyboardData[9]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states}
+static double keyboardData[10]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration}
 
 // Variables
 static int beaconConnected=0;
@@ -425,10 +425,7 @@ static void *threadSensorFusion (void *arg){
 	//double ymeas[6]={1,1,1,1,1,1};
 	double ymeas[6];
 	
-	int timerPrint=0;
-	int ekfPrint=0;
-	int ekfReset=0;
-	int ekfPrint6States=0;
+	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0;
 			
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -722,12 +719,19 @@ static void *threadSensorFusion (void *arg){
 							// Write to Communication process
 							//if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
 							//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
+							
+							// Restart sensor fusion and EKF calibration
+							if(sensorCalibrationRestart){
+								calibrationCounter=0; // forces sensor fusion to restart calibration
+								calibrationCounterEKF=0; // forces ekf to restart calibration
+							}
 						}
 					}
 				else{
 					//printf("Beacon system not connected\n");
 				}
 				}
+				
 							
 				/// Calculate next shot
 				t.tv_nsec += (int)tsSensorsFusion;
@@ -1564,7 +1568,7 @@ void saveSettings(double *data, char* name, int size){
 		if(!finish){	// if variable does not exist
 			fprintf(fpWrite, "%s\n", name); // append variable name
 			for(i=0;i<size;i++){
-				fprintf(fpWrite, "%2.15f\n", data[i]); // append content
+				fprintf(fpWrite, "%3.18f\n", data[i]); // append content
 			}
 			fprintf(fpWrite, "\n"); // newline
 			printf("%s settings saved\n",name);

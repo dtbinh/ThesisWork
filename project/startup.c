@@ -132,7 +132,7 @@ void printmat(double *A, int m, int n){
     {
         for (i = 0; i < n; i++)
         {
-            printf("%6.4f\t", *(dptr+m*i+j));
+            printf("%3.18f\t", *(dptr+m*i+j));
         }
         printf("\n");
     }
