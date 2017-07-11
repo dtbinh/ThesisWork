@@ -61,10 +61,13 @@ void printBits(size_t const, void const * const);
 
 void EKF(double*, double*, double*, double*, double*, double*, double, int);
 void EKF_bias(double*, double*, double*, double*, double*, double*, double, int);
+void EKF_no_inertia(double*, double*, double*, double*, double*, double*, double, int);
 void fx(double*, double*, double*, double);
 void Jfx(double*, double*, double*, double);
 void fx_bias(double*, double*, double*, double);
 void Jfx_bias(double*, double*, double*, double);
+void fx_no_inertia(double*, double*, double*, double);
+void Jfx_no_inertia(double*, double*, double*, double);
 
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
@@ -404,23 +407,20 @@ static void *threadSensorFusion (void *arg){
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
 	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, Patt[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, q[4]={1,0,0,0}; // sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double tsTrue=tsSensorsFusion; // true sampling time measured using clock_gettime()
 	int calibrationCounter=0, calibrationCounterEKF=0, calibrationLoaded=0, posRawOldFlag=0, enableMPU9250Flag=-1, enableAK8963Flag=-1;
 	double ekf0[6]={0,0,0,0,0,0}, ekfCal[6*CALIBRATION];
 	
 	// EKF variables
-	double Pekf[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	//double Pekf[441]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	double xhat[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g};
+	double Pekf[225]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	double xhat[15]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,-par_g};
 	double uControl[4]={.1,.1,.1,.1};
-	double PekfInit[324]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
-	double xhatInit[18]={0,0,0,0,0,0,0,0,0,0,0,0,par_i_xx,par_i_yy,par_i_zz,0,0,-par_g};
+	double PekfInit[225]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	double xhatInit[15]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,-par_g};
 	double uControlInit[4]={.1,.1,.1,.1};
 	
-	
-	
-	double Qekf[18]={.00001,.00001,.00001,	.01,.01,.01,		.00001,.00001,.00001, 	.01,.01,.01,		.00000000001,.00000000001,.00000000001,	.000001,.000001,.000001};
+	double Qekf[15]={.00001,.00001,.00001,	.01,.01,.01,	.00001,.00001,.00001, 	.01,.01,.01,	.000001,.000001,.000001};
 	double Rekf[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	//double ymeas[6]={1,1,1,1,1,1};
 	double ymeas[6];
@@ -647,7 +647,7 @@ static void *threadSensorFusion (void *arg){
 							// Run EKF as long as ekfReset keyboard input is false
 							if(!ekfReset){
 								// Run Extended Kalman Filter (state estimator) using position and orientation data
-								EKF(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
+								EKF_no_inertia(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
 
 								// Move over data to communication.c via pipe
 								//sensorDataBuffer[0]=gyrRaw[0];
@@ -670,14 +670,14 @@ static void *threadSensorFusion (void *arg){
 								//sensorDataBuffer[17]=posRaw[1];
 								//sensorDataBuffer[18]=posRaw[2];
 									
-								stateDataBuffer[18]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+								stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							}
 							// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 							else{
 								memcpy(Pekf, PekfInit, sizeof(PekfInit));	
 								memcpy(xhat, xhatInit, sizeof(xhatInit));
 								memcpy(uControl, uControlInit, sizeof(uControlInit));
-								stateDataBuffer[18]=0; // set ready flag for MPC false during reset
+								stateDataBuffer[15]=0; // set ready flag for MPC false during reset
 							}
 									
 								// Move over data to controller.c via pipe
@@ -693,12 +693,12 @@ static void *threadSensorFusion (void *arg){
 								stateDataBuffer[9]=xhat[9]; // omega x
 								stateDataBuffer[10]=xhat[10]; // omega y
 								stateDataBuffer[11]=xhat[11]; // omega z
-								stateDataBuffer[12]=xhat[12]; // inertia x
-								stateDataBuffer[13]=xhat[13]; // inertia y
-								stateDataBuffer[14]=xhat[14]; // inertia z
-								stateDataBuffer[15]=xhat[15]; // disturbance x
-								stateDataBuffer[16]=xhat[16]; // disturbance y
-								stateDataBuffer[17]=xhat[17]; // disturbance z
+								//stateDataBuffer[12]=xhat[12]; // inertia x
+								//stateDataBuffer[13]=xhat[13]; // inertia y
+								//stateDataBuffer[14]=xhat[14]; // inertia z
+								stateDataBuffer[12]=xhat[12]; // disturbance x
+								stateDataBuffer[13]=xhat[13]; // disturbance y
+								stateDataBuffer[14]=xhat[14]; // disturbance z
 								//stateDataBuffer[18]=xhat[18]; // bias phi x
 								//stateDataBuffer[19]=xhat[19]; // bias theta y
 								//stateDataBuffer[20]=xhat[20]; // bias psi z
@@ -707,7 +707,7 @@ static void *threadSensorFusion (void *arg){
 								
 							
 							if(ekfPrint){
-								printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.8f %1.8f %1.8f %1.4f %1.4f %1.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14],xhat[15],xhat[16],xhat[17], uControl[0], uControl[1], uControl[2], uControl[3]);
+								printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.4f %1.4f %1.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14], uControl[0], uControl[1], uControl[2], uControl[3]);
 							}
 							
 							if(ekfPrint6States){
@@ -803,6 +803,7 @@ static void *threadPWMControl(void *arg){
 	double tsAverageAccum=0;
 	double tsAverage=tsController;
 	int timerPrint=0;
+	int killPWM=0; // switch [0=STOP, 1=FLY]
 	
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -821,16 +822,24 @@ static void *threadPWMControl(void *arg){
 		while(1){
 			/// Time it
 			clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
-			
+
 			// Get keyboard input data
 			pthread_mutex_lock(&mutexKeyboardData);
 				timerPrint=(int)keyboardData[5];
+				killPWM=(int)keyboardData[3];
 			pthread_mutex_unlock(&mutexKeyboardData);
 			
 			// Read data from controller process
 			if(read(ptrPipe->parent[0], pwmValueBuffer, sizeof(pwmValueBuffer)) == -1) printf("read error in sensor from controller\n");
 			//printf("Data received: %f\n", pwmValueBuffer[0]);
 			
+			// killPWM is linked to keyboard start flying switch. Forces PWM to zero if stop signal is given
+			if(killPWM){
+				pwmValueBuffer[0]=0;
+				pwmValueBuffer[1]=0;
+				pwmValueBuffer[2]=0;
+				pwmValueBuffer[3]=0;
+			}
 			
 			// Saturation pwm 0-100%
 			for(int i=0;i<4;i++){
@@ -840,8 +849,8 @@ static void *threadPWMControl(void *arg){
 				else if(pwmValueBuffer[i]<0){
 					pwmValueBuffer[i]=0;
 				}
-			}	
-
+			}
+			
 			// Copy control signal over to global memory for EKF to use during next state estimation
 			pthread_mutex_lock(&mutexControlData);	
 				memcpy(controlData, pwmValueBuffer, sizeof(pwmValueBuffer));		
@@ -1586,7 +1595,7 @@ void printBits(size_t const size, void const * const ptr){
     puts("");
 }
 
-// State Observer - Extended Kalman Filter
+// State Observer - Extended Kalman Filter (18 states)
 void EKF(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts, int flag){
 	// Local variables
 	double xhat_pred[18]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -1704,7 +1713,7 @@ void EKF(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double
 	//printmat(Phat,18,18);
 }
 
-// State Observer - Extended Kalman Filter with bias estimation for angles (eulers)
+// State Observer - Extended Kalman Filter with bias estimation for angles (eulers) (21 states)
 void EKF_bias(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts, int flag){
 	// Local variables
 	double xhat_pred[21]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -1829,6 +1838,117 @@ void EKF_bias(double *Phat, double *xhat, double *u, double *ymeas, double *Q, d
 	//printmat(Phat,21,21);
 }
 
+// State Observer - Extended Kalman Filter without inertia estimation (15 states)
+void EKF_no_inertia(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts, int flag){
+	// Local variables
+	double xhat_pred[15]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	double C[90]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	double eye15[225]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
+	double S_inv[36];
+	double A[225], S[36], C_temp[90], Jfx_temp[225], Phat_pred[225], K_temp[90], K[90], V[6], xhat_temp[6], x_temp[15], fone=1, fzero=0;
+	int n=15, k=15, m=15, ione=1;
+	
+	// Prediction step
+	fx_no_inertia(xhat_pred, xhat, u, Ts); // state 
+	Jfx_no_inertia(xhat, A, u, Ts); // update Jacobian A matrix
+	
+	// A*Phat_prev*A' + Q
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A,&m,Phat,&k,&fzero,Jfx_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Jfx_temp,&m,A,&n,&fzero,Phat_pred,&m);
+	Phat_pred[0]+=Q[0];
+	Phat_pred[16]+=Q[1];
+	Phat_pred[32]+=Q[2];
+	Phat_pred[48]+=Q[3];
+	Phat_pred[64]+=Q[4];
+	Phat_pred[80]+=Q[5];
+	Phat_pred[96]+=Q[6];
+	Phat_pred[112]+=Q[7];
+	Phat_pred[128]+=Q[8];
+	Phat_pred[144]+=Q[9];
+	Phat_pred[160]+=Q[10];
+	Phat_pred[176]+=Q[11];
+	Phat_pred[192]+=Q[12];
+	Phat_pred[208]+=Q[13];
+	Phat_pred[224]+=Q[14];
+
+	// Update step
+	// S=C*P*C'+R; Innovation covariance
+	n=15, k=15, m=6;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,Phat_pred,&k,&fzero,C_temp,&m);
+	n=6, k=15, m=6;
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,C_temp,&m,C,&n,&fzero,S,&m);
+	S[0]+=R[0];
+	S[7]+=R[1];
+	S[14]+=R[2];
+	S[21]+=R[3];
+	S[28]+=R[4];
+	S[35]+=R[5];
+
+	// K=P*C'*S^-1; Kalman gain
+	n=6, k=15, m=15; // 15x15 * 15x6 = 15x6
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Phat_pred,&m,C,&n,&fzero,K_temp,&m);
+	mInverse6x6(S,S_inv);
+	n=6, k=6, m=15; // 15x6 * 6*6 = 15x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
+
+	// V=y_meas-C*x_hat; Innovation
+	n=15, m=6; 
+	F77_CALL(dgemv)("n",&m,&n,&fone,C,&m,xhat_pred,&ione,&fzero,xhat_temp,&ione);
+	// Check if ymeas is new data
+	if(flag==1){
+		V[0]=0; // Old data, kill innovation
+		V[1]=0; // Old data, kill innovation
+		V[2]=0; // Old data, kill innovation
+		V[3]=ymeas[3]-xhat_temp[3];
+		V[4]=ymeas[4]-xhat_temp[4];
+		V[5]=ymeas[5]-xhat_temp[5];
+		//printf("Old data\n");
+	}
+	else{
+		V[0]=ymeas[0]-xhat_temp[0];
+		V[1]=ymeas[1]-xhat_temp[1];
+		V[2]=ymeas[2]-xhat_temp[2];
+		V[3]=ymeas[3]-xhat_temp[3];
+		V[4]=ymeas[4]-xhat_temp[4];
+		V[5]=ymeas[5]-xhat_temp[5];
+	}
+
+	// x=x+K*v; State update
+
+	n=6, m=15;
+	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
+	xhat[0]=xhat_pred[0]+x_temp[0];
+	xhat[1]=xhat_pred[1]+x_temp[1];
+	xhat[2]=xhat_pred[2]+x_temp[2];
+	xhat[3]=xhat_pred[3]+x_temp[3];
+	xhat[4]=xhat_pred[4]+x_temp[4];
+	xhat[5]=xhat_pred[5]+x_temp[5];
+	xhat[6]=xhat_pred[6]+x_temp[6];
+	xhat[7]=xhat_pred[7]+x_temp[7];
+	xhat[8]=xhat_pred[8]+x_temp[8];
+	xhat[9]=xhat_pred[9]+x_temp[9];
+	xhat[10]=xhat_pred[10]+x_temp[10];
+	xhat[11]=xhat_pred[11]+x_temp[11];
+	xhat[12]=xhat_pred[12]+x_temp[12];
+	xhat[13]=xhat_pred[13]+x_temp[13];
+	xhat[14]=xhat_pred[14]+x_temp[14];
+	
+	//printf("\nxhat\n");
+	//printmat(xhat,15,1);
+	
+	// P=P-K*S*K'; Covariance update
+	n=6, k=6, m=15; // 15x6 * 6x6 = 15x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m); // K*S
+	n=15, k=6, m=15; // 15x6 * 6x15 = 15x15
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,Phat,&m); // K_temp*K'
+	n=15, k=15, m=15; // 15x15 * 15x15 = 15x15
+	fzero=-1;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,eye15,&m,Phat_pred,&k,&fzero,Phat,&m); // P=P-K*S*K'
+	
+	//printf("\nPhat\n");
+	//printmat(Phat,15,15);
+}
+
 // Nonlinear Model (18x1)
 void fx(double *xhat, double *xhat_prev, double *u, double Ts){
 	xhat[0]=xhat_prev[0]+Ts*xhat_prev[3]; // position x
@@ -1922,4 +2042,33 @@ void Jfx_bias(double *xhat, double *A, double *u, double Ts){
     A[19]=0; 	A[40]=0; 	A[61]=0;	A[82]=0;                		A[103]=0;                		A[124]=0;               		A[145]=0;                                                                                                      														A[166]=0;                                                                                                           				A[187]=0;                                         																													A[208]=0;                           	              	A[229]=0;                                         		A[250]=0;                                                 A[271]=0;                                                                                           										A[292]=0;                                                                                   						                  		A[313]=0;  																																							A[334]=0;  	A[355]=0;  	A[376]=0;	A[397]=0;  	A[418]=1;  	A[439]=0;
     A[20]=0; 	A[41]=0; 	A[62]=0;	A[83]=0;                		A[104]=0;                		A[125]=0;               		A[146]=0;                                                                                                      														A[167]=0;                                                                                                           				A[188]=0;                                         																													A[209]=0;                               	          	A[230]=0;                                         		A[251]=0;                                                 A[272]=0;                                                                                           										A[293]=0;                                                                                                     								A[314]=0;  																																							A[335]=0;	A[356]=0;  	A[377]=0;	A[398]=0;  	A[419]=0;  	A[440]=1;
 }
+
+// Nonlinear Model without inertia estimation (15x1)
+void fx_no_inertia(double *xhat, double *xhat_prev, double *u, double Ts){
+	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
+	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
+	xhat[2]=xhat_prev[2] + Ts*xhat_prev[5];
+	xhat[3]=xhat_prev[3] + Ts*(xhat_prev[12] - (par_k_d*xhat_prev[3])/par_mass + (par_c_m*par_k*(sin(xhat_prev[6])*sin(xhat_prev[8]) + cos(xhat_prev[6])*cos(xhat_prev[8])*sin(xhat_prev[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass - xhat_prev[13] + (par_c_m*par_k*(cos(xhat_prev[8])*sin(xhat_prev[6]) - cos(xhat_prev[6])*sin(xhat_prev[7])*sin(xhat_prev[8]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[14] - (par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(xhat_prev[6])*cos(xhat_prev[7])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[6]=xhat_prev[6] + Ts*(xhat_prev[9] + xhat_prev[11]*cos(xhat_prev[6])*tan(xhat_prev[7]) + xhat_prev[10]*sin(xhat_prev[6])*tan(xhat_prev[7]));
+	xhat[7]=xhat_prev[7] + Ts*(xhat_prev[10]*cos(xhat_prev[6]) - xhat_prev[11]*sin(xhat_prev[6]));
+	xhat[8]=xhat_prev[8] + Ts*((xhat_prev[11]*cos(xhat_prev[6]))/cos(xhat_prev[7]) + (xhat_prev[10]*sin(xhat_prev[6]))/cos(xhat_prev[7]));
+	xhat[9]=xhat_prev[9] - Ts*((xhat_prev[10]*xhat_prev[11]*(par_i_yy - par_i_zz))/par_i_xx - (par_L*par_c_m*par_k*(pow(u[0],2) - pow(u[2],2)))/par_i_xx);
+	xhat[10]=xhat_prev[10] + Ts*((xhat_prev[9]*xhat_prev[11]*(par_i_xx - par_i_zz))/par_i_yy + (par_L*par_c_m*par_k*(pow(u[1],2) - pow(u[3],2)))/par_i_yy);
+	xhat[11]=xhat_prev[11] + Ts*((par_b*par_c_m*(pow(u[0],2) - pow(u[1],2) + pow(u[2],2) - pow(u[3],2)))/par_i_zz - (xhat_prev[9]*xhat_prev[10]*(par_i_xx - par_i_yy))/par_i_zz);
+	xhat[12]=xhat_prev[12];
+	xhat[13]=xhat_prev[13];
+	xhat[14]=xhat_prev[14];
+}
+
+// Jacobian of model without inertia estimation (15x15)
+void Jfx_no_inertia(double *xhat, double *A, double *u, double Ts){
+	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=1;A[17]=0;A[18]=0;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=0;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=1;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=Ts;A[46]=0;A[47]=0;A[48]=1 - (Ts*par_k_d)/par_mass;A[49]=0;A[50]=0;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=0;A[64]=1 - (Ts*par_k_d)/par_mass;A[65]=0;A[66]=0;A[67]=0;A[68]=0;A[69]=0;A[70]=0;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1 - (Ts*par_k_d)/par_mass;A[81]=0;A[82]=0;A[83]=0;A[84]=0;A[85]=0;A[86]=0;A[87]=0;A[88]=0;A[89]=0;A[90]=0;A[91]=0;A[92]=0;A[93]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(xhat[8]) - cos(xhat[8])*sin(xhat[6])*sin(xhat[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[94]=-(Ts*par_c_m*par_k*(cos(xhat[6])*cos(xhat[8]) + sin(xhat[6])*sin(xhat[7])*sin(xhat[8]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[95]=-(Ts*par_c_m*par_k*cos(xhat[7])*sin(xhat[6])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[96]=Ts*(xhat[10]*cos(xhat[6])*tan(xhat[7]) - xhat[11]*sin(xhat[6])*tan(xhat[7])) + 1;A[97]=-Ts*(xhat[11]*cos(xhat[6]) + xhat[10]*sin(xhat[6]));A[98]=Ts*((xhat[10]*cos(xhat[6]))/cos(xhat[7]) - (xhat[11]*sin(xhat[6]))/cos(xhat[7]));A[99]=0;A[100]=0;A[101]=0;A[102]=0;A[103]=0;A[104]=0;A[105]=0;A[106]=0;A[107]=0;A[108]=(Ts*par_c_m*par_k*cos(xhat[6])*cos(xhat[7])*cos(xhat[8])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[109]=(Ts*par_c_m*par_k*cos(xhat[6])*cos(xhat[7])*sin(xhat[8])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[110]=-(Ts*par_c_m*par_k*cos(xhat[6])*sin(xhat[7])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[111]=Ts*(xhat[11]*cos(xhat[6])*(pow(tan(xhat[7]),2) + 1) + xhat[10]*sin(xhat[6])*(pow(tan(xhat[7]),2) + 1));A[112]=1;A[113]=Ts*((xhat[11]*cos(xhat[6])*sin(xhat[7]))/pow(cos(xhat[7]),2) + (xhat[10]*sin(xhat[6])*sin(xhat[7]))/pow(cos(xhat[7]),2));A[114]=0;A[115]=0;A[116]=0;A[117]=0;A[118]=0;A[119]=0;A[120]=0;A[121]=0;A[122]=0;A[123]=(Ts*par_c_m*par_k*(cos(xhat[8])*sin(xhat[6]) - cos(xhat[6])*sin(xhat[7])*sin(xhat[8]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[124]=(Ts*par_c_m*par_k*(sin(xhat[6])*sin(xhat[8]) + cos(xhat[6])*cos(xhat[8])*sin(xhat[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[125]=0;A[126]=0;A[127]=0;A[128]=1;A[129]=0;A[130]=0;A[131]=0;A[132]=0;A[133]=0;A[134]=0;A[135]=0;A[136]=0;A[137]=0;A[138]=0;A[139]=0;A[140]=0;A[141]=Ts;A[142]=0;A[143]=0;A[144]=1;A[145]=(Ts*xhat[11]*(par_i_xx - par_i_zz))/par_i_yy;A[146]=-(Ts*xhat[10]*(par_i_xx - par_i_yy))/par_i_zz;A[147]=0;A[148]=0;A[149]=0;A[150]=0;A[151]=0;A[152]=0;A[153]=0;A[154]=0;A[155]=0;A[156]=Ts*sin(xhat[6])*tan(xhat[7]);A[157]=Ts*cos(xhat[6]);A[158]=(Ts*sin(xhat[6]))/cos(xhat[7]);A[159]=-(Ts*xhat[11]*(par_i_yy - par_i_zz))/par_i_xx;A[160]=1;A[161]=-(Ts*xhat[9]*(par_i_xx - par_i_yy))/par_i_zz;A[162]=0;A[163]=0;A[164]=0;A[165]=0;A[166]=0;A[167]=0;A[168]=0;A[169]=0;A[170]=0;A[171]=Ts*cos(xhat[6])*tan(xhat[7]);A[172]=-Ts*sin(xhat[6]);A[173]=(Ts*cos(xhat[6]))/cos(xhat[7]);A[174]=-(Ts*xhat[10]*(par_i_yy - par_i_zz))/par_i_xx;A[175]=(Ts*xhat[9]*(par_i_xx - par_i_zz))/par_i_yy;A[176]=1;A[177]=0;A[178]=0;A[179]=0;A[180]=0;A[181]=0;A[182]=0;A[183]=Ts;A[184]=0;A[185]=0;A[186]=0;A[187]=0;A[188]=0;A[189]=0;A[190]=0;A[191]=0;A[192]=1;A[193]=0;A[194]=0;A[195]=0;A[196]=0;A[197]=0;A[198]=0;A[199]=Ts;A[200]=0;A[201]=0;A[202]=0;A[203]=0;A[204]=0;A[205]=0;A[206]=0;A[207]=0;A[208]=1;A[209]=0;A[210]=0;A[211]=0;A[212]=0;A[213]=0;A[214]=0;A[215]=Ts;A[216]=0;A[217]=0;A[218]=0;A[219]=0;A[220]=0;A[221]=0;A[222]=0;A[223]=0;A[224]=1;
+}
+
+
+
+
+
 
