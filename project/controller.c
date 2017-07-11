@@ -45,7 +45,7 @@
 // Static variables for threads
 // static float globalSensorData[6]={0,0,0,0,0,0};
 // static float globalConstraintsData[6]={0,0,0,0,0,0};
-static double keyboardData[9]= { 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states}
+static double keyboardData[11]= { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart sensor.c calibration}
 static double PWM[4] = { 0, 0, 0, 0 };
 //static int globalWatchdog=0;
 static const int ione = 1;
@@ -223,7 +223,7 @@ void *threadUpdateConstraintsSettingsReferences(void *arg)
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
 	structPipe *ptrPipe = arg; // to comm
 
-	double keyboardDataBuffer[9];
+	double keyboardDataBuffer[11];
 	
 	//// Loop forever streaming data
 	while(1){
@@ -326,8 +326,8 @@ void *threadController( void *arg ) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
 
 	// Local variables to store global data in to using mutexes
-	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3];
-	int triggerFly, sensorReady, pwmPrint;
+	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3], p1[3], p2[3], distance=-1, step_size=0.2, alpha=-1;
+	int triggerFly, sensorReady, pwmPrint, keyRampRef = 1;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	int i;
 	
@@ -366,6 +366,20 @@ void *threadController( void *arg ) {
 			triggerFly=(int)keyboardData[3];
 			pwmPrint=(int)keyboardData[4];
 		pthread_mutex_unlock(&mutexConstraintsData);
+		
+		// To ramp the references in x, y and z
+		if ( keyRampRef == 1 ) {
+			memcpy(p1, measBuffer, sizeof(measBuffer)*3/12);
+			memcpy(p2, refBuffer, sizeof(refBuffer)*3/12);
+			
+			distance = sqrt( pow(p2[0]-p1[0],2) + pow(p2[1]-p1[1],2) + pow(p2[2]-p1[2],2) );
+			
+			if ( distance >= step_size) {
+				refBuffer[0] = p1[0] + ((p2[0]-p1[0])*alpha);
+				refBuffer[1] = p1[1] + ((p2[1]-p1[1])*alpha);
+				refBuffer[2] = p1[2] + ((p2[2]-p1[2])*alpha);
+			}
+		}
 					
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
 		if(sensorReady){		
