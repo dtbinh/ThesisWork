@@ -65,9 +65,9 @@ double *altX_all, *altU_all;
 double thrust = 0.0;
 double phi_dist = 0.0;
 double theta_dist = 0.0;
-double tau_x = 0.0;
-double tau_y = 0.0;
-double tau_z = 0.0;
+//double tau_x = 0.0; // attU_all[0] is used!
+//double tau_y = 0.0; // attU_all[1] is used!
+//double tau_z = 0.0; // attU_all[2] is used!
 
 struct Parameters mdl_param = {
 	.g = 9.81,
@@ -125,10 +125,13 @@ static void *threadUpdateConstraintsSettingsReferences(void*);
 
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
 static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref);
-static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *meas, double *ref, double *dist);
+static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
+static void initMPC( struct PosParams *, double *posX_all, double *posU_all, struct AltParams *, double *altX_all, double *altU_all, struct AttParams *, double *attX_all, double *attU_all, double *meas );
+static void getAltitudeInputConstraints( double *dist , struct AltParams *altParams, double *attU_all );
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
 static void altFmpc( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
+
 
 // FMPC functions
 static void fmpcsolve(double *A, double *B, double *At, double *Bt, double *eyen, 
@@ -160,7 +163,6 @@ static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
 /******************************************************************/
 
 // Function to start the sensor process threads
-
  void startController(void *arg1, void *arg2){
  	// Create pipe array
  	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 }; //arg1 to sensor, arg2 to comm
@@ -208,7 +210,6 @@ static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
  }
 
 
-
 /******************************************************************/
 /*****************************THREADS******************************/
 /******************************************************************/
@@ -251,7 +252,7 @@ return NULL;
  	// Get pipe and define local variables
  	structPipe *ptrPipe = arg;
  	
- 	double sensorDataBuffer[19] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // {x,y,z,xdot,ydot,zdot,phi,theta,psi,omegax,omegay,omegaz,ixx,iyy,izz,dx,dy,dz,ekfReady[0=not,1=mpc can start]}
+ 	double sensorDataBuffer[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // {x,y,z,xdot,ydot,zdot,phi,theta,psi,omegax,omegay,omegaz,dx,dy,dz,ekfReady[0=not,1=mpc can start]}
  	
  	while(1){
  		// Read data from sensor process. Data should always be available for controller.
@@ -260,14 +261,14 @@ return NULL;
  		
  		// Put new sensor data in to global data in controller.c such that controller thread can access and use it.
  		pthread_mutex_lock(&mutexSensorData);
- 			memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/19);
- 			inertias[0]=sensorDataBuffer[12];
- 			inertias[1]=sensorDataBuffer[13];
- 			inertias[2]=sensorDataBuffer[14];
- 			disturbances[0]=sensorDataBuffer[15];
- 			disturbances[1]=sensorDataBuffer[16];
- 			disturbances[2]=sensorDataBuffer[17];
- 			sensorInitReady=(int)sensorDataBuffer[18]; // ekfReady[0=not, 1=mpc can start]
+ 			memcpy(measurements, sensorDataBuffer, sizeof(sensorDataBuffer)*12/16);
+ 			//inertias[0]=sensorDataBuffer[12];
+ 			//inertias[1]=sensorDataBuffer[13];
+ 			//inertias[2]=sensorDataBuffer[14];
+ 			disturbances[0]=sensorDataBuffer[12];
+ 			disturbances[1]=sensorDataBuffer[13];
+ 			disturbances[2]=sensorDataBuffer[14];
+ 			sensorInitReady=(int)sensorDataBuffer[15]; // ekfReady[0=not, 1=mpc can start]
  		pthread_mutex_unlock(&mutexSensorData);
  	}
  	
@@ -277,7 +278,7 @@ return NULL;
 
 /* Thread - Controller algorithm for all three (with pipe to sensor (PWM) and communication process) */
 void *threadController( void *arg ) {
-	// Initialize local structures
+	// Initialize local structures and variables for control
 	struct PosParams posParams = { 
 		.A = { 1,0,0,0,0,0,		PosTsSec,1,0,0,PosTsSec,0,		0,0,1,0,0,0,		0,0,PosTsSec,1,0,PosTsSec,		0,0,0,0,1,0,		0,0,0,0,0,1 },
 		.B = { 0,mdl_param.g*PosTsSec,0,0,0,0,		0,0,0,-mdl_param.g*PosTsSec,0,0 },
@@ -313,7 +314,7 @@ void *threadController( void *arg ) {
 		.Qf = { 100000, 0, 0, 100 },
 		.R = { .1 },
 		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
-		.umin = { .15*-mdl_param.g+(0)/mdl_param.mass },
+		.umin = { -mdl_param.g },
 		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
 	};
 	
@@ -329,7 +330,7 @@ void *threadController( void *arg ) {
 	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3], p1[3], p2[3], distance=-1, step_size=0.2, alpha=-1;
 	int triggerFly, sensorReady, pwmPrint, keyRampRef = 1;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
-	int i;
+	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -390,66 +391,26 @@ void *threadController( void *arg ) {
 				
 				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 
 				
-				/* Run controllers 
-				 * NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST) */
+				// Run controllers
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAlt( &altParams, &altInputs, altX_all, altU_all, measBuffer, refBuffer, distBuffer);
+				//printf("controllerPos done!\n");
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer);
+				//printf("controllerAtt done!\n");
+				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
+				//printf("controllerAlt done!\n");
+				
+				// PWM signals according to calculated total thrust and torques	attU_all[0:2]	
+				PWM[2] = sqrt( (  2*mdl_param.b*attU_all[0] + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*attU_all[2] )/Lbc_mk4 ); // Motor 4
+				PWM[3] = sqrt( (  2*mdl_param.b*attU_all[1] + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*attU_all[2] )/Lbc_mk4 ); // Motor 3
+				PWM[1] = sqrt( ( -2*mdl_param.b*attU_all[0] + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*attU_all[2] )/Lbc_mk4 ); // Motor 1
+				PWM[0] = sqrt( ( -2*mdl_param.b*attU_all[1] + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*attU_all[2] )/Lbc_mk4 ); // Motor 2
 			}
 			// If false, force PWM outputs to zero.
 			else{	
-				//printf("triggerFly false\n");
-							
-				// Update initial MPC conditions Xall state such that they are ready for when triggerFly is true again
-				for ( i = 0; i < posParams.T; i++ ) {
-					//posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
-					//posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
-					//posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
-					//posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
-					//posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
-					//posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
-					
-					posX_all[i*posParams.n+0] = measBuffer[0];		// x
-					posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
-					posX_all[i*posParams.n+2] = measBuffer[1];		// y
-					posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
-					posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
-					posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
-					
-					posU_all[i*posParams.m+0] = 0;
-					posU_all[i*posParams.m+1] = 0;
-				}
+				//printf("triggerFly false\n");		
 				
-				for ( i = 0; i < altParams.T; i++ ) {
-					//altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
-					//altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
-					
-					altX_all[i*altParams.n+0] = measBuffer[2];		// z
-					altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
-					
-					altU_all[i*altParams.m+0] = 0;
-				}
-				
-				for ( i = 0; i < attParams.T; i++ ) {
-					//attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
-					//attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
-					//attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
-					//attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
-					//attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
-					//attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
-					
-					attX_all[i*attParams.n+0] = measBuffer[6];		// phi
-					attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
-					attX_all[i*attParams.n+2] = measBuffer[7];		// theta
-					attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
-					attX_all[i*attParams.n+4] = measBuffer[8];		// psi
-					attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
-					
-					attU_all[i*attParams.m+0] = 0;
-					attU_all[i*attParams.m+1] = 0;
-					attU_all[i*attParams.m+2] = 0;
-				}
-								
+				// Re-initialize MPC states with current measurements such that it is ready for next flight
+				initMPC( &posParams, posX_all, posU_all, &altParams, altX_all, altU_all, &attParams, attX_all, attU_all, measBuffer );
 				memcpy(PWM, PWM0, sizeof(PWM));
 			}
 		
@@ -465,57 +426,9 @@ void *threadController( void *arg ) {
 		// Reset MPC inital conditions to current measurments 
 		else{
 			//printf("sensorReady false\n");
-		
-			// Update initial MPC conditions Xall state such that they are ready for when triggerFly is true again
-			for ( i = 0; i < posParams.T; i++ ) {
-				//posInputs.X0_all[i*posParams.n+0] = measBuffer[0];		// x
-				//posInputs.X0_all[i*posParams.n+1] = measBuffer[3];		// xdot
-				//posInputs.X0_all[i*posParams.n+2] = measBuffer[1];		// y
-				//posInputs.X0_all[i*posParams.n+3] = measBuffer[4];		// ydot
-				//posInputs.X0_all[i*posParams.n+4] = measBuffer[0];		// x_formation
-				//posInputs.X0_all[i*posParams.n+5] = measBuffer[1];		// y_formation
-				
-				posX_all[i*posParams.n+0] = measBuffer[0];		// x
-				posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
-				posX_all[i*posParams.n+2] = measBuffer[1];		// y
-				posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
-				posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
-				posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
-				
-				posU_all[i*posParams.m+0] = 0;
-				posU_all[i*posParams.m+1] = 0;
-			}
-			
-			for ( i = 0; i < altParams.T; i++ ) {
-				//altInputs.X0_all[i*altParams.n+0] = measBuffer[2];		// z
-				//altInputs.X0_all[i*altParams.n+1] = measBuffer[5];		// zdot
-				
-				altX_all[i*altParams.n+0] = measBuffer[2];		// z
-				altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
-				
-				altU_all[i*altParams.m+0] = 0;
-			}
-			
-			for ( i = 0; i < attParams.T; i++ ) {
-				//attInputs.X0_all[i*attParams.n+0] = measBuffer[6];	//phi
-				//attInputs.X0_all[i*attParams.n+1] = measBuffer[9];	//phidot
-				//attInputs.X0_all[i*attParams.n+2] = measBuffer[7];	//theta 
-				//attInputs.X0_all[i*attParams.n+3] = measBuffer[10]; //thetadot
-				//attInputs.X0_all[i*attParams.n+4] = measBuffer[8];	//psi
-				//attInputs.X0_all[i*attParams.n+5] = measBuffer[11];	//psidot
-				
-				attX_all[i*attParams.n+0] = measBuffer[6];		// phi
-				attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
-				attX_all[i*attParams.n+2] = measBuffer[7];		// theta
-				attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
-				attX_all[i*attParams.n+4] = measBuffer[8];		// psi
-				attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
-				
-				attU_all[i*attParams.m+0] = 0;
-				attU_all[i*attParams.m+1] = 0;
-				attU_all[i*attParams.m+2] = 0;
-			}
-							
+
+			// Re-initialize MPC states with current measurements such that it is ready for next flight
+			initMPC( &posParams, posX_all, posU_all, &altParams, altX_all, altU_all, &attParams, attX_all, attU_all, measBuffer );				
 			memcpy(PWM, PWM0, sizeof(PWM));
 		}
 		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
@@ -560,39 +473,26 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 		posInputs->U0_all[i] = 0;
 		}
 		
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		posInputs->x0[0] = meas[0] - ref[0];		// x
-		posInputs->x0[1] = meas[3] - ref[3];		// xdot
-		posInputs->x0[2] = meas[1] - ref[1];		// y
-		posInputs->x0[3] = meas[4] - ref[4];		// ydot
-		posInputs->x0[4] = meas[0] - ref_form[0];		// x_formation
-		posInputs->x0[5] = meas[1] - ref_form[1];		// y_formation
-	//pthread_mutex_unlock(&mutexSensorData);
+	// Update controller input contraints [umin/umax] to compensate for disturbances
+	posParams->umax[0]=6*PI/180+dist[0]/(-dist[2]);
+	posParams->umin[0]=-6*PI/180+dist[0]/(-dist[2]);
+	posParams->umax[1]=6*PI/180+dist[1]/(-dist[2]);
+	posParams->umin[1]=-6*PI/180+dist[1]/(-dist[2]);
+	
+	// Update controller error
+	posInputs->x0[0] = meas[0] - ref[0];		// x
+	posInputs->x0[1] = meas[3] - ref[3];		// xdot
+	posInputs->x0[2] = meas[1] - ref[1];		// y
+	posInputs->x0[3] = meas[4] - ref[4];		// ydot
+	posInputs->x0[4] = meas[0] - ref_form[0];		// x_formation
+	posInputs->x0[5] = meas[1] - ref_form[1];		// y_formation
 	
 	posFmpc(posParams, posInputs, posX_all, posU_all);
 		
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		theta_dist = posU_all[0]-dist[0]/mdl_param.g;		//theta with disturbance compensation
-		phi_dist = posU_all[1]-dist[1]/mdl_param.g;			//phi with disturbance compensation
-	//pthread_mutex_unlock(&mutexSensorData);
-	
-	// Saturation of signal to prevent too aggressive references passed on to attitude controller
-	if(theta_dist>posParams->umax[0]){
-		theta_dist=posParams->umax[0];
-	}
-	else if(theta_dist<posParams->umin[0]){
-		theta_dist=posParams->umin[0];
-	}
-	
-	if(phi_dist>posParams->umax[1]){
-		phi_dist=posParams->umax[1];
-	}
-	else if(phi_dist<posParams->umin[1]){
-		phi_dist=posParams->umin[1];
-	}
-	
+	// Disturbance compensation in x and y direction
+	theta_dist = posU_all[0]-dist[0]/(-dist[2]);		//theta with disturbance compensation
+	phi_dist = posU_all[1]-dist[1]/(-dist[2]);			//phi with disturbance compensation
+
 	// Testing of angle control only
 	theta_dist=0;
 	phi_dist=0;
@@ -601,8 +501,6 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
 static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref) {
 	int i;
-    double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
-    //const double PWM0[4] = { 0,0,0,0 };
 	
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	memcpy(&attInputs->X0_all[0], &attX_all[attParams->n], sizeof(double)*attParams->n*attParams->T-attParams->n); 	
@@ -614,43 +512,19 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		attInputs->U0_all[i] = 0;
 		}
 	
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
-		attInputs->x0[1] = meas[9] - ref[9];		//phidot
-		attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
-		attInputs->x0[3] = meas[10] - ref[10];	//thetadot
-		attInputs->x0[4] = meas[8] - ref[8];		//psi
-		attInputs->x0[5] = meas[11] - ref[11];	//psidot
-	//pthread_mutex_unlock(&mutexSensorData);
+	// Update controller error
+	attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
+	attInputs->x0[1] = meas[9] - ref[9];		//phidot
+	attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
+	attInputs->x0[3] = meas[10] - ref[10];	//thetadot
+	attInputs->x0[4] = meas[8] - ref[8];		//psi
+	attInputs->x0[5] = meas[11] - ref[11];	//psidot
 	
 	attFmpc(attParams, attInputs, attX_all, attU_all);
-	
-	tau_x = attU_all[0];		// theta or phi?!
-	tau_y = attU_all[1];		// theta or phi?!
-	tau_z = attU_all[2];		// psi
-	
-	//pthread_mutex_lock(&mutexPWM);
-	//if ( keyboardData[3] == 1 ) {
-		//PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		//PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		
-		PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 4
-		PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 3
-		PWM[1] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 1
-		PWM[0] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 2
-	
-	//}
-	//else if ( keyboardData[3] == 0 ) {
-		//memcpy(PWM, PWM0, sizeof(PWM));
-	//}
-	//pthread_mutex_unlock(&mutexPWM);
 }
 	
 /* The same as threadControllerAlt but here as a function and not a thread with sample rate */
-static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *meas, double *ref, double *dist) {
+static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist) {
 	int i;
 
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
@@ -662,16 +536,97 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 	for ( i = altParams->m*altParams->T-altParams->m; i < altParams->m*altParams->T; i++ ) {
 		altInputs->U0_all[i] = 0;
 		}
+		
+	// Set input contraints according to attitude torques and disturbances in z axis (gravity ++)
+	// This will result in a PWM control saturation of 0-100%
+	getAltitudeInputConstraints( dist , altParams, attU_all );
 
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		altInputs->x0[0] = meas[2] - ref[2];
-		altInputs->x0[1] = meas[5] - ref[5];
-	//pthread_mutex_unlock(&mutexSensorData);
+	// Update controller error
+	altInputs->x0[0] = meas[2] - ref[2];
+	altInputs->x0[1] = meas[5] - ref[5];
 	
 	altFmpc(altParams, altInputs, altX_all, altU_all);
 	
 	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
+}
+
+/* Update initial MPC conditions Xall states and Uall control moves with measurements */
+static void initMPC( struct PosParams *posParams, double *posX_all, double *posU_all, struct AltParams *altParams, double *altX_all, double *altU_all, struct AttParams *attParams, double *attX_all, double *attU_all, double *meas ) {
+	int i=0;
+	for ( i = 0; i < posParams->T; i++ ) {
+		posX_all[i*posParams->n+0] = meas[0];		// x
+		posX_all[i*posParams->n+1] = meas[3];		// xdot
+		posX_all[i*posParams->n+2] = meas[1];		// y
+		posX_all[i*posParams->n+3] = meas[4];		// ydot
+		posX_all[i*posParams->n+4] = meas[0];		// x_formation
+		posX_all[i*posParams->n+5] = meas[1];		// y_formation
+		
+		posU_all[i*posParams->m+0] = 0;
+		posU_all[i*posParams->m+1] = 0;
+	}
+
+	for ( i = 0; i < altParams->T; i++ ) {
+		altX_all[i*altParams->n+0] = meas[2];		// z
+		altX_all[i*altParams->n+1] = meas[5];		// zdot
+		
+		altU_all[i*altParams->m+0] = 0;
+	}
+
+	for ( i = 0; i < attParams->T; i++ ) {
+		attX_all[i*attParams->n+0] = meas[6];		// phi
+		attX_all[i*attParams->n+1] = meas[9];		// phidot
+		attX_all[i*attParams->n+2] = meas[7];		// theta
+		attX_all[i*attParams->n+3] = meas[10];		// thetadot
+		attX_all[i*attParams->n+4] = meas[8];		// psi
+		attX_all[i*attParams->n+5] = meas[11];		// psidot
+		
+		attU_all[i*attParams->m+0] = 0;
+		attU_all[i*attParams->m+1] = 0;
+		attU_all[i*attParams->m+2] = 0;
+	}
+}
+
+/* Saturation calculation for altitude MPC control input constraints [umin/umax] */
+static void getAltitudeInputConstraints( double *dist , struct AltParams *altParams, double *attU_all ) {
+	// Saturation function to compensate for disturbance z-axis + necessary
+	// torques in order to keep stable. As a result, accuracy of altitude
+	// control may suffer.
+	
+	// Local variables
+	double G[8];
+	double umin, umax;
+	
+	// equations to find minimum G representing 0% PWM
+	G[0]=-(2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[2]=(2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[3]=(2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+
+	// equations to find maximum G representing 100% PWM
+	G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
+	G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+
+	// max of G[0:3] becomes altitude control umin
+	umin=G[0];
+	for (int i=1;i<4;i++){
+		if(G[i]>umin){
+			umin=G[i];
+		}
+	}
+
+	// min of G[4:7] becomes altitude control umax
+	umax=G[4];
+	for (int i=5;i<7;i++){
+		if(G[i]<umax){
+			umax=G[i];
+		}
+	}
+	
+	// Update umin and umax of altitude parameters
+	altParams->umin[0]=umin;
+	altParams->umax[0]=umax;
 }
 
 /* interact with fast MPC POS */

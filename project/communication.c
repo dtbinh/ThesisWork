@@ -43,7 +43,7 @@ static void keyReading( void );
 // Static variables for threads
 static double controllerData[9]={0,0,0,0,0,0,0,0,0};
 static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static double keyboardData[10]={0,0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c}
+static double keyboardData[11]={0,0,0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref}
 
 static int socketReady=0;
 
@@ -326,7 +326,7 @@ static void openSocketCommunication(){
 void keyReading( void ) {
 	char input_char[50] = { '\0' };
 	char selection[2] = { '\0' };
-	//double keyboardDataBuffer[4] = {0,0,0,0}; // {ref_x,ref_y,ref_z,switch}
+	double keyboardDataBuffer[4] = {0,0,0,0}; // {ref_x,ref_y,ref_z,switch}
 	
 	printf("Keyboard listening... \n");
 	scanf("%s", selection);
@@ -338,17 +338,17 @@ void keyReading( void ) {
 			
 			scanf("%s", &input_char[0]);
 			if ( strcmp(&input_char[0], "x" ) == 0 ) { printf("Aborting\n"); break; }
-			keyboardData[0] = atof(&input_char[0]);
+			keyboardDataBuffer[0] = atof(&input_char[0]);
 			//printf("ref X  ->  %f\n", keyboardData[0]);
 			
 			scanf("%s", &input_char[1]);
 			if ( strcmp(&input_char[1], "x" ) == 0 ) { printf("Aborting\n"); break; }
-			keyboardData[1] = atof(&input_char[1]);
+			keyboardDataBuffer[1] = atof(&input_char[1]);
 			//printf("ref Y  ->  %f\n", keyboardData[1]);
 			
 			scanf("%s", &input_char[2]);
 			if ( strcmp(&input_char[2], "x" ) == 0 ) { printf("Aborting\n"); break; }
-			keyboardData[2] = atof(&input_char[2]);
+			keyboardDataBuffer[2] = atof(&input_char[2]);
 			//printf("ref Z  ->  %f\n", keyboardData[2]);
 			
 			printf("X = %f, Y = %f and Z = %f,  [y]es or [n]o?\n", keyboardData[0], keyboardData[1], keyboardData[2]);
@@ -356,9 +356,19 @@ void keyReading( void ) {
 			if ( strcmp(selection, "x" ) == 0 ) { printf("Aborting\n"); break; }
 			if ( strcmp(selection, "y" ) == 0 ) {
 				//pthread_mutex_lock(&mutexSensorData);
-					//memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/4);
+					memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/4);
 				//pthread_mutex_unlock(&mutexSensorData);
 				printf("Updated! X = %f, Y = %f, Z = %f and switch is %f\n", keyboardData[0], keyboardData[1], keyboardData[2], keyboardData[3]);
+				printf("Do you also wanna ramp them?\n");
+				scanf("%s", selection);
+				if ( strcmp(selection, "y" ) == 0 ) { 
+					keyboardData[11] = 1; 
+					printf("Ramped\n");
+				}
+				else {
+					keyboardData[11] = 0; 
+					printf("NOT Ramped\n");
+				}
 			}
 			else {
 				printf("Discarded! X = %f, Y = %f, Z = %f and switch is %f\n", keyboardData[0], keyboardData[1], keyboardData[2], keyboardData[3]);
@@ -481,7 +491,7 @@ void keyReading( void ) {
 				}
 			}
 			else if ( keyboardData[9] == 1 ) {
-				keyboardData[9] == 0;
+				keyboardData[9] = 0;
 				printf("Restart calibration command deactivated. Calibration will finish if it actually started!\n");
 			}
 		break;

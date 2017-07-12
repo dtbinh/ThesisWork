@@ -72,7 +72,7 @@ void Jfx_no_inertia(double*, double*, double*, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[4]={1,1,1,1}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion
-static double keyboardData[10]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration}
+static double keyboardData[11]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref}
 
 // Variables
 static int beaconConnected=0;
@@ -128,7 +128,7 @@ static void *threadPipeCommunicationToSensor(void *arg)
 {
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double keyboardDataBuffer[9];
+	double keyboardDataBuffer[11];
 	
 	// Loop forever reading/waiting for data
 	while(1){
@@ -487,6 +487,7 @@ static void *threadSensorFusion (void *arg){
 					ekfPrint=(int)keyboardData[6];
 					ekfReset=(int)keyboardData[7];
 					ekfPrint6States=(int)keyboardData[8];
+					sensorCalibrationRestart=(int)keyboardData[9];
 				pthread_mutex_unlock(&mutexKeyboardData);
 				
 				// Convert sensor data to correct (filter) units:
@@ -518,10 +519,24 @@ static void *threadSensorFusion (void *arg){
 					//calibrationLoaded=loadSettings(acc0,"acc0",sizeof(acc0)/sizeof(double));
 					//calibrationLoaded=loadSettings(gyr0,"gyr0",sizeof(gyr0)/sizeof(double));
 					//calibrationLoaded=loadSettings(mag0,"mag0",sizeof(mag0)/sizeof(double));
-					
+
 					//// If calibration data is load for all variables, deactivate calibration routine for orientation estimation
 					//if(calibrationLoaded){
 						//calibrationCounter=CALIBRATION+1;
+						
+						//// Print loaded calibration data
+						//printf("Mean (bias) accelerometer from file\n");
+						//printmat(acc0,3,1);
+						//printf("Mean (bias) gyroscope from file\n");
+						//printmat(gyr0,3,1);
+						//printf("Mean (bias) magnetometer from file\n");
+						//printmat(mag0,3,1);
+						//printf("Covariance matrix (sigma) accelerometer from file\n");
+						//printmat(Racc,3,3);
+						//printf("Covariance (sigma) gyroscope from file\n");
+						//printmat(Rgyr,3,3);
+						//printf("Covariance (sigma) magnetometer from file\n");
+						//printmat(Rmag,3,3);
 					//}
 				//}
 				
@@ -601,6 +616,12 @@ static void *threadSensorFusion (void *arg){
 							//// If calibration data is load for all variables, deactivate calibration routine for ekf
 							//if(calibrationLoaded){
 								//calibrationCounterEKF=CALIBRATION+1;
+								
+								//// Print loaded calibration data
+								//printf("Mean (bias) EKF from file\n");
+								//printmat(ekf0,6,1);
+								//printf("Covariance matrix (sigma) EKF from file\n");
+								//printmat(Rekf,6,6);
 							//}
 						//}
 							
@@ -625,8 +646,6 @@ static void *threadSensorFusion (void *arg){
 							saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double));
 							
 							//printf("calibrationCounterEKF: %i\n", calibrationCounterEKF);
-							
-							printf("\nRekf[1:3]: %f, %f, %f\n", Rekf[21], Rekf[28], Rekf[35]);
 							
 							printf("EKF Calibration finish\n");
 							calibrationCounterEKF++;
@@ -708,7 +727,7 @@ static void *threadSensorFusion (void *arg){
 							}
 							
 							if(ekfPrint6States){
-								printf("xhat: %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3]);
+								printf("xhat: %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f (euler_meas) %2.4f %2.4f %2.4f u: %3.4f %3.4f %3.4f %3.4f\n",xhat[0],xhat[1],xhat[2],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI), ymeas[3]*(180/PI),ymeas[4]*(180/PI),ymeas[5]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3]);
 							}
 							//printf("pos: %1.4f %1.4f %1.4f euler: %3.4f %3.4f %3.4f (EKF)\n", stateDataBuffer[0], stateDataBuffer[1], stateDataBuffer[2], stateDataBuffer[6], stateDataBuffer[7], stateDataBuffer[8]);	
 								
@@ -838,7 +857,7 @@ static void *threadPWMControl(void *arg){
 			//printf("Data received: %f\n", pwmValueBuffer[0]);
 			
 			// killPWM is linked to keyboard start flying switch. Forces PWM to zero if stop signal is given
-			if(killPWM){
+			if(!killPWM){
 				pwmValueBuffer[0]=0;
 				pwmValueBuffer[1]=0;
 				pwmValueBuffer[2]=0;
@@ -1489,7 +1508,7 @@ int loadSettings(double *data, char* name, int size){
 	FILE *fp;
 	
 	float value;
-	char string[20];
+	char string[30];
 	int finish=0;
 	//int lines=0;
 	int i;
@@ -1502,13 +1521,13 @@ int loadSettings(double *data, char* name, int size){
 		printf("File could not be opened for read\n");
 	}
 	else{
-		while((fgets(string,20,fp)) != NULL && !finish){
+		while((fgets(string,30,fp)) != NULL && !finish){
 			// Search for variable
 			if(strstr(string,name) != NULL){
 				//printf("%s\n",name);
 				// Get variable data
 				for(i=0;i<size;i++){
-					if((fgets(string,20,fp)) != NULL && string[0]!='\n'){
+					if((fgets(string,30,fp)) != NULL && string[0]!='\n'){
 						sscanf(string, "%f\n", &value);
 						data[i]=(double)value;
 						//printf("%f\n",value);
@@ -1536,7 +1555,7 @@ void saveSettings(double *data, char* name, int size){
 	// Create file pointer
 	FILE *fpRead, *fpWrite;
 	int i;
-	char string[20];
+	char string[30];
 	int finish=0;
 	
 	//// Open file and prepare for write
