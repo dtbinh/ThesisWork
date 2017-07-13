@@ -65,9 +65,9 @@ double *altX_all, *altU_all;
 double thrust = 0.0;
 double phi_dist = 0.0;
 double theta_dist = 0.0;
-//double tau_x = 0.0; // attU_all[0] is used!
-//double tau_y = 0.0; // attU_all[1] is used!
-//double tau_z = 0.0; // attU_all[2] is used!
+double tau_x = 0.0; // attU_all[0] is used!
+double tau_y = 0.0; // attU_all[1] is used!
+double tau_z = 0.0; // attU_all[2] is 
 
 struct Parameters mdl_param = {
 	.g = 9.81,
@@ -296,7 +296,7 @@ void *threadController( void *arg ) {
 	struct AttParams attParams = { 
 		.A = { 1,0,0,0,0,0,		AttTsSec,1,0,0,0,0,	0,0,1,0,0,0,	0,0,AttTsSec,1,0,0,	0,0,0,0,1,0,	0,0,0,0,AttTsSec,1 },
 		.B = { 0,AttTsSec/mdl_param.i_xx,0,0,0,0,	0,0,0,AttTsSec/mdl_param.i_yy,0,0,	0,0,0,0,0,AttTsSec/mdl_param.i_zz },
-		.Q =  { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
+		.Q =  { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,.0001,0,		0,0,0,0,0,.0001 },
 		.Qf = { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
 		.R = { 1000,0,0,	0,1000,0,	0,0,1000 },
 		.umax = {  .1, .1, .1 },
@@ -369,7 +369,7 @@ void *threadController( void *arg ) {
 		pthread_mutex_unlock(&mutexConstraintsData);
 		
 		// To ramp the references in x, y and z
-		if ( keyRampRef == 1 ) {
+		if ( keyRampRef ) {
 			memcpy(p1, measBuffer, sizeof(measBuffer)*3/12);
 			memcpy(p2, refBuffer, sizeof(refBuffer)*3/12);
 			
@@ -411,6 +411,39 @@ void *threadController( void *arg ) {
 				
 				// Re-initialize MPC states with current measurements such that it is ready for next flight
 				initMPC( &posParams, posX_all, posU_all, &altParams, altX_all, altU_all, &attParams, attX_all, attU_all, measBuffer );
+				//int i=0;
+				//for ( i = 0; i < posParams.T; i++ ) {
+					//posX_all[i*posParams.n+0] = measBuffer[0];		// x
+					//posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
+					//posX_all[i*posParams.n+2] = measBuffer[1];		// y
+					//posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
+					//posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+					//posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+					
+					//posU_all[i*posParams.m+0] = 0;
+					//posU_all[i*posParams.m+1] = 0;
+				//}
+
+				//for ( i = 0; i < altParams.T; i++ ) {
+					//altX_all[i*altParams.n+0] = measBuffer[2];		// z
+					//altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
+					
+					//altU_all[i*altParams.m+0] = 0;
+				//}
+
+				//for ( i = 0; i < attParams.T; i++ ) {
+					//attX_all[i*attParams.n+0] = measBuffer[6];		// phi
+					//attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
+					//attX_all[i*attParams.n+2] = measBuffer[7];		// theta
+					//attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
+					//attX_all[i*attParams.n+4] = measBuffer[8];		// psi
+					//attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
+					
+					//attU_all[i*attParams.m+0] = 0;
+					//attU_all[i*attParams.m+1] = 0;
+					//attU_all[i*attParams.m+2] = 0;
+				//}
+		
 				memcpy(PWM, PWM0, sizeof(PWM));
 			}
 		
@@ -429,6 +462,40 @@ void *threadController( void *arg ) {
 
 			// Re-initialize MPC states with current measurements such that it is ready for next flight
 			initMPC( &posParams, posX_all, posU_all, &altParams, altX_all, altU_all, &attParams, attX_all, attU_all, measBuffer );				
+			
+				//int i=0;
+				//for ( i = 0; i < posParams.T; i++ ) {
+					//posX_all[i*posParams.n+0] = measBuffer[0];		// x
+					//posX_all[i*posParams.n+1] = measBuffer[3];		// xdot
+					//posX_all[i*posParams.n+2] = measBuffer[1];		// y
+					//posX_all[i*posParams.n+3] = measBuffer[4];		// ydot
+					//posX_all[i*posParams.n+4] = measBuffer[0];		// x_formation
+					//posX_all[i*posParams.n+5] = measBuffer[1];		// y_formation
+					
+					//posU_all[i*posParams.m+0] = 0;
+					//posU_all[i*posParams.m+1] = 0;
+				//}
+
+				//for ( i = 0; i < altParams.T; i++ ) {
+					//altX_all[i*altParams.n+0] = measBuffer[2];		// z
+					//altX_all[i*altParams.n+1] = measBuffer[5];		// zdot
+					
+					//altU_all[i*altParams.m+0] = 0;
+				//}
+
+				//for ( i = 0; i < attParams.T; i++ ) {
+					//attX_all[i*attParams.n+0] = measBuffer[6];		// phi
+					//attX_all[i*attParams.n+1] = measBuffer[9];		// phidot
+					//attX_all[i*attParams.n+2] = measBuffer[7];		// theta
+					//attX_all[i*attParams.n+3] = measBuffer[10];		// thetadot
+					//attX_all[i*attParams.n+4] = measBuffer[8];		// psi
+					//attX_all[i*attParams.n+5] = measBuffer[11];		// psidot
+					
+					//attU_all[i*attParams.m+0] = 0;
+					//attU_all[i*attParams.m+1] = 0;
+					//attU_all[i*attParams.m+2] = 0;
+				//}
+			
 			memcpy(PWM, PWM0, sizeof(PWM));
 		}
 		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
@@ -521,11 +588,19 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	attInputs->x0[5] = meas[11] - ref[11];	//psidot
 	
 	attFmpc(attParams, attInputs, attX_all, attU_all);
+	
+	tau_x = attU_all[0];
+	tau_y = attU_all[1];
+	tau_z = attU_all[2];
 }
 	
 /* The same as threadControllerAlt but here as a function and not a thread with sample rate */
 static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist) {
 	int i;
+	
+	// Local variables
+	double G[8];
+	double umin, umax;
 
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	memcpy(&altInputs->X0_all[0], &altX_all[altParams->n], sizeof(double)*altParams->n*altParams->T-altParams->n); 	
@@ -539,7 +614,42 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 		
 	// Set input contraints according to attitude torques and disturbances in z axis (gravity ++)
 	// This will result in a PWM control saturation of 0-100%
-	getAltitudeInputConstraints( dist , altParams, attU_all );
+	//getAltitudeInputConstraints( dist , altParams, attU_all );
+		// Saturation function to compensate for disturbance z-axis + necessary
+	// torques in order to keep stable. As a result, accuracy of altitude
+	// control may suffer.
+
+	// equations to find minimum G representing 0% PWM
+	G[0]=-(2*mdl_param.b*tau_x + mdl_param.L*mdl_param.k*tau_z - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*tau_y + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[2]=(2*mdl_param.b*tau_x  - mdl_param.L*mdl_param.k*tau_z + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[3]=(2*mdl_param.b*tau_y + mdl_param.L*mdl_param.k*tau_z + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+
+	// equations to find maximum G representing 100% PWM
+	G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*tau_x  + mdl_param.L*mdl_param.k*tau_z - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
+	G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*tau_z - 2*mdl_param.b*tau_y + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*tau_x  - mdl_param.L*mdl_param.k*tau_z + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*tau_y + mdl_param.L*mdl_param.k*tau_z + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+
+	// max of G[0:3] becomes altitude control umin
+	umin=G[0];
+	for (int i=1;i<4;i++){
+		if(G[i]>umin){
+			umin=G[i];
+		}
+	}
+
+	// min of G[4:7] becomes altitude control umax
+	umax=G[4];
+	for (int i=5;i<8;i++){
+		if(G[i]<umax){
+			umax=G[i];
+		}
+	}
+	
+	// Update umin and umax of altitude parameters
+	altParams->umin[0]=umin;
+	altParams->umax[0]=umax;
 
 	// Update controller error
 	altInputs->x0[0] = meas[2] - ref[2];
@@ -552,81 +662,81 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 
 /* Update initial MPC conditions Xall states and Uall control moves with measurements */
 static void initMPC( struct PosParams *posParams, double *posX_all, double *posU_all, struct AltParams *altParams, double *altX_all, double *altU_all, struct AttParams *attParams, double *attX_all, double *attU_all, double *meas ) {
-	int i=0;
-	for ( i = 0; i < posParams->T; i++ ) {
-		posX_all[i*posParams->n+0] = meas[0];		// x
-		posX_all[i*posParams->n+1] = meas[3];		// xdot
-		posX_all[i*posParams->n+2] = meas[1];		// y
-		posX_all[i*posParams->n+3] = meas[4];		// ydot
-		posX_all[i*posParams->n+4] = meas[0];		// x_formation
-		posX_all[i*posParams->n+5] = meas[1];		// y_formation
+	//int i=0;
+	//for ( i = 0; i < posParams->T; i++ ) {
+		//posX_all[i*posParams->n+0] = meas[0];		// x
+		//posX_all[i*posParams->n+1] = meas[3];		// xdot
+		//posX_all[i*posParams->n+2] = meas[1];		// y
+		//posX_all[i*posParams->n+3] = meas[4];		// ydot
+		//posX_all[i*posParams->n+4] = meas[0];		// x_formation
+		//posX_all[i*posParams->n+5] = meas[1];		// y_formation
 		
-		posU_all[i*posParams->m+0] = 0;
-		posU_all[i*posParams->m+1] = 0;
-	}
+		//posU_all[i*posParams->m+0] = 0;
+		//posU_all[i*posParams->m+1] = 0;
+	//}
 
-	for ( i = 0; i < altParams->T; i++ ) {
-		altX_all[i*altParams->n+0] = meas[2];		// z
-		altX_all[i*altParams->n+1] = meas[5];		// zdot
+	//for ( i = 0; i < altParams->T; i++ ) {
+		//altX_all[i*altParams->n+0] = meas[2];		// z
+		//altX_all[i*altParams->n+1] = meas[5];		// zdot
 		
-		altU_all[i*altParams->m+0] = 0;
-	}
+		//altU_all[i*altParams->m+0] = 0;
+	//}
 
-	for ( i = 0; i < attParams->T; i++ ) {
-		attX_all[i*attParams->n+0] = meas[6];		// phi
-		attX_all[i*attParams->n+1] = meas[9];		// phidot
-		attX_all[i*attParams->n+2] = meas[7];		// theta
-		attX_all[i*attParams->n+3] = meas[10];		// thetadot
-		attX_all[i*attParams->n+4] = meas[8];		// psi
-		attX_all[i*attParams->n+5] = meas[11];		// psidot
+	//for ( i = 0; i < attParams->T; i++ ) {
+		//attX_all[i*attParams->n+0] = meas[6];		// phi
+		//attX_all[i*attParams->n+1] = meas[9];		// phidot
+		//attX_all[i*attParams->n+2] = meas[7];		// theta
+		//attX_all[i*attParams->n+3] = meas[10];		// thetadot
+		//attX_all[i*attParams->n+4] = meas[8];		// psi
+		//attX_all[i*attParams->n+5] = meas[11];		// psidot
 		
-		attU_all[i*attParams->m+0] = 0;
-		attU_all[i*attParams->m+1] = 0;
-		attU_all[i*attParams->m+2] = 0;
-	}
+		//attU_all[i*attParams->m+0] = 0;
+		//attU_all[i*attParams->m+1] = 0;
+		//attU_all[i*attParams->m+2] = 0;
+	//}
 }
 
 /* Saturation calculation for altitude MPC control input constraints [umin/umax] */
 static void getAltitudeInputConstraints( double *dist , struct AltParams *altParams, double *attU_all ) {
-	// Saturation function to compensate for disturbance z-axis + necessary
-	// torques in order to keep stable. As a result, accuracy of altitude
-	// control may suffer.
+	//// Saturation function to compensate for disturbance z-axis + necessary
+	//// torques in order to keep stable. As a result, accuracy of altitude
+	//// control may suffer.
 	
-	// Local variables
-	double G[8];
-	double umin, umax;
+	//// Local variables
+	//double G[8];
+	//double umin, umax;
 	
-	// equations to find minimum G representing 0% PWM
-	G[0]=-(2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[2]=(2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[3]=(2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	//// equations to find minimum G representing 0% PWM
+	//G[0]=-(2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	//G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	//G[2]=(2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	//G[3]=(2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
 
-	// equations to find maximum G representing 100% PWM
-	G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
-	G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	//// equations to find maximum G representing 100% PWM
+	//G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
+	//G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	//G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	//G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
 
-	// max of G[0:3] becomes altitude control umin
-	umin=G[0];
-	for (int i=1;i<4;i++){
-		if(G[i]>umin){
-			umin=G[i];
-		}
-	}
+	//// max of G[0:3] becomes altitude control umin
+	//umin=G[0];
+	//for (int i=1;i<4;i++){
+		//if(G[i]>umin){
+			//umin=G[i];
+		//}
+	//}
 
-	// min of G[4:7] becomes altitude control umax
-	umax=G[4];
-	for (int i=5;i<7;i++){
-		if(G[i]<umax){
-			umax=G[i];
-		}
-	}
+	//// min of G[4:7] becomes altitude control umax
+	//umax=G[4];
+	//for (int i=5;i<8;i++){
+		//if(G[i]<umax){
+			//umax=G[i];
+		//}
+	//}
 	
-	// Update umin and umax of altitude parameters
-	altParams->umin[0]=umin;
-	altParams->umax[0]=umax;
+	//// Update umin and umax of altitude parameters
+	//altParams->umin[0]=umin;
+	//altParams->umax[0]=umax;
 }
 
 /* interact with fast MPC POS */
