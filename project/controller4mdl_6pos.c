@@ -109,7 +109,7 @@ double references[12] = { 0,0,0,	0,0,0,	NAN,NAN,0,	0,0,0 };
 double references_formation[2] = { 0,0 };
 double measurements[12] = { 0,0,0,	0,0,0,	0,0,0,	0,0,0 };
 double disturbances [3] = { 0,0,-par_g };	// x , y and z disturbances
-// double inertias[3] = {par_i_xx,par_i_yy,par_i_zz};
+double inertias[3] = {par_i_xx,par_i_yy,par_i_zz};
 int sensorInitReady=0; // ekfReady[0=not, 1=mpc can start]
  
 // Controller variables
@@ -135,12 +135,11 @@ static void *threadUpdateConstraintsSettingsReferences(void*);
 
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
 static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref);
-static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *meas, double *ref, double *dist);
+static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
 static void altFmpc( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
 static void refGen_formation( double *x_agent1, double *x_agent2 );
-static void getAltitudeInputConstraints( double * , struct AltParams *, double * );
 
 // FMPC functions
 static void fmpcsolve(double *A, double *B, double *At, double *Bt, double *eyen, 
@@ -174,7 +173,7 @@ void printmat(double *A, int m, int n);
 /******************************************************************/
 
 // Function to start the sensor process threads
-
+/*
  void startController(void *arg1, void *arg2){
  	// Create pipe array
  	pipeArray pipeArrayStruct = {.pipe1 = arg1, .pipe2 = arg2 }; //arg1 to sensor, arg2 to comm
@@ -220,7 +219,7 @@ void printmat(double *A, int m, int n);
  	// if (!res7) pthread_join( threadCtrlAlt, NULL);
  	// if (!res8) pthread_join( threadCtrlWDAlt, NULL);
  }
-
+*/
 
 
 /******************************************************************/
@@ -229,7 +228,7 @@ void printmat(double *A, int m, int n);
 
 //Thread - Update constriants from other drones (pipe from communication process).
 //Includes any updates on setpoints or MPC settings from computer
-
+/*
 void *threadUpdateConstraintsSettingsReferences(void *arg)
 {	
 	// Get pipe and define local variables
@@ -257,11 +256,11 @@ void *threadUpdateConstraintsSettingsReferences(void *arg)
 
 return NULL;
 }
-
+*/
 
 
 //Thread - Update local variables with any new sensor measurements (pipe from sensor process)
-
+/*
  void *threadUpdateMeasurements(void *arg)
  {
  	// Get pipe and define local variables
@@ -289,7 +288,7 @@ return NULL;
  	
  	return NULL;
  }
-
+*/
 
 
 /* Thread - Controller algorithm for all three (with pipe to sensor (PWM) and communication process) */
@@ -344,45 +343,47 @@ void *threadController( void *arg ) {
 
 	// Local variables to store global data in to using mutexes
 	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], inertBuffer[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.2, alpha = -1;	
-	int triggerFly, sensorReady, pwmPrint, keyRampRef;
+	int triggerFly, sensorReady, pwmPrint, keyRampRef = 0;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
+	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
 	int i;
 	
 	/// Setup timer variables for real time
-	struct timespec t,t_start,t_stop;
-	double tsTrue=tsController;
-	//int mpcMissedDeadlines=0;
+	//struct timespec t,t_start,t_stop;
+	//double tsTrue=tsController;
+	////int mpcMissedDeadlines=0;
 
 	/// Lock memory
-	if(mlockall(MCL_CURRENT) == -1){
-		perror("mlockall failed in threadSensorFusion");
-	}
+	//if(mlockall(MCL_CURRENT) == -1){
+		//perror("mlockall failed in threadSensorFusion");
+	//}
 	
 	/// Start after 1 second
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
 	
 	// Loop forever at specific sampling rate
-	while(1){
+	//while(1){
+	if(1){
 		/// Time it and wait until next shot
-		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+		//clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
 		
 		// Get measurements, disturbance and inertias (xhat)
-		pthread_mutex_lock(&mutexSensorData);
+		//pthread_mutex_lock(&mutexSensorData);
 			memcpy(measBuffer, measurements, sizeof(measurements));
 			memcpy(distBuffer, disturbances, sizeof(disturbances));
 			memcpy(inertBuffer, inertias, sizeof(inertias));
 			sensorReady=sensorInitReady;
-		pthread_mutex_unlock(&mutexSensorData);
+		//pthread_mutex_unlock(&mutexSensorData);
 		
 		// Get references (keyboard for now)
-		pthread_mutex_lock(&mutexConstraintsData);
+		//pthread_mutex_lock(&mutexConstraintsData);
 			memcpy(refBuffer, references, sizeof(references));
 			memcpy(ref_formBuffer, references_formation, sizeof(references_formation));
 			triggerFly=(int)keyboardData[3];
 			pwmPrint=(int)keyboardData[4];
-		pthread_mutex_unlock(&mutexConstraintsData);
+		//pthread_mutex_unlock(&mutexConstraintsData);
 	
 		// To ramp the references in x, y and z
 		if ( keyRampRef == 1 ) {
@@ -405,9 +406,11 @@ void *threadController( void *arg ) {
 		}
 		
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
-		if(sensorReady){	
+		//if(!sensorReady){
+		if(1){		
 			// Check keyboard fly trigger is true	
-			if(triggerFly){
+			//if(triggerFly){
+			if(1){
 				//printf("references-> ");
 				//printmat(refBuffer, 1, 12);
 				
@@ -416,9 +419,15 @@ void *threadController( void *arg ) {
 				// Run controllers 
 				// NOTE: ALWAYS RUN ATT LAST, SINCE IT USES POS(PHI AND THETA) AND ALT(THRUST)
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAlt( &altParams, &altInputs, altX_all, altU_all, measBuffer, refBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer);
+				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
+				
+				PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 			}
+
 			// If false, force PWM outputs to zero.
 			else{
 				if(sensorReady){
@@ -458,7 +467,7 @@ void *threadController( void *arg ) {
 			}
 			
 			/// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
+			//if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
 			////else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
 		}
 		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
@@ -466,19 +475,19 @@ void *threadController( void *arg ) {
 		//else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
 
 		/// Calculate next shot
-		t.tv_nsec += tsController;
-		while (t.tv_nsec >= NSEC_PER_SEC) {
-			t.tv_nsec -= NSEC_PER_SEC;
-			t.tv_sec++;
-		}	
+		//t.tv_nsec += tsController;
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}	
 		
 		/// Print true sampling rate
-		clock_gettime(CLOCK_MONOTONIC, &t_stop);
-		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
-		//printf("Sampling time [s] mpc: %lf\n",tsTrue);
-		if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
-			//printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
-		}
+		//clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		//tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		////printf("Sampling time [s] mpc: %lf\n",tsTrue);
+		//if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
+			////printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
+		//}
 		
 	}
 	
@@ -488,120 +497,6 @@ void *threadController( void *arg ) {
 /******************************************************************/
 /*************************   FUNCTIONS   **************************/
 /******************************************************************/
-
-/* The same as threadControllerPos but here as a function and not a thread with sample rate */
-static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist ) {
-	int i;
-	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
-	memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 
-	for ( i = posParams->n*posParams->T-posParams->n; i < posParams->n*posParams->T; i++ ) {
-		posInputs->X0_all[i] = 0;
-		}
-	for ( i = posParams->m*posParams->T-posParams->m; i < posParams->m*posParams->T; i++ ) {
-		posInputs->U0_all[i] = 0;
-		}
-		
-	// Get measurements and references from global data
-	// pthread_mutex_lock(&mutexSensorData);
-		posInputs->x0[0] = meas[0] - ref[0];		// x
-		posInputs->x0[1] = meas[3] - ref[3];		// xdot
-		posInputs->x0[2] = meas[1] - ref[1];		// y
-		posInputs->x0[3] = meas[4] - ref[4];		// ydot
-		posInputs->x0[4] = meas[0] - ref_form[0];		// x_formation
-		posInputs->x0[5] = meas[1] - ref_form[1];		// y_formation
-	// pthread_mutex_unlock(&mutexSensorData);
-	
-	posFmpc(posParams, posInputs, posX_all, posU_all);
-		
-	// Get measurements and references from global data
-	// pthread_mutex_lock(&mutexSensorData);
-		theta_dist = posU_all[0]-dist[0]/mdl_param.g;		//theta with disturbance compensation
-		phi_dist = posU_all[1]-dist[1]/mdl_param.g;			//phi with disturbance compensation
-	// pthread_mutex_unlock(&mutexSensorData);
-}
-	
-/* The same as threadControllerAtt but here as a function and not a thread with sample rate */
-static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref) {
-	int i;
-    double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
-    //const double PWM0[4] = { 0,0,0,0 };
-	
-	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
-	memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
-	for ( i = attParams->n*attParams->T-attParams->n; i < attParams->n*attParams->T; i++ ) {
-		attInputs->X0_all[i] = 0;
-		}
-	for ( i = attParams->m*attParams->T-attParams->m; i < attParams->m*attParams->T; i++ ) {
-		attInputs->U0_all[i] = 0;
-		}
-	
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
-		attInputs->x0[1] = meas[9] - ref[9];		//phidot
-		attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
-		attInputs->x0[3] = meas[10] - ref[10];	//thetadot
-		attInputs->x0[4] = meas[8] - ref[8];		//psi
-		attInputs->x0[5] = meas[11] - ref[11];	//psidot
-	//pthread_mutex_unlock(&mutexSensorData);
-	
-	attFmpc(attParams, attInputs, attX_all, attU_all);
-	
-	tau_x = attU_all[0];		// theta or phi?!
-	tau_y = attU_all[1];		// theta or phi?!
-	tau_z = attU_all[2];		// psi
-	
-	//pthread_mutex_lock(&mutexPWM);
-	//if ( keyboardData[3] == 1 ) {
-		// PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		// PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		// PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		// PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-		
-		// tries to match the model frame with sensor frame
-		PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 4
-		PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 3
-		PWM[1] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 1
-		PWM[0] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 2
-	
-	//}
-	//else if ( keyboardData[3] == 0 ) {
-		//memcpy(PWM, PWM0, sizeof(PWM));
-	//}
-	//pthread_mutex_unlock(&mutexPWM);
-}
-	
-/* The same as threadControllerAlt but here as a function and not a thread with sample rate */
-static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist) {
-	int i;
-
-	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
-	memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
-	memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
-	for ( i = altParams->n*altParams->T-altParams->n; i < altParams->n*altParams->T; i++ ) {
-		altInputs->X0_all[i] = 0;
-		}
-	for ( i = altParams->m*altParams->T-altParams->m; i < altParams->m*altParams->T; i++ ) {
-		altInputs->U0_all[i] = 0;
-		}
-
-	// Set input contraints according to attitude torques and disturbances in z axis (gravity ++)
-	// This will result in a PWM control saturation of 0-100%
-	getAltitudeInputConstraints( dist , altParams, attU_all );	
-	
-	// Get measurements and references from global data
-	//pthread_mutex_lock(&mutexSensorData);
-		altInputs->x0[0] = meas[2] - ref[2];
-		altInputs->x0[1] = meas[5] - ref[5];
-	//pthread_mutex_unlock(&mutexSensorData);
-	
-	altFmpc(altParams, altInputs, altX_all, altU_all);
-	
-	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
-}
-
 /* Saturation calculation for altitude MPC control input constraints [umin/umax] */
 static void getAltitudeInputConstraints( double *dist , struct AltParams *altParams, double *attU_all ) {
 	// Saturation function to compensate for disturbance z-axis + necessary
@@ -643,6 +538,125 @@ static void getAltitudeInputConstraints( double *dist , struct AltParams *altPar
 	// Update umin and umax of altitude parameters
 	altParams->umin[0]=umin;
 	altParams->umax[0]=umax;
+}
+
+/* The same as threadControllerPos but here as a function and not a thread with sample rate */
+static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist ) {
+	int i;
+	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
+	//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
+	//memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 
+	for ( i = posParams->n*posParams->T-posParams->n; i < posParams->n*posParams->T; i++ ) {
+		posInputs->X0_all[i] = 0;
+		}
+	for ( i = posParams->m*posParams->T-posParams->m; i < posParams->m*posParams->T; i++ ) {
+		posInputs->U0_all[i] = 0;
+		}
+		
+	// Update controller input contraints [umin/umax] to compensate for disturbances
+	posParams->umax[0]=6*PI/180+dist[0]/(-dist[2]);
+	posParams->umin[0]=-6*PI/180+dist[0]/(-dist[2]);
+	posParams->umax[1]=6*PI/180+dist[1]/(-dist[2]);
+	posParams->umin[1]=-6*PI/180+dist[1]/(-dist[2]);
+	
+	// Get measurements and references from global data
+	//pthread_mutex_lock(&mutexSensorData);
+		posInputs->x0[0] = meas[0] - ref[0];		// x
+		posInputs->x0[1] = meas[3] - ref[3];		// xdot
+		posInputs->x0[2] = meas[1] - ref[1];		// y
+		posInputs->x0[3] = meas[4] - ref[4];		// ydot
+		posInputs->x0[4] = meas[0] - ref_form[0];		// x_formation
+		posInputs->x0[5] = meas[1] - ref_form[1];		// y_formation
+	//pthread_mutex_unlock(&mutexSensorData);
+	
+	posFmpc(posParams, posInputs, posX_all, posU_all);
+		
+	// Get measurements and references from global data
+	//pthread_mutex_lock(&mutexSensorData);
+		theta_dist = posU_all[0]-dist[0]/mdl_param.g;		//theta with disturbance compensation
+		phi_dist = posU_all[1]-dist[1]/mdl_param.g;			//phi with disturbance compensation
+	//pthread_mutex_unlock(&mutexSensorData);
+}
+	
+/* The same as threadControllerAtt but here as a function and not a thread with sample rate */
+static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref) {
+	int i;
+    //double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+    //const double PWM0[4] = { 0,0,0,0 };
+	
+	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
+	//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
+	//memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
+	for ( i = attParams->n*attParams->T-attParams->n; i < attParams->n*attParams->T; i++ ) {
+		attInputs->X0_all[i] = 0;
+		}
+	for ( i = attParams->m*attParams->T-attParams->m; i < attParams->m*attParams->T; i++ ) {
+		attInputs->U0_all[i] = 0;
+		}
+	
+	// Get measurements and references from global data
+	//pthread_mutex_lock(&mutexSensorData);
+		attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
+		attInputs->x0[1] = meas[9] - ref[9];		//phidot
+		attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
+		attInputs->x0[3] = meas[10] - ref[10];	//thetadot
+		attInputs->x0[4] = meas[8] - ref[8];		//psi
+		attInputs->x0[5] = meas[11] - ref[11];	//psidot
+	//pthread_mutex_unlock(&mutexSensorData);
+	
+	attFmpc(attParams, attInputs, attX_all, attU_all);
+	
+	tau_x = attU_all[0];		// theta or phi?!
+	tau_y = attU_all[1];		// theta or phi?!
+	tau_z = attU_all[2];		// psi
+	
+	//pthread_mutex_lock(&mutexPWM);
+	//if ( keyboardData[3] == 1 ) {
+		//PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		
+		// tries to match the model frame with sensor frame
+		//PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 4
+		//PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 3
+		//PWM[1] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 1
+		//PWM[0] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 ); // Motor 2
+	
+	//}
+	//else if ( keyboardData[3] == 0 ) {
+		//memcpy(PWM, PWM0, sizeof(PWM));
+	//}
+	//pthread_mutex_unlock(&mutexPWM);
+}
+	
+/* The same as threadControllerAlt but here as a function and not a thread with sample rate */
+static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInputs, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist) {
+	int i;
+
+	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
+	//memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
+	//memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
+	for ( i = altParams->n*altParams->T-altParams->n; i < altParams->n*altParams->T; i++ ) {
+		altInputs->X0_all[i] = 0;
+		}
+	for ( i = altParams->m*altParams->T-altParams->m; i < altParams->m*altParams->T; i++ ) {
+		altInputs->U0_all[i] = 0;
+		}
+
+	// Set input contraints according to attitude torques and disturbances in z axis (gravity ++)
+	// This will result in a PWM control saturation of 0-100%
+	getAltitudeInputConstraints( dist , altParams, attU_all );	
+	
+	// Get measurements and references from global data
+	//pthread_mutex_lock(&mutexSensorData);
+		altInputs->x0[0] = meas[2] - ref[2];
+		altInputs->x0[1] = meas[5] - ref[5];
+	//pthread_mutex_unlock(&mutexSensorData);
+	
+	altFmpc(altParams, altInputs, altX_all, altU_all);
+	
+	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
 }
 
 /* interact with fast MPC POS */
