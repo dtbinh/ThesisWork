@@ -20,13 +20,21 @@
 #define PRIORITY_SENSOR_BEACON 38
 #define PRIORITY_SENSOR_PWM 40
 #define PRIORITY_SENSOR_FUSION 50
+#define PRIORITY_SENSOR_PIPE_COMMUNICATION 30
+
+#define PRIORITY_COMMUNICATION_UDP_WRITE 33
+#define PRIORITY_COMMUNICATION_UDP_READ 32
+#define PRIORITY_COMMUNICATION_KEYBOARD 31
+#define PRIORITY_COMMUNICATION_PIPE_CONTROLLER 29
+#define PRIORITY_COMMUNICATION_PIPE_SENSOR 28
 
 // Sampling Time
 #define tsController 50000000 // 0.5s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
-#define tsSensorsFusion 25000000 // 0.05s
+#define tsSensorsFusion 25000000 // 0.02s
 #define tsReadBeacon 50000000 // 0.05s
+#define tsUdpWrite 25000000 // 0.1s
 
 /******************************/
 

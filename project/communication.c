@@ -10,7 +10,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include <sys/time.h>
+//#include <sys/time.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <errno.h>
@@ -20,7 +20,7 @@
 #include <string.h>
 
 // PREEMPT_RT
-//#include <time.h>
+#include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
 
@@ -43,7 +43,7 @@ static void keyReading( void );
 // Static variables for threads
 static double controllerData[9]={0,0,0,0,0,0,0,0,0};
 static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static double keyboardData[11]={0,0,0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref}
+static double keyboardData[13]={0,0,0,0,0,0,0,0,0,0,0,0.01,0.05}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta}
 
 static int socketReady=0;
 
@@ -75,23 +75,37 @@ void startCommunication(void *arg1, void *arg2)
 	
 	// Create thread
 	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpR, threadUdpW, threadkeyRead;
-	int res1, res2, res3, res4, res5;
+	int threadPID1, threadPID2, threadPID3, threadPID4, threadPID5;
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
 
-	res1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
-	res2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
-	res3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
-	res4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
-	res5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
+	threadPID1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
+	threadPID2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
+	//threadPID3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
+	threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	threadPID5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
+	
+	// Set up thread scheduler priority for real time tasks
+	struct sched_param paramThread1, paramThread2, paramThread3, paramThread4,paramThread5;
+	paramThread1.sched_priority = PRIORITY_COMMUNICATION_PIPE_CONTROLLER; // set priorities
+	paramThread2.sched_priority = PRIORITY_COMMUNICATION_PIPE_SENSOR;
+	//paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
+	paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
+	paramThread5.sched_priority = PRIORITY_COMMUNICATION_KEYBOARD;
+	
+	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
+	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
+	//if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	if(sched_setscheduler(threadPID5, SCHED_FIFO, &paramThread5)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	
 	// If threads created successful, start them
-	if (!res1) pthread_join( threadPipeCtrlToComm, NULL);
-	if (!res2) pthread_join( threadPipeSensorToComm, NULL);
-	if (!res3) pthread_join( threadUdpR, NULL);
-	if (!res4) pthread_join( threadUdpW, NULL);
-	if (!res5) pthread_join( threadkeyRead, NULL);
+	if (!threadPID1) pthread_join( threadPipeCtrlToComm, NULL);
+	if (!threadPID2) pthread_join( threadPipeSensorToComm, NULL);
+	//if (!threadPID3) pthread_join( threadUdpR, NULL);
+	if (!threadPID4) pthread_join( threadUdpW, NULL);
+	if (!threadPID5) pthread_join( threadkeyRead, NULL);
 }
 
 
@@ -106,8 +120,25 @@ static void *threadPipeControllerToComm(void *arg)
 	structPipe *ptrPipe = arg;
 	float controllerDataBuffer[9];
 	
+	/// Setup timer variables for real time performance check
+	struct timespec t_start,t_stop;
+	
+	/// Average sampling
+	int tsAverageCounter=0;
+	double tsAverageAccum=0;
+	double tsAverage=tsController, tsTrue;
+	int timerPrint=0;
+	
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadPWMControl");
+	}
+	
 	// Loop forever reading/waiting for data
 	while(1){
+		/// Time it
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		
 		// Read data from controller process
 		if(read(ptrPipe->parent[0], controllerDataBuffer, sizeof(controllerDataBuffer)) == -1) printf("read error in communication from controller\n");
 		//else printf("Communication ID: %d, Recieved Controller data: %f\n", (int)getpid(), controllerDataBuffer[0]);
@@ -117,7 +148,26 @@ static void *threadPipeControllerToComm(void *arg)
 			memcpy(controllerData, controllerDataBuffer, sizeof(controllerDataBuffer));
 		pthread_mutex_unlock(&mutexControllerData);
 		
-		sleep(1);
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		//printf("Sampling time [s] PWM received: %lf\n",tsTrue);
+		
+		/// Get average sampling time
+		if(tsAverageCounter<50){
+			tsAverageAccum+=tsTrue;
+			tsAverageCounter++;
+		}
+		else{
+			tsAverageAccum/=50;
+			tsAverage=tsAverageAccum;
+			if(timerPrint){
+				printf("Communication pipe from Controller Read: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+			}
+			tsAverageCounter=0;
+			tsAverageAccum=0;
+			
+		}
 	}
 	return NULL;
 }
@@ -130,8 +180,25 @@ static void *threadPipeSensorToCommunication(void *arg)
 	structPipe *ptrPipe = arg;
 	double sensorDataBuffer[19];
 	
+	/// Setup timer variables for real time performance check
+	struct timespec t_start,t_stop;
+	
+	/// Average sampling
+	int tsAverageCounter=0;
+	double tsAverageAccum=0;
+	double tsAverage=tsController, tsTrue;
+	int timerPrint=0;
+	
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadPWMControl");
+	}
+	
 	// Loop forever reading/waiting for data
 	while(1){
+		/// Time it
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		
 		// Read data from sensor process
 		if(read(ptrPipe->parent[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in communication from sensor\n");
 		//else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
@@ -141,12 +208,31 @@ static void *threadPipeSensorToCommunication(void *arg)
 			memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
 		pthread_mutex_unlock(&mutexSensorData);
 		
-		sleep(1);
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		//printf("Sampling time [s] PWM received: %lf\n",tsTrue);
+		
+		/// Get average sampling time
+		if(tsAverageCounter<50){
+			tsAverageAccum+=tsTrue;
+			tsAverageCounter++;
+		}
+		else{
+			tsAverageAccum/=50;
+			tsAverage=tsAverageAccum;
+			if(timerPrint){
+				printf("Communication pipe from Sensor Read: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+			}
+			tsAverageCounter=0;
+			tsAverageAccum=0;
+			
+		}
 	}
 	return NULL;
 }
 
-
+/*
 //// Thread - Pipe Communication to Controller write
 //static void *threadPipeCommunicationtoController(void *arg)
 //{
@@ -170,7 +256,7 @@ static void *threadPipeSensorToCommunication(void *arg)
 	//}
 	//return NULL;
 //}
-
+*/
 
 
 // UDP read thread
@@ -216,11 +302,32 @@ static void *threadUdpRead(void *arg)
 static void *threadUdpWrite()
 {
 	// Local variables
-	double agentData[19]={0,0,0,0,0,0,0,0,0,0,0,0};
+	double agentData[19];
+		
+	/// Setup timer variables for real time performance check
+	struct timespec t, t_start,t_stop;
+	
+	/// Average sampling
+	int tsAverageCounter=0;
+	double tsAverageAccum=0;
+	double tsAverage=tsUdpWrite, tsTrue;
+	int timerPrint=0;
+	
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadPWMControl");
+	}
+	
+	/// Wait 10 seconds before starting before starting
+	t.tv_sec+=30;
 	
 	// Loop forever streaming data
 	while(1){
-		if(socketReady==1){
+		/// Time it
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+		
+		if(socketReady){
 			// Get sensor and controller data from global variables in communication.c
 			pthread_mutex_lock(&mutexSensorData);
 				memcpy(agentData, sensorData, sizeof(sensorData));
@@ -237,15 +344,39 @@ static void *threadUdpWrite()
 			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
 			//printf("%s\n", writeBuff);
 			// Send data over UDP
-			usleep(20000);
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
 				perror("write");
 			}
 		}
-		else{
-			//printf("Socket not ready\n");
-			usleep(20000);
+		
+		/// Calculate next shot
+		t.tv_nsec += (int)tsUdpWrite;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}	
+		
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		//printf("Sampling time [s] UDP : %lf\n",tsTrue);
+		
+		/// Get average sampling time
+		if(tsAverageCounter<50){
+			tsAverageAccum+=tsTrue;
+			tsAverageCounter++;
 		}
+		else{
+			tsAverageAccum/=50;
+			tsAverage=tsAverageAccum;
+			if(timerPrint){
+				printf("UDP Write: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+			}
+			tsAverageCounter=0;
+			tsAverageAccum=0;
+			
+		}
+
 			
 	}
 	return NULL;
@@ -258,9 +389,25 @@ static void *threadKeyReading( void *arg ) {
 	pipeArray *pipeArray1 = arg;
 	structPipe *ptrPipe1 = pipeArray1->pipe1;
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
- 	//structPipe *ptrPipe = arg; // arg is between cont and comm
+	
+	/// Setup timer variables for real time performance check
+	struct timespec t_start,t_stop;
+	
+	/// Average sampling
+	//int tsAverageCounter=0;
+	//double tsAverageAccum=0;
+	double tsAverage=tsController, tsTrue;
+	//int timerPrint=0;
+	
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadPWMControl");
+	}
 	
 	while(1) {
+		/// Time it
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		
 		keyReading();
 		
 		// Write data to Controller process
@@ -270,6 +417,27 @@ static void *threadKeyReading( void *arg ) {
 		// Write data to Sensor process
 		if (write(ptrPipe2->child[1], keyboardData, sizeof(keyboardData)) != sizeof(keyboardData)) printf("Error in writing keyboardData from Communication to Sensor\n");
 		//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), keyboardData[0]);
+		
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		//printf("Sampling time [s] PWM received: %lf\n",tsTrue);
+		
+		///// Get average sampling time
+		//if(tsAverageCounter<50){
+			//tsAverageAccum+=tsTrue;
+			//tsAverageCounter++;
+		//}
+		//else{
+			//tsAverageAccum/=50;
+			//tsAverage=tsAverageAccum;
+			//if(timerPrint){
+				//printf("Keyboard Reading: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+			//}
+			//tsAverageCounter=0;
+			//tsAverageAccum=0;
+			
+		//}
 	}
 	
 	return NULL;
@@ -319,7 +487,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=0;
+	socketReady=1;
 }
 
 /* Read in PWM value */
@@ -333,6 +501,25 @@ void keyReading( void ) {
 	//printf("I read-> %s \n", selection);
 	
 	switch( selection[0] ) {
+		case 'a' :
+			printf("Tell me your alpha:\n");
+			
+			scanf("%s", &input_char[0]);
+			if ( strcmp(&input_char[0], "x" ) == 0 ) { printf("Aborting\n"); break; }
+			keyboardData[11] = atof(&input_char[0]);
+			printf("alpha ->  %f\n", keyboardData[11]);
+			break;	
+			
+		case 'b' :
+			printf("Tell me your beta:\n");
+			
+			scanf("%s", &input_char[0]);
+			if ( strcmp(&input_char[0], "x" ) == 0 ) { printf("Aborting\n"); break; }
+			keyboardData[12] = atof(&input_char[0]);
+			printf("beta ->  %f\n", keyboardData[12]);
+			break;	
+			
+		
 		case 'r' :
 			printf("Tell me your references:\n");
 			
@@ -362,11 +549,11 @@ void keyReading( void ) {
 				printf("Do you also wanna ramp them?\n");
 				scanf("%s", selection);
 				if ( strcmp(selection, "y" ) == 0 ) { 
-					keyboardData[11] = 1; 
+					keyboardData[10] = 1; 
 					printf("Ramped\n");
 				}
 				else {
-					keyboardData[11] = 0; 
+					keyboardData[10] = 0; 
 					printf("NOT Ramped\n");
 				}
 			}
@@ -497,7 +684,7 @@ void keyReading( void ) {
 		break;
 		
 		case 'h' :
-			printf(" [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n [c]alibrate sensor fusion and EKF - Redo calibration\n");
+			printf("[r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n [c]alibrate sensor fusion and EKF - Redo calibration\n [a]lpha magnetometer outlier forgetting factor\n [b]eta Madgwick Filter gain\n");
 			break;
 				
 		default :

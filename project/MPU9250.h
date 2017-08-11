@@ -207,6 +207,6 @@ void readMagData(double*);
 void readAccelData(double*);
 void readGyroData(double*);
 void readTempData(double*);
-void readAllSensorData(double*, double*, double*, double*);
+int readAllSensorData(double*, double*, double*, double*);
 
 #endif // _MPU9250_H_
