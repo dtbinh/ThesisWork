@@ -41,16 +41,77 @@
 
 
 // Model Parameters
-#define par_g 9.81 // gravity
-#define	par_mass 0.472 // total mass
-#define	par_L 0.125 // length from center to motor
-#define	par_k 0.000010107 // lift coeff
-#define	par_b 0.00000033691 // drag coeff
-#define	par_k_d 0.25 // air friction
-#define par_i_xx 0.0012 // quad inertia about xb
-#define par_i_yy 0.0012 // quad inertia about yb
-#define par_i_zz 0.0023 // quad inertia about zb
-#define	par_c_m 23.0907 // motor constant
+#define par_g 9.81f // gravity
+#define	par_mass 0.432f // total mass
+#define	par_L 0.125f // length from center to motor
+#define	par_k 0.000010107f// lift coeff
+#define	par_b 0.00000033691f // drag coeff
+#define	par_k_d 0.25f // air friction
+//#define par_i_xx 0.0012f // quad inertia about xb
+//#define par_i_yy 0.0012f // quad inertia about yb
+//#define par_i_zz 0.0023f // quad inertia about zb
+#define par_i_xx 0.022f // quad inertia about xb
+#define par_i_yy 0.022f // quad inertia about yb
+#define par_i_zz 0.043f // quad inertia about zb
+#define	par_c_m 23.0907f // motor constant
+
+/*
+ * 
+ * Current Q {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
+{10000,1,1,1,6000,6000,1000,10,1000,10,0.0000001,0.0000001,100,100}
+Current R {theta_ref,phi_ref,taux,tauy,tauz,thrust}
+{1000,1000,1,1,10000000,1
+Keyboard listening... 
+
+ **/ 
+
+// Default MPC POSITION weights Q (Qf) and R
+#define mpcPos_Q_1 10000.0f
+#define mpcPos_Q_2 1.0f
+#define mpcPos_Q_3 10000.0f
+#define mpcPos_Q_4 1.0f
+#define mpcPos_Q_5 6000.0f
+#define mpcPos_Q_6 6000.0f
+
+#define mpcPos_R_1 1000.0f
+#define mpcPos_R_2 1000.0f
+
+// Default MPC ATTITUDE weights Q (Qf) and R
+#define mpcAtt_Q_1 100.0f
+#define mpcAtt_Q_2 10.0f
+#define mpcAtt_Q_3 100.0f
+#define mpcAtt_Q_4 10.0f
+#define mpcAtt_Q_5 1.0f
+#define mpcAtt_Q_6 1.0f
+
+#define mpcAtt_R_1 0.1f
+#define mpcAtt_R_2 0.1f
+#define mpcAtt_R_3 1000000.0f
+
+// Default MPC ALTITUDE weights Q (Qf) and R
+#define mpcAlt_Q_1 1000.0f
+#define mpcAlt_Q_2 100.0f
+
+#define mpcAlt_R_1 1.0f
+
+// Default EKF weights Q
+#define ekf_Q_1 100.0f
+#define ekf_Q_2 100.0f
+#define ekf_Q_3 100.0f
+#define ekf_Q_4 100.0f
+#define ekf_Q_5 100.0f
+#define ekf_Q_6 100.0f
+#define ekf_Q_7 1.0e-9f
+#define ekf_Q_8 1.0e-9f
+#define ekf_Q_9 1.0e-9f
+#define ekf_Q_10 1.0e-9f
+#define ekf_Q_11 1.0e-9f
+#define ekf_Q_12 1.0e-9f
+#define ekf_Q_13 1.0f
+#define ekf_Q_14 1.0f
+#define ekf_Q_15 0.00001f
+
+
 
 typedef struct _structPipe{
 	int parent[2];

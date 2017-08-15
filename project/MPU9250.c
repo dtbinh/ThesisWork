@@ -671,6 +671,9 @@ void magCalMPU9250(){
 		  usleep(12000);  // At 100 Hz ODR, new mag data is available every 10 ms
 		}
 	}
+	
+	printf("Mag data collected. 4 seconds put quadrotor back down\n");
+	usleep(4000000);
 
 	// Serial.println("mag x min/max:"); Serial.println(mag_max[0]); Serial.println(mag_min[0]);
 	// Serial.println("mag y min/max:"); Serial.println(mag_max[1]); Serial.println(mag_min[1]);
