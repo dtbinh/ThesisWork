@@ -29,7 +29,7 @@
 #define PRIORITY_COMMUNICATION_PIPE_SENSOR 28
 
 // Sampling Time
-#define tsController 50000000 // 0.5s
+#define tsController 25000000 // 0.5s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
 #define tsSensorsFusion 25000000 // 0.02s
@@ -77,16 +77,16 @@ Keyboard listening...
 #define mpcPos_R_2 1000.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
-#define mpcAtt_Q_1 100.0f
-#define mpcAtt_Q_2 10.0f
-#define mpcAtt_Q_3 100.0f
-#define mpcAtt_Q_4 10.0f
+#define mpcAtt_Q_1 600.0f
+#define mpcAtt_Q_2 50.0f
+#define mpcAtt_Q_3 600.0f
+#define mpcAtt_Q_4 50.0f
 #define mpcAtt_Q_5 1.0f
 #define mpcAtt_Q_6 1.0f
 
-#define mpcAtt_R_1 0.1f
-#define mpcAtt_R_2 0.1f
-#define mpcAtt_R_3 1000000.0f
+#define mpcAtt_R_1 1000.0f
+#define mpcAtt_R_2 1000.0f
+#define mpcAtt_R_3 1000000000.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
 #define mpcAlt_Q_1 1000.0f
@@ -101,12 +101,12 @@ Keyboard listening...
 #define ekf_Q_4 100.0f
 #define ekf_Q_5 100.0f
 #define ekf_Q_6 100.0f
-#define ekf_Q_7 1.0e-9f
-#define ekf_Q_8 1.0e-9f
-#define ekf_Q_9 1.0e-9f
-#define ekf_Q_10 1.0e-9f
-#define ekf_Q_11 1.0e-9f
-#define ekf_Q_12 1.0e-9f
+#define ekf_Q_7 1.0e-7f
+#define ekf_Q_8 1.0e-7f
+#define ekf_Q_9 1.0e-7f
+#define ekf_Q_10 1.0e-3f
+#define ekf_Q_11 1.0e-3f
+#define ekf_Q_12 1.0e-3f
 #define ekf_Q_13 1.0f
 #define ekf_Q_14 1.0f
 #define ekf_Q_15 0.00001f

@@ -29,6 +29,7 @@
 
 #define PI 3.141592653589793
 #define CALIBRATION 500
+#define BUFFER 100
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -57,7 +58,10 @@ void sensorCalibration(double*, double*, double*, double*, double*, double*, dou
 void ekfCalibration(double*, double*, double*, double*, int);
 
 int loadSettings(double*, char*, int);
+//void saveSettings(double*, char*, int, FILE**);
 void saveSettings(double*, char*, int);
+//void saveData(double*, char* , int, FILE**, int);
+void saveData(double*, char* , int);
 void printBits(size_t const, void const * const);
 
 void EKF(double*, double*, double*, double*, double*, double*, double, int);
@@ -456,9 +460,23 @@ static void *threadSensorFusion (void *arg){
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, magRawRot[3], tempRaw=0, acc0[3]={0,0,0}, gyr0[3]={0,0,0}, mag0[3]={0,0,0}, accCal[3*CALIBRATION], gyrCal[3*CALIBRATION], magCal[3*CALIBRATION], euler[3]={0,0,0};
 	double Racc[9]={0,0,0,0,0,0,0,0,0}, Rgyr[9]={0,0,0,0,0,0,0,0,0}, Rmag[9]={0,0,0,0,0,0,0,0,0}, Patt[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}, L=1, normMag=0, q[4]={1,0,0,0},sensorDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	double tsTrue=tsSensorsFusion; // true sampling time measured using clock_gettime()
+	double tsTrue=tsSensorsFusion,ts_save_buffer; // true sampling time measured using clock_gettime()
 	int calibrationCounter=0, calibrationCounterEKF=0, calibrationLoaded=0, posRawOldFlag=0, enableMPU9250Flag=-1, enableAK8963Flag=-1;
 	double ekf0[6]={0,0,0,0,0,0}, ekfCal[6*CALIBRATION];
+	
+	// Save to file buffer variable
+	double buffer_u1[BUFFER];
+	double buffer_u2[BUFFER];
+	double buffer_u3[BUFFER];
+	double buffer_u4[BUFFER];
+	double buffer_omega_x[BUFFER];
+	double buffer_omega_y[BUFFER];
+	double buffer_omega_z[BUFFER];
+	double buffer_angle_x[BUFFER];
+	double buffer_angle_y[BUFFER];
+	double buffer_angle_z[BUFFER];
+	int buffer_counter=0;
+	//FILE *fpWrite;
 	
 	// EKF variables
 	double Pekf[225]={1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
@@ -484,12 +502,14 @@ static void *threadSensorFusion (void *arg){
 	double euler_mean[3];
 	int eulerCalFlag=0;
 	float beta_keyboard;
+	int isnan_flag=0;
+
 	
 	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0;
 	int outlierFlag, outlierFlagPercentage, outlierFlagMem[1000];
 	
 	/// Setup timer variables for real time
-	struct timespec t,t_start,t_stop;
+	struct timespec t,t_start,t_stop,t_start_buffer,t_stop_buffer;
 
 	/// Average sampling
 	int tsAverageCounter=0, tsAverageReadyEKF=0; // tsAverageReadyEKF is used for to give orientation filter som time to converge before calibration of EKF starts collecting data
@@ -771,6 +791,8 @@ static void *threadSensorFusion (void *arg){
 						ekfCalibration(Rekf, ekf0, ekfCal, ymeas, calibrationCounterEKF);
 							
 						// Save calibration in 'settings.txt' if it does not exist
+						//saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double), &fpWrite);
+						//saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double), &fpWrite);
 						saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double));
 						saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double));
 							
@@ -803,28 +825,46 @@ static void *threadSensorFusion (void *arg){
 							memcpy(xhat, xhatInit, sizeof(xhatInit));
 							memcpy(uControl, uControlInit, sizeof(uControlInit));
 							stateDataBuffer[15]=0; // set ready flag for MPC false during reset
+							isnan_flag=0;
 						}
 						
 						xhat[12]=0;
 						xhat[13]=0;
-								
-						// Move over data to controller.c via pipe
-						stateDataBuffer[0]=xhat[0]; // position x
-						stateDataBuffer[1]=xhat[1]; // position y
-						stateDataBuffer[2]=xhat[2]; // position z
-						stateDataBuffer[3]=xhat[3]; // velocity x
-						stateDataBuffer[4]=xhat[4]; // velocity y
-						stateDataBuffer[5]=xhat[5]; // velocity z
-						stateDataBuffer[6]=xhat[6]; // phi (x-axis)
-						stateDataBuffer[7]=xhat[7]; // theta (y-axis)
-						stateDataBuffer[8]=xhat[8]; // psi (z-axis)
-						stateDataBuffer[9]=xhat[9]; // omega x
-						stateDataBuffer[10]=xhat[10]; // omega y
-						stateDataBuffer[11]=xhat[11]; // omega z
-						stateDataBuffer[12]=xhat[12]; // disturbance x
-						stateDataBuffer[13]=xhat[13]; // disturbance y
-						stateDataBuffer[14]=xhat[14]; // disturbance z
-						//stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+						
+						// Check for EKF failure (isnan)
+						for (int j=0;j<15;j++){
+							if (isnan(xhat[j])!=0){
+								isnan_flag=1;
+								break;
+							}						
+						}
+						
+						if(isnan_flag){
+							for(int j=0;j<15;j++){
+								stateDataBuffer[j]=0; // position x
+							}
+							printf("EKF xhat=nan\n");
+						}
+						else{
+							// Move over data to controller.c via pipe
+							stateDataBuffer[0]=xhat[0]; // position x
+							stateDataBuffer[1]=xhat[1]; // position y
+							stateDataBuffer[2]=xhat[2]; // position z
+							stateDataBuffer[3]=xhat[3]; // velocity x
+							stateDataBuffer[4]=xhat[4]; // velocity y
+							stateDataBuffer[5]=xhat[5]; // velocity z
+							stateDataBuffer[6]=xhat[6]; // phi (x-axis)
+							stateDataBuffer[7]=xhat[7]; // theta (y-axis)
+							stateDataBuffer[8]=xhat[8]; // psi (z-axis)
+							stateDataBuffer[9]=xhat[9]; // omega x
+							stateDataBuffer[10]=xhat[10]; // omega y
+							stateDataBuffer[11]=xhat[11]; // omega z
+							stateDataBuffer[12]=xhat[12]; // disturbance x
+							stateDataBuffer[13]=xhat[13]; // disturbance y
+							stateDataBuffer[14]=xhat[14]; // disturbance z
+							//stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+						}
+
 
 						if(ekfPrint){
 							printf("xhat: %1.4f %1.4f %1.4f %1.4f %1.4f %1.4f %2.4f %2.4f %2.4f %2.4f %2.4f %2.4f %1.4f %1.4f %1.4f\n",xhat[0],xhat[1],xhat[2],xhat[3],xhat[4],xhat[5],xhat[6]*(180/PI),xhat[7]*(180/PI),xhat[8]*(180/PI),xhat[9],xhat[10],xhat[11],xhat[12],xhat[13],xhat[14]);
@@ -843,6 +883,43 @@ static void *threadSensorFusion (void *arg){
 							calibrationCounter=0; // forces sensor fusion to restart calibration
 							calibrationCounterEKF=0; // forces ekf to restart calibration
 						}
+						
+						//// Save buffered data to file
+						//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
+						if(buffer_counter==BUFFER){ // if buffer is full, save to file
+							saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
+							saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
+							saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
+							saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
+							saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
+							saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
+							saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
+							saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+							saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+							saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+							buffer_counter=0;
+						}
+						else{ // else keep saving data to buffer
+							buffer_u1[buffer_counter]=uControl[0];
+							buffer_u2[buffer_counter]=uControl[1];
+							buffer_u3[buffer_counter]=uControl[2];
+							buffer_u4[buffer_counter]=uControl[3];
+							buffer_omega_x[buffer_counter]=xhat[9];
+							buffer_omega_y[buffer_counter]=xhat[10];
+							buffer_omega_z[buffer_counter]=xhat[11];
+							buffer_angle_x[buffer_counter]=xhat[6];
+							buffer_angle_y[buffer_counter]=xhat[7];
+							buffer_angle_z[buffer_counter]=xhat[8];
+							buffer_counter++;
+						}
+						///// Time it and print true sampling rate
+						//clock_gettime(CLOCK_MONOTONIC, &t_stop_buffer); /// stop elapsed time clock
+						//ts_save_buffer=(t_stop_buffer.tv_sec - t_start_buffer.tv_sec) + (t_stop_buffer.tv_nsec - t_start_buffer.tv_nsec) / NSEC_PER_SEC;
+						//printf("Save buffer time: %f, tsTrue: %f, buffer_counter: %i\n", ts_save_buffer, tsTrue, buffer_counter);
+
+						
+						
+						
 					}
 				}
 							
@@ -1614,33 +1691,13 @@ int loadSettings(double *data, char* name, int size){
 }
 
 // Save settings file
+//void saveSettings(double *data, char* name, int size, FILE **fp){
 void saveSettings(double *data, char* name, int size){
 	// Create file pointer
-	FILE *fpRead, *fpWrite;
+	FILE *fpWrite;
 	int i;
-	char string[30];
 	int finish=0;
-	
-	//// Open file and prepare for write
-	//fpRead=fopen("settings.txt", "r");
 
-	//// Check to see that file has opened
-	//if(fpRead==NULL){
-		//printf("File could not be opened for write\n");
-	//}
-	//else{
-		//// check that variable does not exist in settings file
-		//while((fgets(string,20,fpRead)) != NULL && !finish){
-			
-			//if(strstr(string,name) != NULL){
-				//finish=1; // found variable
-			//}
-		//}
-	//}
-	
-	//// Close file
-	//fclose(fpRead);
-	
 	// Open file and prepare for write
 	fpWrite=fopen("settings.txt", "a"); // "a" means append
 	if(fpWrite==NULL){
@@ -1662,6 +1719,38 @@ void saveSettings(double *data, char* name, int size){
 	
 	// Close file
 	fclose(fpWrite);
+}
+
+// Save data to file
+//void saveData(double *data, char* name, int size, FILE **fp, int action){
+void saveData(double *data, char* name, int size){
+	// int action: 0=close, 1=open, NULL=nothing
+	// Create file pointer
+	FILE *fpWrite;
+	int i;
+
+	// Open file and prepare for write (append)
+	//if(action==1){
+		fpWrite=fopen("data.txt", "a"); // "a" means append
+	//}
+	
+	// Write to file
+	if(fpWrite==NULL){
+		printf("File could not be opened for write\n");
+	}
+	else{
+		fprintf(fpWrite, "%s\n", name); // append variable name
+		for(i=0;i<size;i++){
+			fprintf(fpWrite, "%5.18f\n", data[i]); // append content
+		}
+		fprintf(fpWrite, "\n"); // newline
+		//printf("%s settings saved\n",name);
+	}
+	
+	// Close file
+	//if(action==0){
+		fclose(fpWrite);
+	//}
 }
 
 // Used to print the bits in a data type
@@ -2163,7 +2252,6 @@ void fx_no_inertia(double *xhat, double *xhat_prev, double *u, double Ts){
 void Jfx_no_inertia(double *xhat, double *A, double *u, double Ts){
 	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=1;A[17]=0;A[18]=0;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=0;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=1;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=Ts;A[46]=0;A[47]=0;A[48]=1 - (Ts*par_k_d)/par_mass;A[49]=0;A[50]=0;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=0;A[64]=1 - (Ts*par_k_d)/par_mass;A[65]=0;A[66]=0;A[67]=0;A[68]=0;A[69]=0;A[70]=0;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1 - (Ts*par_k_d)/par_mass;A[81]=0;A[82]=0;A[83]=0;A[84]=0;A[85]=0;A[86]=0;A[87]=0;A[88]=0;A[89]=0;A[90]=0;A[91]=0;A[92]=0;A[93]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(xhat[8]) - cos(xhat[8])*sin(xhat[6])*sin(xhat[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[94]=-(Ts*par_c_m*par_k*(cos(xhat[6])*cos(xhat[8]) + sin(xhat[6])*sin(xhat[7])*sin(xhat[8]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[95]=-(Ts*par_c_m*par_k*cos(xhat[7])*sin(xhat[6])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[96]=Ts*(xhat[10]*cos(xhat[6])*tan(xhat[7]) - xhat[11]*sin(xhat[6])*tan(xhat[7])) + 1;A[97]=-Ts*(xhat[11]*cos(xhat[6]) + xhat[10]*sin(xhat[6]));A[98]=Ts*((xhat[10]*cos(xhat[6]))/cos(xhat[7]) - (xhat[11]*sin(xhat[6]))/cos(xhat[7]));A[99]=0;A[100]=0;A[101]=0;A[102]=0;A[103]=0;A[104]=0;A[105]=0;A[106]=0;A[107]=0;A[108]=(Ts*par_c_m*par_k*cos(xhat[6])*cos(xhat[7])*cos(xhat[8])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[109]=(Ts*par_c_m*par_k*cos(xhat[6])*cos(xhat[7])*sin(xhat[8])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[110]=-(Ts*par_c_m*par_k*cos(xhat[6])*sin(xhat[7])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[111]=Ts*(xhat[11]*cos(xhat[6])*(pow(tan(xhat[7]),2) + 1) + xhat[10]*sin(xhat[6])*(pow(tan(xhat[7]),2) + 1));A[112]=1;A[113]=Ts*((xhat[11]*cos(xhat[6])*sin(xhat[7]))/pow(cos(xhat[7]),2) + (xhat[10]*sin(xhat[6])*sin(xhat[7]))/pow(cos(xhat[7]),2));A[114]=0;A[115]=0;A[116]=0;A[117]=0;A[118]=0;A[119]=0;A[120]=0;A[121]=0;A[122]=0;A[123]=(Ts*par_c_m*par_k*(cos(xhat[8])*sin(xhat[6]) - cos(xhat[6])*sin(xhat[7])*sin(xhat[8]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[124]=(Ts*par_c_m*par_k*(sin(xhat[6])*sin(xhat[8]) + cos(xhat[6])*cos(xhat[8])*sin(xhat[7]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[125]=0;A[126]=0;A[127]=0;A[128]=1;A[129]=0;A[130]=0;A[131]=0;A[132]=0;A[133]=0;A[134]=0;A[135]=0;A[136]=0;A[137]=0;A[138]=0;A[139]=0;A[140]=0;A[141]=Ts;A[142]=0;A[143]=0;A[144]=1;A[145]=(Ts*xhat[11]*(par_i_xx - par_i_zz))/par_i_yy;A[146]=-(Ts*xhat[10]*(par_i_xx - par_i_yy))/par_i_zz;A[147]=0;A[148]=0;A[149]=0;A[150]=0;A[151]=0;A[152]=0;A[153]=0;A[154]=0;A[155]=0;A[156]=Ts*sin(xhat[6])*tan(xhat[7]);A[157]=Ts*cos(xhat[6]);A[158]=(Ts*sin(xhat[6]))/cos(xhat[7]);A[159]=-(Ts*xhat[11]*(par_i_yy - par_i_zz))/par_i_xx;A[160]=1;A[161]=-(Ts*xhat[9]*(par_i_xx - par_i_yy))/par_i_zz;A[162]=0;A[163]=0;A[164]=0;A[165]=0;A[166]=0;A[167]=0;A[168]=0;A[169]=0;A[170]=0;A[171]=Ts*cos(xhat[6])*tan(xhat[7]);A[172]=-Ts*sin(xhat[6]);A[173]=(Ts*cos(xhat[6]))/cos(xhat[7]);A[174]=-(Ts*xhat[10]*(par_i_yy - par_i_zz))/par_i_xx;A[175]=(Ts*xhat[9]*(par_i_xx - par_i_zz))/par_i_yy;A[176]=1;A[177]=0;A[178]=0;A[179]=0;A[180]=0;A[181]=0;A[182]=0;A[183]=Ts;A[184]=0;A[185]=0;A[186]=0;A[187]=0;A[188]=0;A[189]=0;A[190]=0;A[191]=0;A[192]=1;A[193]=0;A[194]=0;A[195]=0;A[196]=0;A[197]=0;A[198]=0;A[199]=Ts;A[200]=0;A[201]=0;A[202]=0;A[203]=0;A[204]=0;A[205]=0;A[206]=0;A[207]=0;A[208]=1;A[209]=0;A[210]=0;A[211]=0;A[212]=0;A[213]=0;A[214]=0;A[215]=Ts;A[216]=0;A[217]=0;A[218]=0;A[219]=0;A[220]=0;A[221]=0;A[222]=0;A[223]=0;A[224]=1;
 }
-
 
 
 

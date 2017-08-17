@@ -119,12 +119,12 @@ double inertias[3] = {par_i_xx,par_i_yy,par_i_zz};
 int sensorInitReady=0; // ekfReady[0=not, 1=mpc can start]
  
 // Controller variables
-const static double PosTsSec = 0.05;
-const static double AttTsSec = 0.05;
-const static double AltTsSec = 0.05;
-const static double PosTs = 0.05*(1e+9);	//nano for RPi implementation
-const static double AttTs = 0.05*(1e+9); 	//nano for RPi implementation
-const static double AltTs = 0.05*(1e+9); 	//nano for RPi implementation
+static double PosTsSec = 0.05;
+static double AttTsSec = 0.05;
+static double AltTsSec = 0.05;
+//const static double PosTs = 0.05*(1e+9);	//nano for RPi implementation
+//const static double AttTs = 0.05*(1e+9); 	//nano for RPi implementation
+//const static double AltTs = 0.05*(1e+9); 	//nano for RPi implementation
 
 // Predeclarations
 static void *threadUpdateMeasurements(void*);
@@ -356,7 +356,7 @@ void *threadController( void *arg ) {
 
 	// Local variables to store global data in to using mutexes
 	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.2, alpha = -1;	
-	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos;
+	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
 	int i;
@@ -366,7 +366,8 @@ void *threadController( void *arg ) {
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
-	double tsTrue=tsController;
+	double tsTrue=tsController,tsAverageAccum=0,tsAverage;
+	int tsAverageCounter=0;
 	//int mpcMissedDeadlines=0;
 
 	/// Lock memory
@@ -381,7 +382,7 @@ void *threadController( void *arg ) {
 	 //Loop forever at specific sampling rate
 	while(1){
 		/// Time it and wait until next shot
-		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		//clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
 		
 		// Get measurements, disturbance and inertias (xhat)
@@ -399,10 +400,36 @@ void *threadController( void *arg ) {
 			triggerFly=(int)keyboardData[3];
 			triggerMpcPos=(int)keyboardData[13];
 			pwmPrint=(int)keyboardData[4];
+			timerPrint=(int)keyboardData[5];
 			keyRampRef=(int)keyboardData[10];
 			memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
 			memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 		pthread_mutex_unlock(&mutexConstraintsData);
+		
+		/// Time it and print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop); /// stop elapsed time clock
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); /// start elapsed time clock
+		
+		/// Get average sampling time
+		if(tsAverageCounter<50){
+			tsAverageAccum+=tsTrue;
+			tsAverageCounter++;
+		}
+		else{
+			tsAverageAccum/=50;
+			tsAverage=tsAverageAccum;
+			if(timerPrint){
+				printf("MPC: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+			}
+			tsAverageCounter=0;
+			tsAverageAccum=0;
+		}
+		
+		/// Assign true sampling time to mpc models
+		PosTsSec = tsTrue;
+		AttTsSec = tsTrue;
+		AltTsSec = tsTrue;
 		
 		// MPC position toggle
 		if(!triggerMpcPos){
@@ -528,13 +555,13 @@ void *threadController( void *arg ) {
 			t.tv_sec++;
 		}	
 		
-		/// Print true sampling rate
-		clock_gettime(CLOCK_MONOTONIC, &t_stop);
-		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
-		//printf("Sampling time [s] mpc: %lf\n",tsTrue);
-		if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
-			//printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
-		}
+		///// Print true sampling rate
+		//clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		//tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		////printf("Sampling time [s] mpc: %lf\n",tsTrue);
+		//if(tsTrue-tsController/NSEC_PER_SEC>0.0001){
+			////printf("MPC did not meet deadline by %lf [s]. Nr %i\n",tsTrue-tsController/NSEC_PER_SEC,++mpcMissedDeadlines);
+		//}
 		
 	}
 	
@@ -650,6 +677,12 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	tau_x = attU_all[0];		// theta or phi?!
 	tau_y = attU_all[1];		// theta or phi?!
 	tau_z = attU_all[2];		// psi
+	
+	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
+		if(isnan(attU_all[i])!=0){
+			printf("MPC attU[%i]=nan\n",i);
+		}
+	}
 	
 	//printf("(taux) % 2.4f (tauy) % 2.4f (tauz) % 2.4f\n", tau_x, tau_y, tau_z);
 }
