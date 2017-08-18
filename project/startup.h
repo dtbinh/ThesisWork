@@ -47,12 +47,12 @@
 #define	par_k 0.000010107f// lift coeff
 #define	par_b 0.00000033691f // drag coeff
 #define	par_k_d 0.25f // air friction
-//#define par_i_xx 0.0012f // quad inertia about xb
-//#define par_i_yy 0.0012f // quad inertia about yb
-//#define par_i_zz 0.0023f // quad inertia about zb
-#define par_i_xx 0.022f // quad inertia about xb
-#define par_i_yy 0.022f // quad inertia about yb
-#define par_i_zz 0.043f // quad inertia about zb
+#define par_i_xx 0.0012f // quad inertia about xb
+#define par_i_yy 0.0012f // quad inertia about yb
+#define par_i_zz 0.0023f // quad inertia about zb
+//#define par_i_xx 0.022f // quad inertia about xb
+//#define par_i_yy 0.022f // quad inertia about yb
+//#define par_i_zz 0.043f // quad inertia about zb
 #define	par_c_m 23.0907f // motor constant
 
 /*
@@ -77,16 +77,16 @@ Keyboard listening...
 #define mpcPos_R_2 1000.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
-#define mpcAtt_Q_1 600.0f
-#define mpcAtt_Q_2 50.0f
-#define mpcAtt_Q_3 600.0f
-#define mpcAtt_Q_4 50.0f
+#define mpcAtt_Q_1 500.0f
+#define mpcAtt_Q_2 1.0e-6f
+#define mpcAtt_Q_3 500.0f
+#define mpcAtt_Q_4 1.0e-6f
 #define mpcAtt_Q_5 1.0f
 #define mpcAtt_Q_6 1.0f
-
-#define mpcAtt_R_1 1000.0f
-#define mpcAtt_R_2 1000.0f
-#define mpcAtt_R_3 1000000000.0f
+//2000.000000,2000.000000,10000000000000.000000
+#define mpcAtt_R_1 800.0f
+#define mpcAtt_R_2 800.0f
+#define mpcAtt_R_3 100000000000.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
 #define mpcAlt_Q_1 1000.0f
@@ -95,20 +95,20 @@ Keyboard listening...
 #define mpcAlt_R_1 1.0f
 
 // Default EKF weights Q
-#define ekf_Q_1 100.0f
-#define ekf_Q_2 100.0f
-#define ekf_Q_3 100.0f
-#define ekf_Q_4 100.0f
-#define ekf_Q_5 100.0f
-#define ekf_Q_6 100.0f
-#define ekf_Q_7 1.0e-7f
-#define ekf_Q_8 1.0e-7f
-#define ekf_Q_9 1.0e-7f
+#define ekf_Q_1 1.0e-7f
+#define ekf_Q_2 1.0e-7f
+#define ekf_Q_3 1.0e-7f
+#define ekf_Q_4 1.0e1f
+#define ekf_Q_5 1.0e1f
+#define ekf_Q_6 1.0e1f
+#define ekf_Q_7 1.0e-4f
+#define ekf_Q_8 1.0e-4f
+#define ekf_Q_9 1.0e-4f
 #define ekf_Q_10 1.0e-3f
 #define ekf_Q_11 1.0e-3f
 #define ekf_Q_12 1.0e-3f
-#define ekf_Q_13 1.0f
-#define ekf_Q_14 1.0f
+#define ekf_Q_13 1.0e-7f
+#define ekf_Q_14 1.0e-7f
 #define ekf_Q_15 0.00001f
 
 

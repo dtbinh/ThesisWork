@@ -502,7 +502,7 @@ static void *threadSensorFusion (void *arg){
 	double euler_mean[3];
 	int eulerCalFlag=0;
 	float beta_keyboard;
-	int isnan_flag=0;
+	int isnan_flag=0, outofbounds_flag=0;
 
 	
 	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0;
@@ -638,7 +638,7 @@ static void *threadSensorFusion (void *arg){
 				// Set gain of orientation estimation Madgwick beta after initialization
 				if(tsAverageReadyEKF==2){
 					if(k==500){
-						beta=0.05;
+						beta=0.0433;
 						//eulerCalFlag=1;
 					}
 					else{
@@ -826,6 +826,7 @@ static void *threadSensorFusion (void *arg){
 							memcpy(uControl, uControlInit, sizeof(uControlInit));
 							stateDataBuffer[15]=0; // set ready flag for MPC false during reset
 							isnan_flag=0;
+							outofbounds_flag=0;
 						}
 						
 						xhat[12]=0;
@@ -839,13 +840,29 @@ static void *threadSensorFusion (void *arg){
 							}						
 						}
 						
+						// Check for EKF failure (out of bounds)
+						for (int j=0;j<15;j++){
+							if (xhat[j]>1e6){
+								outofbounds_flag=1;
+								break;
+							}						
+						}
+						
 						if(isnan_flag){
-							for(int j=0;j<15;j++){
-								stateDataBuffer[j]=0; // position x
-							}
+							//for(int j=0;j<15;j++){
+								//stateDataBuffer[j]=0; // position x
+							//}
+							stateDataBuffer[15]=0;
 							printf("EKF xhat=nan\n");
 						}
-						else{
+						else if(outofbounds_flag){
+							//for(int j=0;j<15;j++){
+								//stateDataBuffer[j]=0; // position x
+							//}
+							stateDataBuffer[15]=0;
+							printf("EKF xhat=out of bounds\n");
+						}
+						//else{
 							// Move over data to controller.c via pipe
 							stateDataBuffer[0]=xhat[0]; // position x
 							stateDataBuffer[1]=xhat[1]; // position y
@@ -863,7 +880,7 @@ static void *threadSensorFusion (void *arg){
 							stateDataBuffer[13]=xhat[13]; // disturbance y
 							stateDataBuffer[14]=xhat[14]; // disturbance z
 							//stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
-						}
+						//}
 
 
 						if(ekfPrint){
