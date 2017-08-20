@@ -110,7 +110,9 @@ Keyboard listening...
 #define ekf_Q_13 1.0e-7f
 #define ekf_Q_14 1.0e-7f
 #define ekf_Q_15 0.00001f
-
+#define ekf_Q_16 1.0e-10f
+#define ekf_Q_17 1.0e-10f
+#define ekf_Q_18 1.0e-15f
 
 typedef struct _structPipe{
 	int parent[2];

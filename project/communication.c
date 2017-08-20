@@ -46,7 +46,7 @@ static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static double keyboardData[14]={0,0,0,0,0,0,0,0,0,0,0,0.01,0.05,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
-static double tuningEkfData[15]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15};
+static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 	
 static int socketReady=0;
 
@@ -77,8 +77,8 @@ void startCommunication(void *arg1, void *arg2)
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 
 	// Create thread
-	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpR, threadUdpW, threadkeyRead;
-	int threadPID1, threadPID2, threadPID3, threadPID4, threadPID5;
+	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpW, threadkeyRead; // threadUdpR
+	int threadPID1, threadPID2, threadPID4, threadPID5; // threadPID3
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
@@ -90,7 +90,7 @@ void startCommunication(void *arg1, void *arg2)
 	threadPID5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
 	
 	// Set up thread scheduler priority for real time tasks
-	struct sched_param paramThread1, paramThread2, paramThread3, paramThread4,paramThread5;
+	struct sched_param paramThread1, paramThread2, paramThread4,paramThread5; // paramThread3
 	paramThread1.sched_priority = PRIORITY_COMMUNICATION_PIPE_CONTROLLER; // set priorities
 	paramThread2.sched_priority = PRIORITY_COMMUNICATION_PIPE_SENSOR;
 	//paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
@@ -394,13 +394,13 @@ static void *threadKeyReading( void *arg ) {
 	structPipe *ptrPipe2 = pipeArray1->pipe2;
 	
 	/// Setup timer variables for real time performance check
-	struct timespec t_start,t_stop;
+	//struct timespec t_start,t_stop;
 	
 	/// Average sampling
 	//int tsAverageCounter=0;
 	//double tsAverageAccum=0;
-	double tsAverage=tsController, tsTrue;
-	double keyboardDataController[49];
+	//double tsTrue; // tsAverage=tsController
+	double keyboardDataController[52];
 	//int timerPrint=0;
 	
 	/// Lock memory
@@ -409,8 +409,8 @@ static void *threadKeyReading( void *arg ) {
 	}
 	
 	while(1) {
-		/// Time it
-		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		///// Time it
+		//clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
 		
 		keyReading();
 		
@@ -429,9 +429,9 @@ static void *threadKeyReading( void *arg ) {
 		if (write(ptrPipe2->child[1], keyboardDataController, sizeof(keyboardDataController)) != sizeof(keyboardDataController)) printf("Error in writing keyboardData from Communication to Sensor\n");
 		//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), keyboardData[0]);
 		
-		/// Print true sampling rate
-		clock_gettime(CLOCK_MONOTONIC, &t_stop);
-		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		///// Print true sampling rate
+		//clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		//tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
 	}
 	
 	return NULL;
@@ -491,7 +491,7 @@ void keyReading( void ) {
 	double keyboardDataBuffer[4] = {0,0,0,0}; // {ref_x,ref_y,ref_z,switch}
 	double tuningMpcBuffer[14];
 	double tuningMpcBufferControl[6];
-	double tuningEkfBuffer[15];
+	double tuningEkfBuffer[18];
 	memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
 	memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 	memcpy(tuningEkfBuffer, tuningEkfData, sizeof(tuningEkfData));
@@ -1031,7 +1031,7 @@ void keyReading( void ) {
 			// disturbance tuning
 			else if ( strcmp(selection, "d" ) == 0 ) {
 				while (tuningFlag){
-					printf("Disturbance ekf Q {dist_x,dist_y,dist_z}\n Old: {%f,%f,%f}\n New: ", tuningEkfData[12], tuningEkfData[13], tuningEkfData[14]);
+					printf("Disturbance ekf Q {dist_x,dist_y,dist_z,dist_taux,dist_tauy,dist_tauz}\n Old: {%f,%f,%f,%f,%f,%f}\n New: ", tuningEkfData[12], tuningEkfData[13], tuningEkfData[14], tuningEkfData[15], tuningEkfData[16], tuningEkfData[17]);
 					scanf("%s", input_char);
 					pt = strtok(input_char, ",");
 					while (pt != NULL){
@@ -1039,7 +1039,7 @@ void keyReading( void ) {
 						pt = strtok(NULL, ",");
 						counter++;
 					}
-					if (counter!=3){
+					if (counter!=6){
 							printf("Bad format. Retry [y]?  Else press any button to cancel\n");
 							scanf("%s", selection);
 							if ( strcmp(selection, "y" ) == 0 ){
@@ -1054,10 +1054,10 @@ void keyReading( void ) {
 						printf("\nAccept [y]? Else press any button to cancel\n");
 						scanf("%s", selection);
 						if ( strcmp(selection, "y" ) == 0 ){
-							for (int i=0;i<3;i++){
+							for (int i=0;i<6;i++){
 								tuningEkfData[i+12]=tuningEkfBuffer[i+12];
 							}
-							printf("Updated: {%f,%f,%f}\n", tuningEkfData[12], tuningEkfData[13], tuningEkfData[14]);
+							printf("Updated: {%f,%f,%f,%f,%f,%f}\n", tuningEkfData[12], tuningEkfData[13], tuningEkfData[14], tuningEkfData[15], tuningEkfData[16], tuningEkfData[17]);
 						}
 						tuningFlag=0;
 					}
@@ -1067,7 +1067,7 @@ void keyReading( void ) {
 		
 			// show current tuning values
 			else if ( strcmp(selection, "c" ) == 0 ) {			
-				printf("Current ekf Q {x,y,z,xdot,ydot,zdot,phi,theta,psi,phidot,thetadot,psidot,dist_x,dist_y,dist_z}\n{%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f}\n", tuningEkfData[0], tuningEkfData[1], tuningEkfData[2], tuningEkfData[3], tuningEkfData[4], tuningEkfData[5], tuningEkfData[6], tuningEkfData[7], tuningEkfData[8], tuningEkfData[9], tuningEkfData[10], tuningEkfData[11], tuningEkfData[12], tuningEkfData[13], tuningEkfData[14]);			
+				printf("Current ekf Q {x,y,z,xdot,ydot,zdot,phi,theta,psi,phidot,thetadot,psidot,dist_x,dist_y,dist_z,dist_taux,dist_tauy,dist_tauz}\n{%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f}\n", tuningEkfData[0], tuningEkfData[1], tuningEkfData[2], tuningEkfData[3], tuningEkfData[4], tuningEkfData[5], tuningEkfData[6], tuningEkfData[7], tuningEkfData[8], tuningEkfData[9], tuningEkfData[10], tuningEkfData[11], tuningEkfData[12], tuningEkfData[13], tuningEkfData[14], tuningEkfData[15], tuningEkfData[16], tuningEkfData[17]);			
 				break;
 			}
 			
