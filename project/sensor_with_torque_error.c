@@ -795,7 +795,8 @@ static void *threadSensorFusion (void *arg){
 					ymeas6x6[0]*=-1; // flip theta (x-axis)						
 					ymeas6x6[1]*=-1; // flip theta (y-axis)	
 					ymeas6x6[3]*=-1; // flip gyro (x-axis)						
-					ymeas6x6[4]*=-1; // flip gyro (y-axis)	
+					//ymeas6x6[4]*=-1; // flip gyro (y-axis)
+					ymeas6x6[5]*=-1; // flip gyro (z-axis)
 
 					// Calibration routine for EKF
 					if (calibrationCounterEKF==0){
@@ -2394,6 +2395,98 @@ void EKF_6x6(double *Phat, double *xhat, double *u, double *ymeas, double *Q, do
 	//printmat(Phat,15,15);
 }
 
+// State Observer - Extended Kalman Filter for 9 attitude states (including bias estimation)
+void EKF_9x9_bias(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts){
+	// Local variables
+	double xhat_pred[6]={0,0,0,0,0,0};
+	double C[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double eye6[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double S_inv[36];
+	double A[36], S[36], C_temp[36], Jfx_temp[36], Phat_pred[36], K_temp[36], K[36], V[6], xhat_temp[6], x_temp[6], fone=1, fzero=0;
+	int n=6, k=6, m=6, ione=1;
+	
+	// Prediction step
+	fx_6x1(xhat_pred, xhat, u, Ts); // state 
+	Jfx_6x6(xhat, A, u, Ts); // update Jacobian A matrix
+	
+	// A*Phat_prev*A' + Q
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A,&m,Phat,&k,&fzero,Jfx_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Jfx_temp,&m,A,&n,&fzero,Phat_pred,&m);
+	Phat_pred[0]+=Q[0];
+	Phat_pred[7]+=Q[1];
+	Phat_pred[14]+=Q[2];
+	Phat_pred[21]+=Q[3];
+	Phat_pred[28]+=Q[4];
+	Phat_pred[35]+=Q[5];
+
+	// Update step
+	// S=C*P*C'+R; Innovation covariance
+	n=6, k=6, m=6;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,Phat_pred,&k,&fzero,C_temp,&m);
+	n=6, k=6, m=6;
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,C_temp,&m,C,&n,&fzero,S,&m);
+	S[0]+=R[0];
+	S[7]+=R[7];
+	S[14]+=R[14];
+	S[21]+=R[21];
+	S[28]+=R[28];
+	S[35]+=R[35];
+
+	// K=P*C'*S^-1; Kalman gain
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Phat_pred,&m,C,&n,&fzero,K_temp,&m);
+	mInverse6x6(S,S_inv);
+	n=6, k=6, m=6; // 6x6 * 6*6 = 6x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
+
+	// V=y_meas-C*x_hat; Innovation
+	n=6, m=6; 
+	F77_CALL(dgemv)("n",&m,&n,&fone,C,&m,xhat_pred,&ione,&fzero,xhat_temp,&ione);
+	V[0]=ymeas[0]-xhat_temp[0];
+	V[1]=ymeas[1]-xhat_temp[1];
+	V[2]=ymeas[2]-xhat_temp[2];
+	V[3]=ymeas[3]-xhat_temp[3];
+	V[4]=ymeas[4]-xhat_temp[4];
+	V[5]=ymeas[5]-xhat_temp[5];
+	
+	//printf("\nymeas:\n");
+	//printmat(ymeas,1,6);
+	
+	//printf("\nxhat_temp:\n");
+	//printmat(xhat_temp,1,6);
+		
+	//printf("\nV:\n");
+	//printmat(V,1,6);
+	
+	//printf("\nK:\n");
+	//printmat(K,15,6);
+
+	// x=x+K*v; State update
+	n=6, m=6;
+	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
+	xhat[0]=xhat_pred[0]+x_temp[0];
+	xhat[1]=xhat_pred[1]+x_temp[1];
+	xhat[2]=xhat_pred[2]+x_temp[2];
+	xhat[3]=xhat_pred[3]+x_temp[3];
+	xhat[4]=xhat_pred[4]+x_temp[4];
+	xhat[5]=xhat_pred[5]+x_temp[5];
+	
+	//printf("\nxhat\n");
+	//printmat(xhat,15,1);
+	
+	// P=P-K*S*K'; Covariance update
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m); // K*S
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,Phat,&m); // K_temp*K'
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	fzero=-1;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,eye6,&m,Phat_pred,&k,&fzero,Phat,&m); // P=P-K*S*K'
+	
+	//printf("\nPhat\n");
+	//printmat(Phat,15,15);
+}
+
 // State Observer - Extended Kalman Filter for 9 position states
 void EKF_9x9(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts, int flag, double *par_att){
 	// Local variables
@@ -2644,6 +2737,21 @@ void fx_9x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 // Jacobian of model for position states (9x9)
 void Jfx_9x9(double *xhat, double *A, double *u, double Ts, double *par_att){
 	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=1;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=0;A[19]=0;A[20]=1;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=Ts;A[28]=0;A[29]=0;A[30]=1 - (Ts*par_k_d)/par_mass;A[31]=0;A[32]=0;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=Ts;A[38]=0;A[39]=0;A[40]=1 - (Ts*par_k_d)/par_mass;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=0;A[46]=0;A[47]=Ts;A[48]=0;A[49]=0;A[50]=1 - (Ts*par_k_d)/par_mass;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=Ts;A[58]=0;A[59]=0;A[60]=1;A[61]=0;A[62]=0;A[63]=0;A[64]=0;A[65]=0;A[66]=0;A[67]=Ts;A[68]=0;A[69]=0;A[70]=1;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1;
+}
+
+// Nonlinear Model for attitude states including bias estimation (9x1)
+void fx_9x1_bias(double *xhat, double *xhat_prev, double *u, double Ts){
+	xhat[0]=xhat_prev[0] + Ts*(xhat_prev[3] + xhat_prev[5]*cos(xhat_prev[0])*tan(xhat_prev[1]) + xhat_prev[4]*sin(xhat_prev[0])*tan(xhat_prev[1]));
+	xhat[1]=xhat_prev[1] + Ts*(xhat_prev[4]*cos(xhat_prev[0]) - xhat_prev[5]*sin(xhat_prev[0]));
+	xhat[2]=xhat_prev[2] + Ts*((xhat_prev[5]*cos(xhat_prev[0]))/cos(xhat_prev[1]) + (xhat_prev[4]*sin(xhat_prev[0]))/cos(xhat_prev[1]));
+	xhat[3]=xhat_prev[3] - Ts*((xhat_prev[4]*xhat_prev[5]*(par_i_yy - par_i_zz))/par_i_xx - (par_L*par_c_m*par_k*(pow(u[0],2) - pow(u[2],2)))/par_i_xx);
+	xhat[4]=xhat_prev[4] + Ts*((xhat_prev[3]*xhat_prev[5]*(par_i_xx - par_i_zz))/par_i_yy + (par_L*par_c_m*par_k*(pow(u[1],2) - pow(u[3],2)))/par_i_yy);
+	xhat[5]=xhat_prev[5] + Ts*((par_b*par_c_m*(pow(u[0],2) - pow(u[1],2) + pow(u[2],2) - pow(u[3],2)))/par_i_zz - (xhat_prev[3]*xhat_prev[4]*(par_i_xx - par_i_yy))/par_i_zz);
+}
+
+// Jacobian of model for attitude states including bias estimation (9x9)
+void Jfx_9x9_bias(double *xhat, double *A, double *u, double Ts){
+	A[0]=Ts*(xhat[4]*cos(xhat[0])*tan(xhat[1]) - xhat[5]*sin(xhat[0])*tan(xhat[1])) + 1;A[1]=-Ts*(xhat[5]*cos(xhat[0]) + xhat[4]*sin(xhat[0]));A[2]=Ts*((xhat[4]*cos(xhat[0]))/cos(xhat[1]) - (xhat[5]*sin(xhat[0]))/cos(xhat[1]));A[3]=0;A[4]=0;A[5]=0;A[6]=Ts*(xhat[5]*cos(xhat[0])*(pow(tan(xhat[1]),2) + 1) + xhat[4]*sin(xhat[0])*(pow(tan(xhat[1]),2) + 1));A[7]=1;A[8]=Ts*((xhat[5]*cos(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2) + (xhat[4]*sin(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2));A[9]=0;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=1;A[15]=0;A[16]=0;A[17]=0;A[18]=Ts;A[19]=0;A[20]=0;A[21]=1;A[22]=(Ts*xhat[5]*(par_i_xx - par_i_zz))/par_i_yy;A[23]=-(Ts*xhat[4]*(par_i_xx - par_i_yy))/par_i_zz;A[24]=Ts*sin(xhat[0])*tan(xhat[1]);A[25]=Ts*cos(xhat[0]);A[26]=(Ts*sin(xhat[0]))/cos(xhat[1]);A[27]=-(Ts*xhat[5]*(par_i_yy - par_i_zz))/par_i_xx;A[28]=1;A[29]=-(Ts*xhat[3]*(par_i_xx - par_i_yy))/par_i_zz;A[30]=Ts*cos(xhat[0])*tan(xhat[1]);A[31]=-Ts*sin(xhat[0]);A[32]=(Ts*cos(xhat[0]))/cos(xhat[1]);A[33]=-(Ts*xhat[4]*(par_i_yy - par_i_zz))/par_i_xx;A[34]=(Ts*xhat[3]*(par_i_xx - par_i_zz))/par_i_yy;A[35]=1;
 }
 
 

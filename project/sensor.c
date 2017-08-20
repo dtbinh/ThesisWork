@@ -795,7 +795,8 @@ static void *threadSensorFusion (void *arg){
 					ymeas6x6[0]*=-1; // flip theta (x-axis)						
 					ymeas6x6[1]*=-1; // flip theta (y-axis)	
 					ymeas6x6[3]*=-1; // flip gyro (x-axis)						
-					//ymeas6x6[4]*=-1; // flip gyro (y-axis)	
+					//ymeas6x6[4]*=-1; // flip gyro (y-axis)
+					ymeas6x6[5]*=-1;	
 
 					// Calibration routine for EKF
 					if (calibrationCounterEKF==0){
