@@ -84,7 +84,7 @@ void fx_9x1(double*, double*, double*, double, double*);
 void Jfx_9x9(double*, double*, double*, double, double*);
 void fx_9x1_bias(double*, double*, double*, double);
 void Jfx_9x9_bias(double*, double*, double*, double);
-
+void saturation(double*, int, double, double);
 
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
@@ -620,15 +620,10 @@ static void *threadSensorFusion (void *arg){
 				
 				
 				// Rotate magnetometer data such that the sensor coordinate frames match.
-				// Rz(90)=[-1,1,1], magX*(-1), magZ*(-1)
 				// Note: For more info check the MPU9250 Product Specification (Chapter 9)
 				magRawRot[0]=magRaw[1];
 				magRawRot[1]=magRaw[0];
 				magRawRot[2]=magRaw[2];
-				
-				//magRawRot[0]=-magRaw[1]*(-1);
-				//magRawRot[1]=magRaw[0];
-				//magRawRot[2]=magRaw[2]*(-1);
 				
 				/// Time it and print true sampling rate
 				clock_gettime(CLOCK_MONOTONIC, &t_stop); /// stop elapsed time clock
@@ -732,7 +727,7 @@ static void *threadSensorFusion (void *arg){
 						euler_mean[2]/=500.0f;
 						counterCalEuler++;
 						eulerCalFlag=1;
-						printf("q_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
+						printf("euler_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
 					}
 					else{
 						euler_comp[0]=euler[0]-euler_mean[0];
@@ -798,7 +793,7 @@ static void *threadSensorFusion (void *arg){
 					ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
 					
 					// Flip direction of rotation and gyro around y-axis and x-axis to match model
-					ymeas9x9_bias[0]*=-1; // flip theta (x-axis)						
+					ymeas9x9_bias[0]*=-1; // flip phi (x-axis)						
 					ymeas9x9_bias[1]*=-1; // flip theta (y-axis)	
 					ymeas9x9_bias[3]*=-1; // flip gyro (x-axis)						
 					//ymeas9x9_bias[4]*=-1; // flip gyro (y-axis)
@@ -885,6 +880,13 @@ static void *threadSensorFusion (void *arg){
 						// Override disturbance estimation in x and y direction
 						xhat9x9[6]=0;
 						xhat9x9[7]=0;
+						
+						// Torque disturbance saturation
+						//saturation(xhat9x9_bias,6,-0.01,0.01);
+						//saturation(xhat9x9_bias,7,-0.01,0.01);
+						saturation(xhat9x9_bias,6,0.0,0.0);
+						saturation(xhat9x9_bias,7,0.0,0.0);
+						saturation(xhat9x9_bias,8,0.0,0.0);
 						
 						// Check for EKF9x9_bias failure (isnan)
 						for (int j=0;j<9;j++){
@@ -2775,3 +2777,12 @@ void Jfx_9x9_bias(double *xhat, double *A, double *u, double Ts){
 	A[0]=Ts*(xhat[4]*cos(xhat[0])*tan(xhat[1]) - xhat[5]*sin(xhat[0])*tan(xhat[1])) + 1;A[1]=-Ts*(xhat[5]*cos(xhat[0]) + xhat[4]*sin(xhat[0]));A[2]=Ts*((xhat[4]*cos(xhat[0]))/cos(xhat[1]) - (xhat[5]*sin(xhat[0]))/cos(xhat[1]));A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=Ts*(xhat[5]*cos(xhat[0])*(pow(tan(xhat[1]),2) + 1) + xhat[4]*sin(xhat[0])*(pow(tan(xhat[1]),2) + 1));A[10]=1;A[11]=Ts*((xhat[5]*cos(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2) + (xhat[4]*sin(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2));A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=0;A[19]=0;A[20]=1;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=Ts;A[28]=0;A[29]=0;A[30]=1;A[31]=(Ts*xhat[5]*(par_i_xx - par_i_zz))/par_i_yy;A[32]=-(Ts*xhat[4]*(par_i_xx - par_i_yy))/par_i_zz;A[33]=0;A[34]=0;A[35]=0;A[36]=Ts*sin(xhat[0])*tan(xhat[1]);A[37]=Ts*cos(xhat[0]);A[38]=(Ts*sin(xhat[0]))/cos(xhat[1]);A[39]=-(Ts*xhat[5]*(par_i_yy - par_i_zz))/par_i_xx;A[40]=1;A[41]=-(Ts*xhat[3]*(par_i_xx - par_i_yy))/par_i_zz;A[42]=0;A[43]=0;A[44]=0;A[45]=Ts*cos(xhat[0])*tan(xhat[1]);A[46]=-Ts*sin(xhat[0]);A[47]=(Ts*cos(xhat[0]))/cos(xhat[1]);A[48]=-(Ts*xhat[4]*(par_i_yy - par_i_zz))/par_i_xx;A[49]=(Ts*xhat[3]*(par_i_xx - par_i_zz))/par_i_yy;A[50]=1;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=Ts;A[58]=0;A[59]=0;A[60]=1;A[61]=0;A[62]=0;A[63]=0;A[64]=0;A[65]=0;A[66]=0;A[67]=Ts;A[68]=0;A[69]=0;A[70]=1;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1;
 }
 
+// Saturation function
+void saturation(double *var, int index, double limMin, double limMax){
+	if(var[index]<limMin){
+		var[index]=limMin;
+	}
+	else if(var[index]>limMax){
+		var[index]=limMax;
+	}
+}

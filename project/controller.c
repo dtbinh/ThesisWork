@@ -668,16 +668,18 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		}
 	
 	// Update controller input contraints [umin/umax] to compensate for disturbances in torque
-	//attParams->umax[0]=0.1-dist[0];
-	//attParams->umin[0]=-0.1-dist[0];
-	//attParams->umax[1]=0.1-dist[1];
-	//attParams->umin[1]=-0.1-dist[1];
-	//attParams->umax[2]=0.1-dist[2];
-	//attParams->umin[2]=-0.1-dist[2];
+	attParams->umax[0]=0.1-dist[0];
+	attParams->umin[0]=-0.1-dist[0];
+	attParams->umax[1]=0.1-dist[1];
+	attParams->umin[1]=-0.1-dist[1];
+	attParams->umax[2]=0.1-dist[2];
+	attParams->umin[2]=-0.1-dist[2];
+	
+	//printf("umaxumin_0(% 1.4f % 1.4f) umaxumin_1(% 1.4f % 1.4f) umaxumin_2(% 1.4f % 1.4f)\n", attParams->umax[0]-dist[0], attParams->umin[0]-dist[0], attParams->umax[1]-dist[1], attParams->umin[1]-dist[1], attParams->umax[2]-dist[2], attParams->umin[2]-dist[2]);
 	
 	// Get measurements and references from global data
 	attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
-	attInputs->x0[1] = meas[9] - ref[9];		//phidot
+	attInputs->x0[1] = meas[9] - ref[9];		//phidots
 	attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
 	attInputs->x0[3] = meas[10] - ref[10];	//thetadot
 	attInputs->x0[4] = meas[8] - ref[8];		//psi
@@ -687,11 +689,11 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	
 	attFmpc(attParams, attInputs, attX_all, attU_all);
 	
-	printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
+	//printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
 	
-	//attU_all[0]-=dist[0]; // feed forward disturbance compensation x
-	//attU_all[1]-=dist[1]; // feed forward disturbance compensation y
-	//attU_all[2]-=dist[2]; // feed forward disturbance compensation z
+	attU_all[0]+=dist[0]; // feed forward disturbance compensation x
+	attU_all[1]+=dist[1]; // feed forward disturbance compensation y
+	attU_all[2]+=dist[2]; // feed forward disturbance compensation z
 	
 	tau_x = attU_all[0];		// phi
 	tau_y = attU_all[1];		// theta

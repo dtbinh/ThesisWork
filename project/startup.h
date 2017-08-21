@@ -29,10 +29,10 @@
 #define PRIORITY_COMMUNICATION_PIPE_SENSOR 28
 
 // Sampling Time
-#define tsController 25000000 // 0.5s
+#define tsController 25000000 // 0.025s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
-#define tsSensorsFusion 25000000 // 0.02s
+#define tsSensorsFusion 25000000 // 0.025s
 #define tsReadBeacon 50000000 // 0.05s
 #define tsUdpWrite 25000000 // 0.1s
 
@@ -104,15 +104,15 @@ Keyboard listening...
 #define ekf_Q_7 1.0e-5f
 #define ekf_Q_8 1.0e-5f
 #define ekf_Q_9 1.0e-12f
-#define ekf_Q_10 1.0e-1f
-#define ekf_Q_11 1.0e-1f
-#define ekf_Q_12 1.0e-1f
+#define ekf_Q_10 1.0e-10f
+#define ekf_Q_11 1.0e-10f
+#define ekf_Q_12 1.0e-3f
 #define ekf_Q_13 1.0e-7f
 #define ekf_Q_14 1.0e-7f
 #define ekf_Q_15 0.00001f
-#define ekf_Q_16 1.0e-10f
-#define ekf_Q_17 1.0e-10f
-#define ekf_Q_18 1.0e-15f
+#define ekf_Q_16 1.0e-29f
+#define ekf_Q_17 1.0e-29f
+#define ekf_Q_18 1.0e-30f
 
 typedef struct _structPipe{
 	int parent[2];
