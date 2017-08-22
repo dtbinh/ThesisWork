@@ -72,15 +72,15 @@ static const double fmone = -1;
 static int quiet = 0;
 
 // Outputs
-double *attX_all, *attU_all;
-double *posX_all, *posU_all;
-double *altX_all, *altU_all;
-double thrust = 0.0;
-double phi_dist = 0.0;
-double theta_dist = 0.0;
-double tau_x = 0.0;
-double tau_y = 0.0;
-double tau_z = 0.0;
+static double *attX_all, *attU_all;
+static double *posX_all, *posU_all;
+static double *altX_all, *altU_all;
+static double thrust = 0.0;
+static double phi_dist = 0.0;
+static double theta_dist = 0.0;
+static double tau_x = 0.0;
+static double tau_y = 0.0;
+static double tau_z = 0.0;
 
 struct Parameters mdl_param = {
 	.g = par_g,
@@ -367,6 +367,7 @@ void *threadController( void *arg ) {
 	
 	double tuningMpcBuffer[14];
 	double tuningMpcBufferControl[6];
+	double controllerBuffer[8]; // {PWM, thrust, torques} to be sent over to sensor.c
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -545,9 +546,19 @@ void *threadController( void *arg ) {
 				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, tau_x, tau_y, tau_z, thrust );
 			}
 			
+			// Copy data over to common controller buffer before sending it to sensor.c
+			controllerBuffer[0]=PWM[0];
+			controllerBuffer[1]=PWM[1];
+			controllerBuffer[2]=PWM[2];
+			controllerBuffer[3]=PWM[3];
+			controllerBuffer[4]=thrust;
+			controllerBuffer[5]=tau_x;
+			controllerBuffer[6]=tau_y;
+			controllerBuffer[7]=tau_z;
+			
 			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
-			if (write(ptrPipe1->parent[1], PWM, sizeof(PWM)) != sizeof(PWM)) printf("write error in controller to sensor\n");
-			//else printf("Controller ID: %d, Sent PWM: %3.5f to Communication\n", (int)getpid(), PWM[0]);
+			if (write(ptrPipe1->parent[1], controllerBuffer, sizeof(controllerBuffer)) != sizeof(controllerBuffer)) printf("write error in controller to sensor\n");
+			//else printf("Controller ID: %d, Sent controllerBuffer: %3.5f to Communication\n", (int)getpid(), controllerBuffer[0]);
 		}
 		// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP to other agents
 		//if (write(ptrPipe2->parent[1], posX_all, sizeof(posX_all)) != sizeof(posX_all)) printf("write error in controller to communication\n");
@@ -668,12 +679,12 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		}
 	
 	// Update controller input contraints [umin/umax] to compensate for disturbances in torque
-	attParams->umax[0]=0.1-dist[0];
-	attParams->umin[0]=-0.1-dist[0];
-	attParams->umax[1]=0.1-dist[1];
-	attParams->umin[1]=-0.1-dist[1];
-	attParams->umax[2]=0.1-dist[2];
-	attParams->umin[2]=-0.1-dist[2];
+	//attParams->umax[0]=0.1+dist[0];
+	//attParams->umin[0]=-0.1+dist[0];
+	//attParams->umax[1]=0.1+dist[1];
+	//attParams->umin[1]=-0.1+dist[1];
+	//attParams->umax[2]=0.1+dist[2];
+	//attParams->umin[2]=-0.1+dist[2];
 	
 	//printf("umaxumin_0(% 1.4f % 1.4f) umaxumin_1(% 1.4f % 1.4f) umaxumin_2(% 1.4f % 1.4f)\n", attParams->umax[0]-dist[0], attParams->umin[0]-dist[0], attParams->umax[1]-dist[1], attParams->umin[1]-dist[1], attParams->umax[2]-dist[2], attParams->umin[2]-dist[2]);
 	
@@ -691,9 +702,9 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	
 	//printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
 	
-	attU_all[0]+=dist[0]; // feed forward disturbance compensation x
-	attU_all[1]+=dist[1]; // feed forward disturbance compensation y
-	attU_all[2]+=dist[2]; // feed forward disturbance compensation z
+	//attU_all[0]-=dist[0]; // feed forward disturbance compensation x
+	//attU_all[1]-=dist[1]; // feed forward disturbance compensation y
+	//attU_all[2]-=dist[2]; // feed forward disturbance compensation z
 	
 	tau_x = attU_all[0];		// phi
 	tau_y = attU_all[1];		// theta

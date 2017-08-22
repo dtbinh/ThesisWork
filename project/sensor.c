@@ -88,7 +88,7 @@ void saturation(double*, int, double, double);
 
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-static double controlData[4]={1,1,1,1}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion
+static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
 static double keyboardData[14]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 
@@ -484,9 +484,14 @@ static void *threadSensorFusion (void *arg){
 	double buffer_omega_x[BUFFER];
 	double buffer_omega_y[BUFFER];
 	double buffer_omega_z[BUFFER];
-	double buffer_angle_x[BUFFER];
-	double buffer_angle_y[BUFFER];
-	double buffer_angle_z[BUFFER];
+	//double buffer_angle_x[BUFFER];
+	//double buffer_angle_y[BUFFER];
+	//double buffer_angle_z[BUFFER];
+	double buffer_thrust[BUFFER];
+	double buffer_tau_x[BUFFER];
+	double buffer_tau_y[BUFFER];
+	double buffer_tau_z[BUFFER];
+	double buffer_ts[BUFFER];
 	int buffer_counter=0;
 	//FILE *fpWrite;
 	
@@ -502,6 +507,7 @@ static void *threadSensorFusion (void *arg){
 	double xhat9x9_biasInit[9]={0,0,0,0,0,0,0,0,0};
 	double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
 	double uControlInit[4]={.1,.1,.1,.1};
+	double uControlThrustTorques[4]={0,0,0,0};
 	
 	double Rekf9x9_bias[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double Rekf9x9[9]={0,0,0,0,0,0,0,0,0};
@@ -583,7 +589,8 @@ static void *threadSensorFusion (void *arg){
 				
 				// Read latest control signal from globale variable to local variable
 				pthread_mutex_lock(&mutexControlData);	
-					memcpy(uControl, controlData, sizeof(controlData));		
+					memcpy(uControl, controlData, sizeof(uControl));		
+					memcpy(uControlThrustTorques, controlData+4, sizeof(uControlThrustTorques));	
 				pthread_mutex_unlock(&mutexControlData);
 				
 				// Get keyboard input data
@@ -882,10 +889,10 @@ static void *threadSensorFusion (void *arg){
 						xhat9x9[7]=0;
 						
 						// Torque disturbance saturation
-						//saturation(xhat9x9_bias,6,-0.01,0.01);
-						//saturation(xhat9x9_bias,7,-0.01,0.01);
-						saturation(xhat9x9_bias,6,0.0,0.0);
-						saturation(xhat9x9_bias,7,0.0,0.0);
+						saturation(xhat9x9_bias,6,-0.01,0.01);
+						saturation(xhat9x9_bias,7,-0.01,0.01);
+						//saturation(xhat9x9_bias,6,0.0,0.0);
+						//saturation(xhat9x9_bias,7,0.0,0.0);
 						saturation(xhat9x9_bias,8,0.0,0.0);
 						
 						// Check for EKF9x9_bias failure (isnan)
@@ -960,7 +967,8 @@ static void *threadSensorFusion (void *arg){
 						}
 						
 						if(ekfPrint6States){
-							printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
+							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
+							printf("(angles) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.4f % 1.4f % 1.4f\n",xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
 						}
 	
 						// Write to Controller process
@@ -983,9 +991,14 @@ static void *threadSensorFusion (void *arg){
 							saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
 							saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
 							saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
-							saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
-							saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
-							saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+							//saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+							//saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+							//saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+							saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
+							saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
+							saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
+							saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
+							saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
 							buffer_counter=0;
 						}
 						else{ // else keep saving data to buffer
@@ -996,9 +1009,14 @@ static void *threadSensorFusion (void *arg){
 							buffer_omega_x[buffer_counter]=xhat9x9_bias[3];
 							buffer_omega_y[buffer_counter]=xhat9x9_bias[4];
 							buffer_omega_z[buffer_counter]=xhat9x9_bias[5];
-							buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
-							buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
-							buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
+							//buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
+							//buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
+							//buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
+							buffer_thrust[buffer_counter]=uControlThrustTorques[0];
+							buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
+							buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
+							buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
+							buffer_ts[buffer_counter]=tsTrue;
 							buffer_counter++;
 						}
 						
@@ -1029,7 +1047,7 @@ static void *threadSensorFusion (void *arg){
 static void *threadPWMControl(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double pwmValueBuffer[4], tsTrue;
+	double pwmValueBuffer[8], tsTrue;
 
 	// Initialize I2C connection to the PWM board and define PWM frequency
 	pthread_mutex_lock(&mutexI2CBusy);
@@ -1078,6 +1096,8 @@ static void *threadPWMControl(void *arg){
 			if(read(ptrPipe->parent[0], pwmValueBuffer, sizeof(pwmValueBuffer)) == -1) printf("read error in sensor from controller\n");
 			//printf("Data received: %f\n", pwmValueBuffer[0]);
 			
+			//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.4f (torque) % 1.4f % 1.4f % 1.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3], pwmValueBuffer[4], pwmValueBuffer[5], pwmValueBuffer[6], pwmValueBuffer[7]);
+			
 			// killPWM is linked to keyboard start flying switch. Forces PWM to zero if stop signal is given
 			if(!killPWM){
 				pwmValueBuffer[0]=0;
@@ -1096,16 +1116,13 @@ static void *threadPWMControl(void *arg){
 				}
 			}
 			
+			//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.4f (torque) % 1.4f % 1.4f % 1.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3], pwmValueBuffer[4], pwmValueBuffer[5], pwmValueBuffer[6], pwmValueBuffer[7]);
+			
+			
 			// Copy control signal over to global memory for EKF to use during next state estimation
 			pthread_mutex_lock(&mutexControlData);	
-				memcpy(controlData, pwmValueBuffer, sizeof(pwmValueBuffer));		
+				memcpy(controlData, pwmValueBuffer, sizeof(controlData));		
 			pthread_mutex_unlock(&mutexControlData);
-			
-			//// Adjust PWM for 
-			//pwmValueBuffer[0]*=0.7;
-			//pwmValueBuffer[1]*=0.7;
-			//pwmValueBuffer[2]*=0.7;
-			//pwmValueBuffer[3]*=0.7;
 			
 			// Set PWM
 			pthread_mutex_lock(&mutexI2CBusy);
@@ -1128,6 +1145,7 @@ static void *threadPWMControl(void *arg){
 				if(timerPrint){
 					printf("PWM: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
 					printf("PWM received: %3.4f %3.4f %3.4f %3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
+					//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.4f (torque) % 1.4f % 1.4f % 1.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3], pwmValueBuffer[4], pwmValueBuffer[5], pwmValueBuffer[6], pwmValueBuffer[7]);
 				}
 				tsAverageCounter=0;
 				tsAverageAccum=0;
