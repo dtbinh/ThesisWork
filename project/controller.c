@@ -332,8 +332,8 @@ void *threadController( void *arg ) {
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
 		.umax = {  .1, .1, .1 },
 		.umin = { -.1,-.1,-.1 },
-		//.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
-		.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
+		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
+		//.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
 	};
 	
 	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
@@ -347,7 +347,7 @@ void *threadController( void *arg ) {
 		.R = { mpcAlt_R_1 },
 		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
 		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
-		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
+		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e-2
 	};
 	
 	altX_all = calloc(altParams.n*altParams.T, sizeof(double));

@@ -889,8 +889,8 @@ static void *threadSensorFusion (void *arg){
 						xhat9x9[7]=0;
 						
 						// Torque disturbance saturation
-						saturation(xhat9x9_bias,6,-0.01,0.01);
-						saturation(xhat9x9_bias,7,-0.01,0.01);
+						//saturation(xhat9x9_bias,6,-0.01,0.01);
+						//saturation(xhat9x9_bias,7,-0.01,0.01);
 						//saturation(xhat9x9_bias,6,0.0,0.0);
 						//saturation(xhat9x9_bias,7,0.0,0.0);
 						saturation(xhat9x9_bias,8,0.0,0.0);

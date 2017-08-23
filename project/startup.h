@@ -77,15 +77,15 @@ Keyboard listening...
 #define mpcPos_R_2 1000.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
-#define mpcAtt_Q_1 300.0f
-#define mpcAtt_Q_2 1.0f
-#define mpcAtt_Q_3 300.0f
-#define mpcAtt_Q_4 1.0f
+#define mpcAtt_Q_1 50.0f
+#define mpcAtt_Q_2 0.00001f
+#define mpcAtt_Q_3 50.0f
+#define mpcAtt_Q_4 0.00001f
 #define mpcAtt_Q_5 1.0f
 #define mpcAtt_Q_6 1.0f
 //2000.000000,2000.000000,10000000000000.000000
-#define mpcAtt_R_1 100.0f
-#define mpcAtt_R_2 100.0f
+#define mpcAtt_R_1 2000.0f
+#define mpcAtt_R_2 2000.0f
 #define mpcAtt_R_3 100000000000.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
@@ -104,15 +104,15 @@ Keyboard listening...
 #define ekf_Q_7 1.0e-5f
 #define ekf_Q_8 1.0e-5f
 #define ekf_Q_9 1.0e-12f
-#define ekf_Q_10 1.0e-3f
-#define ekf_Q_11 1.0e-3f
-#define ekf_Q_12 1.0e-3f
+#define ekf_Q_10 1.0e-1f
+#define ekf_Q_11 1.0e-1f
+#define ekf_Q_12 1.0e-1f
 #define ekf_Q_13 1.0e-3f
 #define ekf_Q_14 1.0e-3f
 #define ekf_Q_15 0.00001f
-#define ekf_Q_16 1.0e-20f
-#define ekf_Q_17 1.0e-20f
-#define ekf_Q_18 1.0e-20f
+#define ekf_Q_16 1.0e20f
+#define ekf_Q_17 1.0e20f
+#define ekf_Q_18 1.0e20f
 
 typedef struct _structPipe{
 	int parent[2];
