@@ -814,7 +814,7 @@ void keyReading( void ) {
 			// attitude tuning
 			else if ( strcmp(selection, "a" ) == 0 ) {
 				while (tuningFlag){
-					printf(" [q] state weights\n [r] control weights\n [p]id control gains [t] pid control toggle\n");
+					printf(" [q] state weights\n [r] control weights\n [p]id control gains\n [t] pid control toggle\n");
 					scanf("%s", selection);
 					// State weights
 					if( strcmp(selection, "q" ) == 0 ){
@@ -894,6 +894,7 @@ void keyReading( void ) {
 							keyboardData[16]=0;
 							printf("MPC attitude control active. PID not active. Toggle: %i\n", (int)keyboardData[16]);
 						}
+						break;
 					}
 					
 					// PID tuning gains

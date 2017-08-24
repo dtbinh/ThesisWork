@@ -890,8 +890,8 @@ static void *threadSensorFusion (void *arg){
 						// Torque disturbance saturation
 						//saturation(xhat9x9_bias,6,-0.01,0.01);
 						//saturation(xhat9x9_bias,7,-0.01,0.01);
-						//saturation(xhat9x9_bias,6,0.0,0.0);
-						//saturation(xhat9x9_bias,7,0.0,0.0);
+						saturation(xhat9x9_bias,6,0.0,0.0);
+						saturation(xhat9x9_bias,7,0.0,0.0);
 						saturation(xhat9x9_bias,8,0.0,0.0);
 						
 						// Check for EKF9x9_bias failure (isnan)

@@ -142,14 +142,14 @@ static void *threadUpdateConstraintsSettingsReferences(void*);
 // static void *threadControllerWatchdogAlt(void*);
 
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
-static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, int);
+static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int);
 static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
 static void altFmpc( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
 //static void refGen_formation( double *x_agent1, double *x_agent2 );
 
-static void controllerPID(double, double, double, double, double, double, double);
+static double controllerPID(double, double*, double*, double, double, double, double);
 
 // FMPC functions
 static void fmpcsolve(double *A, double *B, double *At, double *Bt, double *eyen, 
@@ -243,7 +243,7 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 	structPipe *ptrPipe = arg; // to comm
 
 	double communicationDataBuffer[61];
-	double keyboardDataBuffer[15];
+	double keyboardDataBuffer[17];
 	double tuningMpcBuffer[14];
 	double tuningMpcBufferControl[6];
 	double tuningPidBuffer[6];
@@ -375,19 +375,19 @@ void *threadController( void *arg ) {
 	double tuningPidBuffer[6];
 	
 	// PID variables
-	pid_gyro_error_integral=0;
-	pid_gyro_error_prev=0;
-	pid_gyro_u=0;
-	pid_gyro_kp=1;
-	pid_gyro_ki=1;
-	pid_gyro_kd=0;
+	double pid_gyro_error_integral[1]={0};
+	double pid_gyro_error_prev[1]={0};
+	double pid_gyro_u=0;
+	double pid_gyro_kp_local=1;
+	double pid_gyro_ki_local=1;
+	double pid_gyro_kd_local=0;
 	
-	pid_angle_error_integral=0;
-	pid_angle_error_prev=0;
-	pid_angle_u=0;
-	pid_angle_kp=1;
-	pid_angle_ki=1;
-	pid_angle_kd=0;
+	double pid_angle_error_integral[1]={0};
+	double pid_angle_error_prev[1]={0};
+	double pid_angle_u=0;
+	double pid_angle_kp_local=1;
+	double pid_angle_ki_local=1;
+	double pid_angle_kd_local=0;
 	
 	int pid_trigger;
 	
@@ -493,12 +493,12 @@ void *threadController( void *arg ) {
 		altParams.R[0]=tuningMpcBufferControl[5];
 		
 		// Update controller PID gains
-		pid_gyro_kp=tuningPidBuffer[0];
-		pid_gyro_ki=tuningPidBuffer[1];
-		pid_gyro_kd=tuningPidBuffer[2];
-		pid_angle_kp=tuningPidBuffer[3];
-		pid_angle_ki=tuningPidBuffer[4];
-		pid_angle_kd=tuningPidBuffer[5];
+		pid_gyro_kp_local=tuningPidBuffer[0];
+		pid_gyro_ki_local=tuningPidBuffer[1];
+		pid_gyro_kd_local=tuningPidBuffer[2];
+		pid_angle_kp_local=tuningPidBuffer[3];
+		pid_angle_ki_local=tuningPidBuffer[4];
+		pid_angle_kd_local=tuningPidBuffer[5];
 	
 		// To ramp the references in x, y and z
 		if ( keyRampRef ) {
@@ -521,7 +521,7 @@ void *threadController( void *arg ) {
 		}
 		
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
-		if(sensorReady){	
+		if(0 || sensorReady){	
 			// Check keyboard fly trigger is true	
 			if(triggerFly){
 				//printf("references-> ");
@@ -533,15 +533,19 @@ void *threadController( void *arg ) {
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, distBufferTau, mpcAtt_ff);
 				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
-				
+
 				if (pid_trigger){
-					// gyro controller
-					controllerPID((meas[9]-ref[9]),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_u,pid_gyro_kp,pid_gyro_ki,pid_gyro_kd);
+					//printf("PID\n");
 					// angle controller
-					controllerPID((meas[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_u,pid_angle_kp,pid_angle_ki,pid_angle_kd);
-					tau_x=pid_gyro_u+pid_angle_u;
+					pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					// gyro controller
+					tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					//tau_x=pid_gyro_u+pid_angle_u;
 					tau_y=0;
 					tau_z=0;
+					
+					if (tau_x > .1) {tau_x = .1;}
+					else if (tau_x < -.1) {tau_x = -.1;}					
 				}
 
 				// Create PWM signal from calculated thrust and torques
@@ -582,6 +586,10 @@ void *threadController( void *arg ) {
 				}
 								
 				memcpy(PWM, PWM0, sizeof(PWM));
+				tau_x = 0;
+				pid_gyro_error_integral[0]=0;
+				pid_gyro_error_prev[0]=0;
+				
 			}
 		
 			// Print PWM signal sent to motors
@@ -632,18 +640,23 @@ void *threadController( void *arg ) {
 /******************************************************************/
 
 /* PID controller - Gains: kp = proportional, ki = integral, kd = derivative*/
-static void controllerPID(double error_current, double error_integral, double error_prev, double u, double kp, double ki, double kd){
+static double controllerPID(double error_current, double *error_integral, double *error_prev, double kp, double ki, double kd, double ts){
 	// Integral error
-	error_integral += (meas-ref);
+	double u;
+	error_integral[0] += (error_current*ts);
+	
+	//printf("error_current> %f - kp> %f - ki> %f - kd> %f\n", error_current, kp, ki, kd);
 
 	// Calculate control action
-	u = (kp*error) + (ki*error_integral) + (kd*(error_current-error_prev));
+	u = (kp*error_current) + (ki*error_integral[0]) + (kd*(error_current-error_prev[0])/ts);
 	
 	// Flip controller signal (torque directions)
 	u*=-1;
 	
 	// Save current error for next iteration
-	error_prev=error_current;
+	error_prev[0]=error_current;
+	
+	return u;
 }
 
 /* Saturation calculation for altitude MPC control input constraints [umin/umax] */
