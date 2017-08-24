@@ -114,6 +114,15 @@ Keyboard listening...
 #define ekf_Q_17 1.0e20f
 #define ekf_Q_18 1.0e20f
 
+// Default PID gains
+#define pid_gyro_kp 1.0f
+#define pid_gyro_ki 1.0f
+#define pid_gyro_kd 0.0f
+#define pid_angle_kp 1.0f
+#define pid_angle_ki 1.0f
+#define pid_angle_kd 0.0f
+
+
 typedef struct _structPipe{
 	int parent[2];
 	int child[2];
