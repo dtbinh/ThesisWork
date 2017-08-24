@@ -89,7 +89,7 @@ void saturation(double*, int, double, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
-static double keyboardData[15]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt}
+static double keyboardData[17]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0, 0, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 
 // Variables
@@ -147,8 +147,8 @@ void startSensors(void *arg1, void *arg2){
 static void *threadPipeCommunicationToSensor(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double communicationDataBuffer[53];
-	double keyboardDataBuffer[15];
+	double communicationDataBuffer[61];
+	double keyboardDataBuffer[17];
 	double tuningEkfBuffer[18];
 	
 	/// Setup timer variables for real time performance check
@@ -174,10 +174,8 @@ static void *threadPipeCommunicationToSensor(void *arg){
 		if(read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) == -1) printf("read error in sensor from communication\n");
 		//else printf("Sensor ID: %d, Recieved Communication data: %f\n", (int)getpid(), keyboardDataBuffer[0]);
 				
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*15/53);
-		//memcpy(tuningMpcBuffer, communicationDataBuffer+14, sizeof(communicationDataBuffer)*14/53);
-		//memcpy(tuningMpcBufferControl, communicationDataBuffer+28, sizeof(communicationDataBuffer)*6/53);
-		memcpy(tuningEkfBuffer, communicationDataBuffer+34, sizeof(communicationDataBuffer)*18/53);
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*17/61);
+		memcpy(tuningEkfBuffer, communicationDataBuffer+37, sizeof(communicationDataBuffer)*18/61);
 		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexKeyboardData);
@@ -536,7 +534,7 @@ static void *threadSensorFusion (void *arg){
 	int isnan_flag=0, outofbounds_flag=0;
 
 	// Keyboard control variables
-	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0;
+	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0,saveDataTrigger=0;
 	int outlierFlag, outlierFlagPercentage, outlierFlagMem[1000];
 	
 	/// Setup timer variables for real time
@@ -602,6 +600,7 @@ static void *threadSensorFusion (void *arg){
 					sensorCalibrationRestart=(int)keyboardData[9];
 					a=keyboardData[11];
 					beta_keyboard=keyboardData[12];
+					saveDataTrigger=(int)keyboardData[15];
 					memcpy(tuningEkfBuffer9x9_bias, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
 					memcpy(tuningEkfBuffer9x9_bias+6, tuningEkfData+15, sizeof(tuningEkfData)*3/18); // ekf states 16-18
 					memcpy(tuningEkfBuffer9x9, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
@@ -982,44 +981,45 @@ static void *threadSensorFusion (void *arg){
 						}
 						
 						//// Save buffered data to file
-						//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
-						if(buffer_counter==BUFFER){ // if buffer is full, save to file
-							saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
-							saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
-							saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
-							saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
-							saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
-							saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
-							saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
-							//saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
-							//saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
-							//saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
-							saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
-							saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
-							saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
-							saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
-							saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
-							buffer_counter=0;
+						if(saveDataTrigger){ // only save data when activated from keyboard
+							//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
+							if(buffer_counter==BUFFER){ // if buffer is full, save to file
+								saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
+								saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
+								saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
+								saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
+								saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
+								saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
+								saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
+								//saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+								//saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+								//saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+								saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
+								saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
+								saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
+								saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
+								saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
+								buffer_counter=0;
+							}
+							else{ // else keep saving data to buffer
+								buffer_u1[buffer_counter]=uControl[0];
+								buffer_u2[buffer_counter]=uControl[1];
+								buffer_u3[buffer_counter]=uControl[2];
+								buffer_u4[buffer_counter]=uControl[3];
+								buffer_omega_x[buffer_counter]=xhat9x9_bias[3];
+								buffer_omega_y[buffer_counter]=xhat9x9_bias[4];
+								buffer_omega_z[buffer_counter]=xhat9x9_bias[5];
+								//buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
+								//buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
+								//buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
+								buffer_thrust[buffer_counter]=uControlThrustTorques[0];
+								buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
+								buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
+								buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
+								buffer_ts[buffer_counter]=tsTrue;
+								buffer_counter++;
+							}
 						}
-						else{ // else keep saving data to buffer
-							buffer_u1[buffer_counter]=uControl[0];
-							buffer_u2[buffer_counter]=uControl[1];
-							buffer_u3[buffer_counter]=uControl[2];
-							buffer_u4[buffer_counter]=uControl[3];
-							buffer_omega_x[buffer_counter]=xhat9x9_bias[3];
-							buffer_omega_y[buffer_counter]=xhat9x9_bias[4];
-							buffer_omega_z[buffer_counter]=xhat9x9_bias[5];
-							//buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
-							//buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
-							//buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
-							buffer_thrust[buffer_counter]=uControlThrustTorques[0];
-							buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
-							buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
-							buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
-							buffer_ts[buffer_counter]=tsTrue;
-							buffer_counter++;
-						}
-						
 						///// Time it and print true sampling rate
 						//clock_gettime(CLOCK_MONOTONIC, &t_stop_buffer); /// stop elapsed time clock
 						//ts_save_buffer=(t_stop_buffer.tv_sec - t_start_buffer.tv_sec) + (t_stop_buffer.tv_nsec - t_start_buffer.tv_nsec) / NSEC_PER_SEC;
