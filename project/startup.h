@@ -14,7 +14,7 @@
 // PRIORITY
 #define PRIORITY_CONTROLLER_STATE_UPDATE 42
 #define PRIORITY_CONTROLLER_CONSTRAINTS_UPDATE 41
-#define PRIORITY_CONTROLLER_MPC 43
+#define PRIORITY_CONTROLLER_MPC 60
 #define PRIORITY_CONTROLLER_WATCHDOG 44
 
 #define PRIORITY_SENSOR_BEACON 38
@@ -115,10 +115,10 @@ Keyboard listening...
 #define ekf_Q_18 1.0e20f
 
 // Default PID gains
-#define pid_gyro_kp 15e-3.0f
+#define pid_gyro_kp 15e-3f
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
-#define pid_angle_kp 1e-3.0f
+#define pid_angle_kp 1e-3f
 #define pid_angle_ki 0.0f
 #define pid_angle_kd 0.0f
 
