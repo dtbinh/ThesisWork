@@ -857,7 +857,7 @@ int readAllSensorData(double *accRaw, double *gyrRaw, double *magRaw, double *te
 		readAccelData(accRaw);
 		readGyroData(gyrRaw);
 		readMagData(magRaw);
-		readTempData(tempRaw);
+		//readTempData(tempRaw);
 		return 1;
 	}
 	else{

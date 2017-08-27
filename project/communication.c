@@ -489,7 +489,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=0;
+	socketReady=1;
 }
 
 /* Read in PWM value */

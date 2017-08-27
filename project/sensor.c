@@ -44,6 +44,7 @@ static void *threadPipeCommunicationToSensor(void*);
 
 void qNormalize(double*);
 void q2euler(double*, double*);
+void q2euler_zyx(double *, double *);
 
 void ekfCalibration6x6(double*, double*, double*, double*, int);
 void ekfCalibration9x9_bias(double*, double*, double*, double*, int);
@@ -557,7 +558,7 @@ static void *threadSensorFusion (void *arg){
 			// Loop for ever
 			while(1){
 				/// Wait until next shot
-				// clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+				 clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
 				
 				// Read raw sensor data from I2C bus to local variable
 				pthread_mutex_lock(&mutexI2CBusy);	
@@ -623,35 +624,35 @@ static void *threadSensorFusion (void *arg){
 				clock_gettime(CLOCK_MONOTONIC ,&t_start); /// start elapsed time clock
 								
 				/// Get average sampling time
-				//if(tsAverageCounter<50){
-					//tsAverageAccum+=tsTrue;
-					//tsAverageCounter++;
-				//}
-				//else{
-					////printf("tsAverageAccum: %lf\n", tsAverageAccum);
-					//tsAverageAccum/=50;
-					//tsAverage=tsAverageAccum;
-					//if(timerPrint){
-						//printf("EKF: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
-					//}
+				if(tsAverageCounter<50){
+					tsAverageAccum+=tsTrue;
+					tsAverageCounter++;
+				}
+				else{
+					//printf("tsAverageAccum: %lf\n", tsAverageAccum);
+					tsAverageAccum/=50;
+					tsAverage=tsAverageAccum;
+					if(timerPrint){
+						printf("EKF: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+					}
 					
-					///// Activate EKF calibration after tsAverage has been within limit for a number of times. (allows orientation filter to converge)
-					//if(tsAverage>(tsSensorsFusion/NSEC_PER_SEC)*0.9 && tsAverage<(tsSensorsFusion/NSEC_PER_SEC)*1.1 && tsAverageReadyEKF<2){
-						//tsAverageReadyEKF++;
-						//printf("tsAverage within limit for EKF to start %i times\n",tsAverageReadyEKF);
-					//}
+					/// Activate EKF calibration after tsAverage has been within limit for a number of times. (allows orientation filter to converge)
+					if(tsAverage>(tsSensorsFusion/NSEC_PER_SEC)*0.9 && tsAverage<(tsSensorsFusion/NSEC_PER_SEC)*1.1 && tsAverageReadyEKF<2){
+						tsAverageReadyEKF++;
+						printf("tsAverage within limit for EKF to start %i times\n",tsAverageReadyEKF);
+					}
 				
-					////printmat(Patt,4,4);
-					//tsAverageCounter=0;
-					//tsAverageAccum=0;
-				//}
+					//printmat(Patt,4,4);
+					tsAverageCounter=0;
+					tsAverageAccum=0;
+				}
 				
-				tsAverageReadyEKF=2;
+				//tsAverageReadyEKF=2;
 				
 				// Set gain of orientation estimation Madgwick beta after initialization
 				if(tsAverageReadyEKF==2){
 					if(k==500){
-						beta=0.0433;
+						beta=0.025;
 						//eulerCalFlag=1;
 					}
 					else{
@@ -667,30 +668,31 @@ static void *threadSensorFusion (void *arg){
 				}
 					
 				// Magnetometer outlier detection
-				outlierFlag=0;
-				normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
-				L_temp=(1-a)*L+a*normMag; // recursive magnetometer compensator
-				L=L_temp;
-				if ((normMag > L*1 || normMag < L*0.9) && eulerCalFlag==1){
-					magRawRot[0]=0.0f;
-					magRawRot[1]=0.0f;
-					magRawRot[2]=0.0f;
-					outlierFlag=1;
-					beta*=0.8;
-					//printf("Mag outlier\n");
-				}
+				//outlierFlag=0;
+				//normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
+				//L_temp=(1-a)*L+a*normMag; // recursive magnetometer compensator
+				//L=L_temp;
+				//if ((normMag > L*1 || normMag < L*0.9) && eulerCalFlag==1){
+					//magRawRot[0]=0.0f;
+					//magRawRot[1]=0.0f;
+					//magRawRot[2]=0.0f;
+					//outlierFlag=1;
+					//beta*=0.8;
+					////printf("Mag outlier\n");
+				//}
 				
-				// outlier percentage
-				outlierFlagPercentage = 0;
-				for (int i=1; i<1000; i++) {
-					outlierFlagMem[i-1] = outlierFlagMem[i];
-					outlierFlagPercentage += outlierFlagMem[i-1];
-				}
-				outlierFlagMem[999] = outlierFlag;
-				outlierFlagPercentage += outlierFlagMem[999];
+				//// outlier percentage
+				//outlierFlagPercentage = 0;
+				//for (int i=1; i<1000; i++) {
+					//outlierFlagMem[i-1] = outlierFlagMem[i];
+					//outlierFlagPercentage += outlierFlagMem[i-1];
+				//}
+				//outlierFlagMem[999] = outlierFlag;
+				//outlierFlagPercentage += outlierFlagMem[999];
 								
 				// Orientation estimation with Madgwick filter
 				MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
+				//MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 				
 				// Copy out the returned quaternions from the filter
 				q_comp[0]=q0;
@@ -699,11 +701,11 @@ static void *threadSensorFusion (void *arg){
 				q_comp[3]=-q3;
 				
 				// Quaternions to eulers (rad)
-				q2euler(euler,q_comp);
+				q2euler_zyx(euler,q_comp);
 			
 				 //Allignment compensation for initial point of orientation angles
 				if(k==500){
-					if(counterCalEuler<500){
+					if(counterCalEuler<1000){
 						// Mean (bias) accelerometer, gyroscope and magnetometer
 						euler_mean[0]+=euler[0];
 						euler_mean[1]+=euler[1];
@@ -711,10 +713,10 @@ static void *threadSensorFusion (void *arg){
 						counterCalEuler++;
 						printf("euler_sum: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
 					}
-					else if(counterCalEuler==500){
-						euler_mean[0]/=500.0f;
-						euler_mean[1]/=500.0f;
-						euler_mean[2]/=500.0f;
+					else if(counterCalEuler==1000){
+						euler_mean[0]/=1000.0f;
+						euler_mean[1]/=1000.0f;
+						euler_mean[2]/=1000.0f;
 						counterCalEuler++;
 						eulerCalFlag=1;
 						printf("euler_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
@@ -1019,11 +1021,11 @@ static void *threadSensorFusion (void *arg){
 				}
 							
 				/// Calculate next shot
-				// t.tv_nsec += (int)tsSensorsFusion;
-				// while (t.tv_nsec >= NSEC_PER_SEC) {
-					// t.tv_nsec -= NSEC_PER_SEC;
-					// t.tv_sec++;
-				// }
+				 t.tv_nsec += (int)tsSensorsFusion;
+				 while (t.tv_nsec >= NSEC_PER_SEC) {
+					 t.tv_nsec -= NSEC_PER_SEC;
+					 t.tv_sec++;
+				 }
 			}
 		}
 		t.tv_sec+=2; // I2C sensors not enabled, sleep for 2 and retry
@@ -1343,6 +1345,26 @@ void q2euler(double *result, double *q){
 	}
 	
 	result[1]=asin(2*(q[1]*q[3]+q[0]*q[2])); // attitude
+}
+
+// Quaternions to Eulers according to ZYX rotation
+void q2euler_zyx(double *result, double *q){
+	double R[5];
+	R[0] = 2.*pow(q[0],2)-1+2.*pow(q[1],2);
+    R[1] = 2.*(q[1]*q[2]-q[0]*q[3]);
+    R[2] = 2.*(q[1]*q[3]+q[0]*q[2]);
+    R[3] = 2.*(q[2]*q[3]-q[0]*q[1]);
+    R[4] = 2.*pow(q[0],2)-1+2.*pow(q[3],2);
+
+	//R(1,1,:) = 2.*q(:,1).^2-1+2.*q(:,2).^2;
+    //R(2,1,:) = 2.*(q(:,2).*q(:,3)-q(:,1).*q(:,4));
+    //R(3,1,:) = 2.*(q(:,2).*q(:,4)+q(:,1).*q(:,3));
+    //R(3,2,:) = 2.*(q(:,3).*q(:,4)-q(:,1).*q(:,2));
+    //R(3,3,:) = 2.*q(:,1).^2-1+2.*q(:,4).^2;
+
+    result[2] = atan2(R[3],R[4]); // phi
+    result[1] = -atan(R[2]/(sqrt(1-pow(R[2],2)))); // theta
+    result[0] = atan2(R[1],R[0]); // psi
 }
 
 // Load settings file

@@ -29,12 +29,12 @@
 #define PRIORITY_COMMUNICATION_PIPE_SENSOR 28
 
 // Sampling Time
-#define tsController 25000000 // 0.025s
+#define tsController 50000000 // 0.025s
 #define tsWatchdog 500000000 // 0.5s
 //#define tsUDP 100000000
-#define tsSensorsFusion 25000000 // 0.025s
+#define tsSensorsFusion 10000000 // 0.025s
 #define tsReadBeacon 50000000 // 0.05s
-#define tsUdpWrite 25000000 // 0.1s
+#define tsUdpWrite 10000000 // 0.1s
 
 /******************************/
 
