@@ -651,8 +651,8 @@ static void *threadSensorFusion (void *arg){
 				
 				// Set gain of orientation estimation Madgwick beta after initialization
 				if(tsAverageReadyEKF==2){
-					if(k==500){
-						beta=0.025;
+					if(k==1000){
+						beta=0.05;
 						//eulerCalFlag=1;
 					}
 					else{
@@ -672,7 +672,7 @@ static void *threadSensorFusion (void *arg){
 				//normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
 				//L_temp=(1-a)*L+a*normMag; // recursive magnetometer compensator
 				//L=L_temp;
-				//if ((normMag > L*1 || normMag < L*0.9) && eulerCalFlag==1){
+				//if ((normMag > L*1.05 || normMag < L*0.95) && eulerCalFlag==1){
 					//magRawRot[0]=0.0f;
 					//magRawRot[1]=0.0f;
 					//magRawRot[2]=0.0f;
@@ -691,8 +691,8 @@ static void *threadSensorFusion (void *arg){
 				//outlierFlagPercentage += outlierFlagMem[999];
 								
 				// Orientation estimation with Madgwick filter
-				MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
-				//MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
+				//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
+				MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 				
 				// Copy out the returned quaternions from the filter
 				q_comp[0]=q0;
@@ -704,7 +704,7 @@ static void *threadSensorFusion (void *arg){
 				q2euler_zyx(euler,q_comp);
 			
 				 //Allignment compensation for initial point of orientation angles
-				if(k==500){
+				if(k==1000){
 					if(counterCalEuler<1000){
 						// Mean (bias) accelerometer, gyroscope and magnetometer
 						euler_mean[0]+=euler[0];
