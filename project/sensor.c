@@ -659,41 +659,41 @@ static void *threadSensorFusion (void *arg){
 						printf("SampleFre: %f Sample: %i\n", sampleFreq, k++);
 					}
 				
-				//sensorDataBuffer[6]=magRawRot[0];
-				//sensorDataBuffer[7]=magRawRot[1];
-				//sensorDataBuffer[8]=magRawRot[2];
+					//sensorDataBuffer[6]=magRawRot[0];
+					//sensorDataBuffer[7]=magRawRot[1];
+					//sensorDataBuffer[8]=magRawRot[2];
+						
+					if(eulerCalFlag==1){
+						beta=beta_keyboard;
+					}
+						
+					// Magnetometer outlier detection
+					//outlierFlag=0;
+					//normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
+					//L_temp=(1-a)*L+a*normMag; // recursive magnetometer compensator
+					//L=L_temp;
+					//if ((normMag > L*1.05 || normMag < L*0.95) && eulerCalFlag==1){
+						//magRawRot[0]=0.0f;
+						//magRawRot[1]=0.0f;
+						//magRawRot[2]=0.0f;
+						//outlierFlag=1;
+						//beta*=0.8;
+						////printf("Mag outlier\n");
+					//}
 					
-				if(eulerCalFlag==1){
-					beta=beta_keyboard;
-				}
+					//// outlier percentage
+					//outlierFlagPercentage = 0;
+					//for (int i=1; i<1000; i++) {
+						//outlierFlagMem[i-1] = outlierFlagMem[i];
+						//outlierFlagPercentage += outlierFlagMem[i-1];
+					//}
+					//outlierFlagMem[999] = outlierFlag;
+					//outlierFlagPercentage += outlierFlagMem[999];
+									
+					// Orientation estimation with Madgwick filter
+					//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
+					MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 					
-				// Magnetometer outlier detection
-				//outlierFlag=0;
-				//normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
-				//L_temp=(1-a)*L+a*normMag; // recursive magnetometer compensator
-				//L=L_temp;
-				//if ((normMag > L*1.05 || normMag < L*0.95) && eulerCalFlag==1){
-					//magRawRot[0]=0.0f;
-					//magRawRot[1]=0.0f;
-					//magRawRot[2]=0.0f;
-					//outlierFlag=1;
-					//beta*=0.8;
-					////printf("Mag outlier\n");
-				//}
-				
-				//// outlier percentage
-				//outlierFlagPercentage = 0;
-				//for (int i=1; i<1000; i++) {
-					//outlierFlagMem[i-1] = outlierFlagMem[i];
-					//outlierFlagPercentage += outlierFlagMem[i-1];
-				//}
-				//outlierFlagMem[999] = outlierFlag;
-				//outlierFlagPercentage += outlierFlagMem[999];
-								
-				// Orientation estimation with Madgwick filter
-				//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
-				MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
-				
 				// Copy out the returned quaternions from the filter
 				q_comp[0]=q0;
 				q_comp[1]=-q1;
@@ -824,12 +824,12 @@ static void *threadSensorFusion (void *arg){
 						
 						// Initialize EKF with current available measurement
 						printf("Initialize EKF xhat with current measurments for position and orientation");
-						 xhat9x9_bias[0]=ymeas9x9_bias[0];
-						 xhat9x9_bias[1]=ymeas9x9_bias[1];
-						 xhat9x9_bias[2]=ymeas9x9_bias[2];
-						 xhat9x9_bias[3]=ymeas9x9_bias[3];
-						 xhat9x9_bias[4]=ymeas9x9_bias[4];
-						 xhat9x9_bias[5]=ymeas9x9_bias[5];
+						xhat9x9_bias[0]=ymeas9x9_bias[0];
+						xhat9x9_bias[1]=ymeas9x9_bias[1];
+						xhat9x9_bias[2]=ymeas9x9_bias[2];
+						xhat9x9_bias[3]=ymeas9x9_bias[3];
+						xhat9x9_bias[4]=ymeas9x9_bias[4];
+						xhat9x9_bias[5]=ymeas9x9_bias[5];
 						
 						xhat9x9[0]=ymeas9x9[0];
 						xhat9x9[1]=ymeas9x9[1];
@@ -925,14 +925,7 @@ static void *threadSensorFusion (void *arg){
 							stateDataBuffer[15]=0;
 							printf("EKF xhat=out of bounds\n");
 						}
-						
-						//ymeas9x9_bias[0]=euler_comp[2]; // phi (x-axis)
-						//ymeas9x9_bias[1]=euler_comp[1]; // theta (y-axis)
-						//ymeas9x9_bias[2]=euler_comp[0]; // psi (z-axis)
-						//ymeas9x9_bias[3]=gyrRaw[0]; // gyro x
-						//ymeas9x9_bias[4]=gyrRaw[1]; // gyro y
-						//ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
-					
+\
 						// Move over data to controller.c via pipe
 						stateDataBuffer[0]=xhat9x9[0]; // position x
 						stateDataBuffer[1]=xhat9x9[1]; // position y
@@ -1013,10 +1006,6 @@ static void *threadSensorFusion (void *arg){
 								buffer_counter++;
 							}
 						}
-						///// Time it and print true sampling rate
-						//clock_gettime(CLOCK_MONOTONIC, &t_stop_buffer); /// stop elapsed time clock
-						//ts_save_buffer=(t_stop_buffer.tv_sec - t_start_buffer.tv_sec) + (t_stop_buffer.tv_nsec - t_start_buffer.tv_nsec) / NSEC_PER_SEC;
-						//printf("Save buffer time: %f, tsTrue: %f, buffer_counter: %i\n", ts_save_buffer, tsTrue, buffer_counter);	
 					}
 				}
 							
@@ -1034,7 +1023,6 @@ static void *threadSensorFusion (void *arg){
 	}
 	return NULL;
 }
-
 
 // Thread - PWM Control
 static void *threadPWMControl(void *arg){
