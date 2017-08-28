@@ -336,7 +336,7 @@ void *threadController( void *arg ) {
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
 		.umax = {  .1, .1, .1 },
 		.umin = { -.1,-.1,-.1 },
-		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
+		.n = 6, .m = 3, .T = 40, .niters = 20, .kappa = 1e-5
 		//.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
 	};
 	

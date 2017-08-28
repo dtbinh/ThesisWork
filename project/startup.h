@@ -77,15 +77,15 @@ Keyboard listening...
 #define mpcPos_R_2 1000.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
-#define mpcAtt_Q_1 50.0f
-#define mpcAtt_Q_2 0.00001f
-#define mpcAtt_Q_3 50.0f
-#define mpcAtt_Q_4 0.00001f
+#define mpcAtt_Q_1 2.0e4f
+#define mpcAtt_Q_2 20.0f
+#define mpcAtt_Q_3 2.0e4f
+#define mpcAtt_Q_4 20.0f
 #define mpcAtt_Q_5 1.0f
 #define mpcAtt_Q_6 1.0f
 //2000.000000,2000.000000,10000000000000.000000
-#define mpcAtt_R_1 2000.0f
-#define mpcAtt_R_2 2000.0f
+#define mpcAtt_R_1 1000.0f
+#define mpcAtt_R_2 1000.0f
 #define mpcAtt_R_3 100000000000.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
@@ -115,11 +115,11 @@ Keyboard listening...
 #define ekf_Q_18 1.0e20f
 
 // Default PID gains
-#define pid_gyro_kp 15e-3f
+#define pid_gyro_kp 6e-2f
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
-#define pid_angle_kp 1e-3f
-#define pid_angle_ki 0.0f
+#define pid_angle_kp 2.0f
+#define pid_angle_ki 5.0e-2f
 #define pid_angle_kd 0.0f
 
 
