@@ -184,8 +184,7 @@ static void *threadPipeControllerToComm(void *arg)
 
 
 // Thread - Pipe Communication from Sensor read
-static void *threadPipeSensorToCommunication(void *arg)
-{
+static void *threadPipeSensorToCommunication(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
 	double sensorDataBuffer[19];
@@ -270,8 +269,7 @@ static void *threadPipeSensorToCommunication(void *arg)
 
 
 // UDP read thread
-static void *threadUdpRead(void *arg)
-{
+static void *threadUdpRead(void *arg){
 	// Get pipe array and define local variables
 	//pipeArray *pipeArray1 = arg;
 	//structPipe *ptrPipe1 = pipeArray1->pipe1;
@@ -309,8 +307,7 @@ static void *threadUdpRead(void *arg)
 
 
 // UDP write thread
-static void *threadUdpWrite()
-{
+static void *threadUdpWrite(){
 	// Local variables
 	double agentData[19];
 		
@@ -329,7 +326,7 @@ static void *threadUdpWrite()
 	}
 	
 	/// Wait 10 seconds before starting before starting
-	t.tv_sec+=30;
+	t.tv_sec+=10;
 	
 	// Loop forever streaming data
 	while(1){

@@ -95,6 +95,7 @@ int main(int argc, char **argv)
 			
 					// Call Sensor Fusion process within child process
 					startCommunication(&pipeCommunicationController, &pipeSensorCommunication);
+					printf("Communication started...\n");
 				break;
 				
 				default:

@@ -544,16 +544,16 @@ static void *threadSensorFusion (void *arg){
 		// Try to enable acc, gyr, mag  and bmp sensors
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableMPU9250Flag=enableMPU9250();
-			enableAK8963Flag=enableAK8963();
+			//enableAK8963Flag=enableAK8963();
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
 		// Check that I2C sensors have been enabled
 		if(enableMPU9250Flag==-1){
-			//printf("MPU9250 failed to be enabled\n");
+			printf("MPU9250 failed to be enabled\n");
 		}
-		else if(enableAK8963Flag==-1){
+		//else if(enableAK8963Flag==-1){
 			//printf("AK8963 failed to be enabled\n");
-		}
+		//}
 		else{
 			// Loop for ever
 			while(1){
@@ -694,228 +694,228 @@ static void *threadSensorFusion (void *arg){
 					//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
 					MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 					
-				// Copy out the returned quaternions from the filter
-				q_comp[0]=q0;
-				q_comp[1]=-q1;
-				q_comp[2]=-q2;
-				q_comp[3]=-q3;
-				
-				// Quaternions to eulers (rad)
-				q2euler_zyx(euler,q_comp);
-			
-				 //Allignment compensation for initial point of orientation angles
-				if(k==1000){
-					if(counterCalEuler<1000){
-						// Mean (bias) accelerometer, gyroscope and magnetometer
-						euler_mean[0]+=euler[0];
-						euler_mean[1]+=euler[1];
-						euler_mean[2]+=euler[2];
-						counterCalEuler++;
-						printf("euler_sum: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
-					}
-					else if(counterCalEuler==1000){
-						euler_mean[0]/=1000.0f;
-						euler_mean[1]/=1000.0f;
-						euler_mean[2]/=1000.0f;
-						counterCalEuler++;
-						eulerCalFlag=1;
-						printf("euler_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
-					}
-					else{
-						euler_comp[0]=euler[0]-euler_mean[0];
-						euler_comp[1]=euler[1]-euler_mean[1];
-						euler_comp[2]=euler[2]-euler_mean[2];
-					}
-				}
-				
-				}
-				else{
-					printf("SampleFre: %f\n", sampleFreq);
-				}
-								
-				// Move over data to communication.c via pipe
-				sensorDataBuffer[0]=gyrRaw[0];
-				sensorDataBuffer[1]=gyrRaw[1];
-				sensorDataBuffer[2]=gyrRaw[2];
-				sensorDataBuffer[3]=accRaw[0];
-				sensorDataBuffer[4]=accRaw[1];
-				sensorDataBuffer[5]=accRaw[2];
-				sensorDataBuffer[6]=magRawRot[0];
-				sensorDataBuffer[7]=magRawRot[1];
-				sensorDataBuffer[8]=magRawRot[2];
-				sensorDataBuffer[9]=euler_comp[0];
-				sensorDataBuffer[10]=euler_comp[1];
-				sensorDataBuffer[11]=euler_comp[2];
-				sensorDataBuffer[12]=(double)q_comp[0];
-				sensorDataBuffer[13]=(double)q_comp[1];
-				sensorDataBuffer[14]=(double)q_comp[2];
-				sensorDataBuffer[15]=(double)q_comp[3];
-				sensorDataBuffer[16]=posRaw[0];
-				sensorDataBuffer[17]=posRaw[1];
-				sensorDataBuffer[18]=posRaw[2];
-				
-				// Write to Communication process
-				if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
-				//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
-						
-				beaconConnected=1;
-						
-				if(beaconConnected==1 && tsAverageReadyEKF==2 && eulerCalFlag==1){
-					// Check if raw position data is new or old
-					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
-						posRawOldFlag=1;
-					}
-					else{
-						posRawOldFlag=0;
-						memcpy(posRawPrev, posRaw, sizeof(posRaw));
-					}
+					// Copy out the returned quaternions from the filter
+					q_comp[0]=q0;
+					q_comp[1]=-q1;
+					q_comp[2]=-q2;
+					q_comp[3]=-q3;
 					
-					// Move data from (euler and posRaw) array to ymeas
-					//ymeas[0]=posRaw[0];
-					//ymeas[1]=posRaw[1];
-					//ymeas[2]=posRaw[2];
-					ymeas9x9[0]=0; // position x
-					ymeas9x9[1]=0; // position y
-					ymeas9x9[2]=0; // position z
-					ymeas9x9_bias[0]=euler_comp[2]; // phi (x-axis)
-					ymeas9x9_bias[1]=euler_comp[1]; // theta (y-axis)
-					ymeas9x9_bias[2]=euler_comp[0]; // psi (z-axis)
-					ymeas9x9_bias[3]=gyrRaw[0]; // gyro x
-					ymeas9x9_bias[4]=gyrRaw[1]; // gyro y
-					ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
-					
-					// Flip direction of rotation and gyro around y-axis and x-axis to match model
-					ymeas9x9_bias[0]*=-1; // flip phi (x-axis)						
-					ymeas9x9_bias[1]*=-1; // flip theta (y-axis)	
-					ymeas9x9_bias[3]*=-1; // flip gyro (x-axis)						
-					//ymeas9x9_bias[4]*=-1; // flip gyro (y-axis)
-					ymeas9x9_bias[5]*=-1; // flip gyro (z-axis)
-
-					// Calibration routine for EKF
-					if (calibrationCounterEKF==0){
-						printf("EKF Calibration started\n");
-						 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-						//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
-						calibrationCounterEKF++;
-					}
-					else if(calibrationCounterEKF<CALIBRATION){
-						 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-						//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
-						calibrationCounterEKF++;
-						
-					}
-					else if(calibrationCounterEKF==CALIBRATION){
-						 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-							
-						// Save calibration in 'settings.txt' if it does not exist
-						//saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double), &fpWrite);
-						//saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double), &fpWrite);
-						 saveSettings(Rekf9x9_bias,"Rekf9x9_bias",sizeof(Rekf9x9_bias)/sizeof(double));
-						saveSettings(Rekf9x9,"Rekf9x9",sizeof(Rekf9x9)/sizeof(double));
-						 saveSettings(ekf09x9_bias,"ekf09x9_bias",sizeof(ekf09x9_bias)/sizeof(double));
-						saveSettings(ekf09x9,"ekf09x9",sizeof(ekf09x9)/sizeof(double));
-							
-						//printf("calibrationCounterEKF: %i\n", calibrationCounterEKF);
-						printf("EKF Calibrations finish\n");
-						calibrationCounterEKF++;
-						
-						// Initialize EKF with current available measurement
-						printf("Initialize EKF xhat with current measurments for position and orientation");
-						xhat9x9_bias[0]=ymeas9x9_bias[0];
-						xhat9x9_bias[1]=ymeas9x9_bias[1];
-						xhat9x9_bias[2]=ymeas9x9_bias[2];
-						xhat9x9_bias[3]=ymeas9x9_bias[3];
-						xhat9x9_bias[4]=ymeas9x9_bias[4];
-						xhat9x9_bias[5]=ymeas9x9_bias[5];
-						
-						xhat9x9[0]=ymeas9x9[0];
-						xhat9x9[1]=ymeas9x9[1];
-						xhat9x9[2]=ymeas9x9[2];
-						
-						q_init[0]=q0;
-						q_init[1]=q1;
-						q_init[2]=q2;
-						q_init[3]=q3;
-					}
-					// State Estimator
-					else{
-						// Run EKF as long as ekfReset keyboard input is false
-						if(!ekfReset){
-							// Run Extended Kalman Filter (state estimator) using position and orientation data
-							//EKF_no_inertia(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
-							EKF_9x9_bias(Pekf9x9_bias,xhat9x9_bias,uControl,ymeas9x9_bias,tuningEkfBuffer9x9_bias,Rekf9x9_bias,tsTrue);
-							EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,ymeas9x9_bias);
-								
-							stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+					// Quaternions to eulers (rad)
+					q2euler_zyx(euler,q_comp);
+				
+					 //Allignment compensation for initial point of orientation angles
+					if(k==1000){
+						if(counterCalEuler<1000){
+							// Mean (bias) accelerometer, gyroscope and magnetometer
+							euler_mean[0]+=euler[0];
+							euler_mean[1]+=euler[1];
+							euler_mean[2]+=euler[2];
+							counterCalEuler++;
+							printf("euler_sum: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
 						}
-						// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
+						else if(counterCalEuler==1000){
+							euler_mean[0]/=1000.0f;
+							euler_mean[1]/=1000.0f;
+							euler_mean[2]/=1000.0f;
+							counterCalEuler++;
+							eulerCalFlag=1;
+							printf("euler_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0], euler_mean[1], euler_mean[2], counterCalEuler);
+						}
 						else{
-							memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));	
-							memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
-							memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
-							memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
-							memcpy(uControl, uControlInit, sizeof(uControlInit));
+							euler_comp[0]=euler[0]-euler_mean[0];
+							euler_comp[1]=euler[1]-euler_mean[1];
+							euler_comp[2]=euler[2]-euler_mean[2];
+						}
+					}
+				
+					}
+					else{
+						printf("SampleFre: %f\n", sampleFreq);
+					}
+								
+					// Move over data to communication.c via pipe
+					sensorDataBuffer[0]=gyrRaw[0];
+					sensorDataBuffer[1]=gyrRaw[1];
+					sensorDataBuffer[2]=gyrRaw[2];
+					sensorDataBuffer[3]=accRaw[0];
+					sensorDataBuffer[4]=accRaw[1];
+					sensorDataBuffer[5]=accRaw[2];
+					sensorDataBuffer[6]=magRawRot[0];
+					sensorDataBuffer[7]=magRawRot[1];
+					sensorDataBuffer[8]=magRawRot[2];
+					sensorDataBuffer[9]=euler_comp[0];
+					sensorDataBuffer[10]=euler_comp[1];
+					sensorDataBuffer[11]=euler_comp[2];
+					sensorDataBuffer[12]=(double)q_comp[0];
+					sensorDataBuffer[13]=(double)q_comp[1];
+					sensorDataBuffer[14]=(double)q_comp[2];
+					sensorDataBuffer[15]=(double)q_comp[3];
+					sensorDataBuffer[16]=posRaw[0];
+					sensorDataBuffer[17]=posRaw[1];
+					sensorDataBuffer[18]=posRaw[2];
+					
+					// Write to Communication process
+					if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
+					//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
 							
-							q0=q_init[0];
-							q1=q_init[1];
-							q2=q_init[2];
-							q3=q_init[3];
+					beaconConnected=1;
 							
-							stateDataBuffer[15]=0; // set ready flag for MPC false during reset
-							isnan_flag=0;
-							outofbounds_flag=0;
+					if(beaconConnected==1 && tsAverageReadyEKF==2 && eulerCalFlag==1){
+						// Check if raw position data is new or old
+						if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
+							posRawOldFlag=1;
+						}
+						else{
+							posRawOldFlag=0;
+							memcpy(posRawPrev, posRaw, sizeof(posRaw));
 						}
 						
-						// Override disturbance estimation in x and y direction
-						xhat9x9[6]=0;
-						xhat9x9[7]=0;
+						// Move data from (euler and posRaw) array to ymeas
+						//ymeas[0]=posRaw[0];
+						//ymeas[1]=posRaw[1];
+						//ymeas[2]=posRaw[2];
+						ymeas9x9[0]=0; // position x
+						ymeas9x9[1]=0; // position y
+						ymeas9x9[2]=0; // position z
+						ymeas9x9_bias[0]=euler_comp[2]; // phi (x-axis)
+						ymeas9x9_bias[1]=euler_comp[1]; // theta (y-axis)
+						ymeas9x9_bias[2]=euler_comp[0]; // psi (z-axis)
+						ymeas9x9_bias[3]=gyrRaw[0]; // gyro x
+						ymeas9x9_bias[4]=gyrRaw[1]; // gyro y
+						ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
 						
-						// Torque disturbance saturation
-						//saturation(xhat9x9_bias,6,-0.01,0.01);
-						//saturation(xhat9x9_bias,7,-0.01,0.01);
-						// saturation(xhat9x9_bias,6,0.0,0.0);
-						// saturation(xhat9x9_bias,7,0.0,0.0);
-						// saturation(xhat9x9_bias,8,0.0,0.0);
-						
-						//Check for EKF9x9_bias failure (isnan)
-						 for (int j=0;j<9;j++){
-							 if (isnan(xhat9x9_bias[j])!=0){
-								 isnan_flag=1;
-								 break;
-							 }						
-						 }
-						
-						// Check for EKF9x9 failure (isnan)
-						for (int j=0;j<9;j++){
-							if (isnan(xhat9x9[j])!=0){
-								isnan_flag=1;
-								break;
-							}						
+						// Flip direction of rotation and gyro around y-axis and x-axis to match model
+						ymeas9x9_bias[0]*=-1; // flip phi (x-axis)						
+						ymeas9x9_bias[1]*=-1; // flip theta (y-axis)	
+						ymeas9x9_bias[3]*=-1; // flip gyro (x-axis)						
+						//ymeas9x9_bias[4]*=-1; // flip gyro (y-axis)
+						ymeas9x9_bias[5]*=-1; // flip gyro (z-axis)
+
+						// Calibration routine for EKF
+						if (calibrationCounterEKF==0){
+							printf("EKF Calibration started\n");
+							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
+							calibrationCounterEKF++;
 						}
-						
-						// Check for EKF9x9_bias failure (out of bounds)
-						 for (int j=0;j<9;j++){
-							 if (xhat9x9_bias[j]>1e6){
-								 outofbounds_flag=1;
-								 break;
-							 }						
-						 }
-						//// Check for EKF9x9_bias failure (out of bounds)
-						if (xhat9x9_bias[6]>=.09 || xhat9x9_bias[7]>=.09 || xhat9x9_bias[8]>=.09){
-							outofbounds_flag=1;
-							break;
-						}						
-						
-						// Check for EKF9x9 failure (out of bounds)
-						for (int j=0;j<9;j++){
-							if (xhat9x9[j]>1e6){
-								outofbounds_flag=1;
-								break;
-							}						
+						else if(calibrationCounterEKF<CALIBRATION){
+							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
+							calibrationCounterEKF++;
+							
 						}
+						else if(calibrationCounterEKF==CALIBRATION){
+							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+								
+							// Save calibration in 'settings.txt' if it does not exist
+							//saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double), &fpWrite);
+							//saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double), &fpWrite);
+							 saveSettings(Rekf9x9_bias,"Rekf9x9_bias",sizeof(Rekf9x9_bias)/sizeof(double));
+							saveSettings(Rekf9x9,"Rekf9x9",sizeof(Rekf9x9)/sizeof(double));
+							 saveSettings(ekf09x9_bias,"ekf09x9_bias",sizeof(ekf09x9_bias)/sizeof(double));
+							saveSettings(ekf09x9,"ekf09x9",sizeof(ekf09x9)/sizeof(double));
+								
+							//printf("calibrationCounterEKF: %i\n", calibrationCounterEKF);
+							printf("EKF Calibrations finish\n");
+							calibrationCounterEKF++;
+							
+							// Initialize EKF with current available measurement
+							printf("Initialize EKF xhat with current measurments for position and orientation");
+							//xhat9x9_bias[0]=ymeas9x9_bias[0];
+							//xhat9x9_bias[1]=ymeas9x9_bias[1];
+							//xhat9x9_bias[2]=ymeas9x9_bias[2];
+							//xhat9x9_bias[3]=ymeas9x9_bias[3];
+							//xhat9x9_bias[4]=ymeas9x9_bias[4];
+							//xhat9x9_bias[5]=ymeas9x9_bias[5];
+							
+							xhat9x9[0]=ymeas9x9[0];
+							xhat9x9[1]=ymeas9x9[1];
+							xhat9x9[2]=ymeas9x9[2];
+							
+							q_init[0]=q0;
+							q_init[1]=q1;
+							q_init[2]=q2;
+							q_init[3]=q3;
+						}
+						// State Estimator
+						else{
+							// Run EKF as long as ekfReset keyboard input is false
+							if(!ekfReset){
+								// Run Extended Kalman Filter (state estimator) using position and orientation data
+								//EKF_no_inertia(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
+								EKF_9x9_bias(Pekf9x9_bias,xhat9x9_bias,uControl,ymeas9x9_bias,tuningEkfBuffer9x9_bias,Rekf9x9_bias,tsTrue);
+								EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,ymeas9x9_bias);
+									
+								stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+							}
+							// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
+							else{
+								memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));	
+								memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
+								memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
+								memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
+								memcpy(uControl, uControlInit, sizeof(uControlInit));
+								
+								q0=q_init[0];
+								q1=q_init[1];
+								q2=q_init[2];
+								q3=q_init[3];
+								
+								stateDataBuffer[15]=0; // set ready flag for MPC false during reset
+								isnan_flag=0;
+								outofbounds_flag=0;
+							}
+							
+							// Override disturbance estimation in x and y direction
+							xhat9x9[6]=0;
+							xhat9x9[7]=0;
+							
+							// Torque disturbance saturation
+							//saturation(xhat9x9_bias,6,-0.01,0.01);
+							//saturation(xhat9x9_bias,7,-0.01,0.01);
+							// saturation(xhat9x9_bias,6,0.0,0.0);
+							// saturation(xhat9x9_bias,7,0.0,0.0);
+							// saturation(xhat9x9_bias,8,0.0,0.0);
+							
+							//Check for EKF9x9_bias failure (isnan)
+							 for (int j=0;j<9;j++){
+								 if (isnan(xhat9x9_bias[j])!=0){
+									 isnan_flag=1;
+									 break;
+								 }						
+							 }
+							
+							// Check for EKF9x9 failure (isnan)
+							for (int j=0;j<9;j++){
+								if (isnan(xhat9x9[j])!=0){
+									isnan_flag=1;
+									break;
+								}						
+							}
+							
+							// Check for EKF9x9_bias failure (out of bounds)
+							 for (int j=0;j<9;j++){
+								 if (xhat9x9_bias[j]>1e6){
+									 outofbounds_flag=1;
+									 break;
+								 }						
+							 }
+							//// Check for EKF9x9_bias failure (out of bounds)
+							//if (xhat9x9_bias[6]>=.09 || xhat9x9_bias[7]>=.09 || xhat9x9_bias[8]>=.09){
+								//outofbounds_flag=1;
+								//break;
+							//}						
+							
+							// Check for EKF9x9 failure (out of bounds)
+							for (int j=0;j<9;j++){
+								if (xhat9x9[j]>1e6){
+									outofbounds_flag=1;
+									break;
+								}						
+							}
 						
 						if(isnan_flag){
 							stateDataBuffer[15]=0;
@@ -933,12 +933,12 @@ static void *threadSensorFusion (void *arg){
 						stateDataBuffer[3]=xhat9x9[3]; // velocity x
 						stateDataBuffer[4]=xhat9x9[4]; // velocity y
 						stateDataBuffer[5]=xhat9x9[5]; // velocity z
-						stateDataBuffer[6]=xhat9x9_bias[0]; // phi (x-axis)
-						stateDataBuffer[7]=xhat9x9_bias[1]; // theta (y-axis)
-						stateDataBuffer[8]=xhat9x9_bias[2]; // psi (z-axis)
-						stateDataBuffer[9]=xhat9x9_bias[3]; // omega x (gyro)
-						stateDataBuffer[10]=xhat9x9_bias[4]; // omega y (gyro)
-						stateDataBuffer[11]=xhat9x9_bias[5]; // omega z (gyro)
+						stateDataBuffer[6]=ymeas9x9_bias[0]; // phi (x-axis)
+						stateDataBuffer[7]=ymeas9x9_bias[1]; // theta (y-axis)
+						stateDataBuffer[8]=ymeas9x9_bias[2]; // psi (z-axis)
+						stateDataBuffer[9]=ymeas9x9_bias[3]; // omega x (gyro)
+						stateDataBuffer[10]=ymeas9x9_bias[4]; // omega y (gyro)
+						stateDataBuffer[11]=ymeas9x9_bias[5]; // omega z (gyro)
 						stateDataBuffer[12]=xhat9x9[6]; // disturbance x
 						stateDataBuffer[13]=xhat9x9[7]; // disturbance y
 						stateDataBuffer[14]=xhat9x9[8]; // disturbance z
@@ -948,12 +948,12 @@ static void *threadSensorFusion (void *arg){
 						//stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 
 						if(ekfPrint){
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f meas: (ang°) % 2.4f % 2.4f % 2.4f (angVel°) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI),ymeas9x9_bias[3]*(180/PI),ymeas9x9_bias[4]*(180/PI),ymeas9x9_bias[5]*(180/PI),sampleFreq);
+							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang°) % 2.4f % 2.4f % 2.4f (angVel°) % 2.4f % 2.4f % 2.4f (dist ang) % 1.4f % 1.4f % 1.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI),xhat9x9_bias[3]*(180/PI),xhat9x9_bias[4]*(180/PI),xhat9x9_bias[5]*(180/PI),xhat9x9_bias[6], xhat9x9_bias[7], xhat9x9_bias[8], sampleFreq);
 						}
 						
 						if(ekfPrint6States){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
-							printf("(angles) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.4f % 1.4f % 1.4f\n",ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
+							printf("(ang(meas)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.4f % 1.4f % 1.4f\n",ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
 						}
 	
 						// Write to Controller process
@@ -1627,6 +1627,13 @@ void printBits(size_t const size, void const * const ptr){
 	 V[3]=ymeas[3]-xhat_temp[3];
 	 V[4]=ymeas[4]-xhat_temp[4];
 	 V[5]=ymeas[5]-xhat_temp[5];
+	 
+	 //V[0]=0;
+	 //V[1]=0;
+	 //V[2]=0;
+	 //V[3]=0;
+	 //V[4]=0;
+	 //V[5]=0;
 	
 	 //printf("\nymeas:\n");
 	 //printmat(ymeas,1,6);

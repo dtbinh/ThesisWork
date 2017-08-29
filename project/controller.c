@@ -334,8 +334,8 @@ void *threadController( void *arg ) {
 		.Q =  { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
 		.Qf = { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
-		.umax = {  .1, .1, .1 },
-		.umin = { -.1,-.1,-.1 },
+		.umax = {  1, 1, 1 },
+		.umin = { -1,-1,-1 },
 		.n = 6, .m = 3, .T = 40, .niters = 20, .kappa = 1e-5
 		//.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
 	};
@@ -532,6 +532,7 @@ void *threadController( void *arg ) {
 				// Run controllers 
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, distBufferTau, mpcAtt_ff);
+								//tau_x=0; tau_y=0; tau_z=0;
 				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
 
 				if (pid_trigger){
