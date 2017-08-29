@@ -142,7 +142,7 @@ static void *threadUpdateConstraintsSettingsReferences(void*);
 // static void *threadControllerWatchdogAlt(void*);
 
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
-static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int);
+static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, double);
 static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
@@ -527,27 +527,26 @@ void *threadController( void *arg ) {
 				//printf("references-> ");
 				//printmat(refBuffer, 1, 12);
 				
-				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 
+				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 	
 				
 				// Run controllers 
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, distBufferTau, mpcAtt_ff);
-								//tau_x=0; tau_y=0; tau_z=0;
+				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local);
 				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
 
-				if (pid_trigger){
-					//printf("PID\n");
-					// angle controller
-					pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
-					// gyro controller
-					tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
-					//tau_x=pid_gyro_u+pid_angle_u;
-					tau_y=0;
-					tau_z=0;
+				// if (pid_trigger){
+					// //printf("PID\n");
+					// // angle controller
+					// pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					// // gyro controller
+					// tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					// //tau_x=pid_gyro_u+pid_angle_u;
+					// tau_y=0;
+					// tau_z=0;
 					
-					if (tau_x > .1) {tau_x = .1;}
-					else if (tau_x < -.1) {tau_x = -.1;}					
-				}
+					// if (tau_x > .1) {tau_x = .1;}
+					// else if (tau_x < -.1) {tau_x = -.1;}					
+				// }
 
 				// Create PWM signal from calculated thrust and torques
 				PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
@@ -595,7 +594,7 @@ void *threadController( void *arg ) {
 		
 			// Print PWM signal sent to motors
 			if(pwmPrint){
-				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAtt_FF) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, attU_all[0], attU_all[1], attU_all[2], tau_x, tau_y, tau_z, thrust );
+				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAtt_FF) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f (u_mpcAttInt) % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, attU_all[0], attU_all[1], attU_all[2], tau_x, tau_y, tau_z, thrust, pid_angle_error_integral[0]);
 			}
 			
 			// Copy data over to common controller buffer before sending it to sensor.c
@@ -738,8 +737,9 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 }
 	
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
-static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int mpcAtt_ff) {
+static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref, double* error_integrator, int mpcAtt_ff, double ki) {
 	int i;
+	double u_integral=0; // integral action variable
 	
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	memcpy(&attInputs->X0_all[0], &attX_all[attParams->n], sizeof(double)*attParams->n*attParams->T-attParams->n); 	
@@ -751,14 +751,27 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		attInputs->U0_all[i] = 0;
 		}
 	
+	// Integrator action for angle state to get offset free control
+	// if(mpcAtt_ff){
+		error_integral[0] += (meas[6] - phi_dist)*ts;
+		u_integral = ki*error_integral[0];
+	// }
+	// else{
+		// error_integral[0]=0;
+	// }
+	
+	
+	
 	// Update controller input contraints [umin/umax] to compensate for disturbances in torque
 	if(mpcAtt_ff){
-		attParams->umax[0]=0.1+dist[0];
-		attParams->umin[0]=-0.1+dist[0];
-		attParams->umax[1]=0.1+dist[1];
-		attParams->umin[1]=-0.1+dist[1];
-		attParams->umax[2]=0.1+dist[2];
-		attParams->umin[2]=-0.1+dist[2];
+		attParams->umax[0]=1+u_integral;
+		attParams->umin[0]=-1+u_integral;
+		// attParams->umax[0]=0.1+dist[0];
+		// attParams->umin[0]=-0.1+dist[0];
+		// attParams->umax[1]=0.1+dist[1];
+		// attParams->umin[1]=-0.1+dist[1];
+		// attParams->umax[2]=0.1+dist[2];
+		// attParams->umin[2]=-0.1+dist[2];
 	}
 	
 	//printf("umaxumin_0(% 1.4f % 1.4f) umaxumin_1(% 1.4f % 1.4f) umaxumin_2(% 1.4f % 1.4f)\n", attParams->umax[0]-dist[0], attParams->umin[0]-dist[0], attParams->umax[1]-dist[1], attParams->umin[1]-dist[1], attParams->umax[2]-dist[2], attParams->umin[2]-dist[2]);
@@ -777,16 +790,17 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	
 	//printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
 	
+	// Feed forward disturbance compensation
+	if(mpcAtt_ff){
+		attU_all[0] -= u_integral;
+		// attU_all[0] -= dist[0];
+		// attU_all[1] -= dist[1];
+		// attU_all[2] -= dist[2];
+	}
+	
 	tau_x = attU_all[0];		// phi
 	tau_y = attU_all[1];		// theta
 	tau_z = attU_all[2];		// psi
-	
-	// Feed forward disturbance compensation
-	if(mpcAtt_ff){
-		tau_x -= dist[0];
-		tau_y -= dist[1];
-		tau_z -= dist[2];
-	}
 	
 	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
 		if(isnan(attU_all[i])!=0){
