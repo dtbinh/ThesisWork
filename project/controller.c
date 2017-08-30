@@ -142,7 +142,7 @@ static void *threadUpdateConstraintsSettingsReferences(void*);
 // static void *threadControllerWatchdogAlt(void*);
 
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
-static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, double);
+static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, double, double);
 static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
@@ -280,8 +280,6 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 return NULL;
 }
 
-
-
 //Thread - Update local variables with any new sensor measurements (pipe from sensor process)
 void *threadUpdateMeasurements(void *arg) {
  	// Get pipe and define local variables
@@ -310,7 +308,6 @@ void *threadUpdateMeasurements(void *arg) {
  	return NULL;
  }
 
-
 /* Thread - Controller algorithm for all three (with pipe to sensor (PWM) and communication process) */
 void *threadController( void *arg ) {
 	// Initialize local structures
@@ -334,9 +331,9 @@ void *threadController( void *arg ) {
 		.Q =  { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
 		.Qf = { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
-		.umax = {  1, 1, 1 },
-		.umin = { -1,-1,-1 },
-		.n = 6, .m = 3, .T = 40, .niters = 20, .kappa = 1e-5
+		.umax = {  10, 10, 10 },
+		.umin = { -10,-10,-10 },
+		.n = 6, .m = 3, .T = 40, .niters = 5, .kappa = 1e-4 // niters iteration, larger better. kappa smaller better
 		//.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
 	};
 	
@@ -521,7 +518,7 @@ void *threadController( void *arg ) {
 		}
 		
 		// Only run controller if EKF (sensor.c) is actually ready and finished calibrated
-		if(0 || sensorReady){	
+		if(sensorReady){	
 			// Check keyboard fly trigger is true	
 			if(triggerFly){
 				//printf("references-> ");
@@ -529,9 +526,12 @@ void *threadController( void *arg ) {
 				
 				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 	
 				
+				//printf("%f\n", pid_angle_ki_local);
+				
 				// Run controllers 
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local);
+				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local, tsTrue);
+				tau_x=0; tau_y=0; tau_z=0;
 				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
 
 				// if (pid_trigger){
@@ -553,6 +553,11 @@ void *threadController( void *arg ) {
 				PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				
+				PWM[0]=100;
+				PWM[1]=100;
+				PWM[2]=100;
+				PWM[3]=100;
 			}
 
 			// If false, force PWM outputs to zero.
@@ -737,9 +742,9 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 }
 	
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
-static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref, double* error_integrator, int mpcAtt_ff, double ki) {
+static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInputs, double *attX_all, double *attU_all, double *meas, double *ref, double* error_integral, int mpcAtt_ff, double ki, double ts) {
 	int i;
-	double u_integral=0; // integral action variable
+	//double u_integral=0; // integral action variable
 	
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	memcpy(&attInputs->X0_all[0], &attX_all[attParams->n], sizeof(double)*attParams->n*attParams->T-attParams->n); 	
@@ -752,20 +757,19 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		}
 	
 	// Integrator action for angle state to get offset free control
-	// if(mpcAtt_ff){
-		error_integral[0] += (meas[6] - phi_dist)*ts;
-		u_integral = ki*error_integral[0];
-	// }
-	// else{
-		// error_integral[0]=0;
-	// }
+	 if(mpcAtt_ff){
+		error_integral[0] += ki*((meas[6] - phi_dist)*ts);
+	 }
+	 else{
+		 error_integral[0]=0;
+	 }
 	
 	
 	
 	// Update controller input contraints [umin/umax] to compensate for disturbances in torque
 	if(mpcAtt_ff){
-		attParams->umax[0]=1+u_integral;
-		attParams->umin[0]=-1+u_integral;
+		//attParams->umax[0]=10+error_integral[0];
+		//attParams->umin[0]=-10+error_integral[0];
 		// attParams->umax[0]=0.1+dist[0];
 		// attParams->umin[0]=-0.1+dist[0];
 		// attParams->umax[1]=0.1+dist[1];
@@ -790,18 +794,18 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	
 	//printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
 	
-	// Feed forward disturbance compensation
-	if(mpcAtt_ff){
-		attU_all[0] -= u_integral;
-		// attU_all[0] -= dist[0];
-		// attU_all[1] -= dist[1];
-		// attU_all[2] -= dist[2];
-	}
-	
 	tau_x = attU_all[0];		// phi
 	tau_y = attU_all[1];		// theta
 	tau_z = attU_all[2];		// psi
 	
+	// Feed forward disturbance compensation
+	if(mpcAtt_ff){
+		tau_x -= error_integral[0];
+		// attU_all[0] -= dist[0];
+		// attU_all[1] -= dist[1];
+		// attU_all[2] -= dist[2];
+	}
+
 	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
 		if(isnan(attU_all[i])!=0){
 			printf("MPC attU[%i]=nan\n",i);

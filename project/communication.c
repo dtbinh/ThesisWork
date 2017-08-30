@@ -486,7 +486,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=1;
+	socketReady=0;
 }
 
 /* Read in PWM value */
@@ -638,6 +638,17 @@ void keyReading( void ) {
 			else if(keyboardData[4]==1){
 				keyboardData[4]=0;
 				printf("PWM print toggle: %i\n", (int)keyboardData[4]);
+			}
+		break;
+		
+		case 'd' :
+			if (keyboardData[15]==0){
+				keyboardData[15]=1;
+				printf("Data save toggle: %i\n", (int)keyboardData[15]);
+			}
+			else if(keyboardData[15]==1){
+				keyboardData[15]=0;
+				printf("Data save toggle: %i\n", (int)keyboardData[15]);
 			}
 		break;
 		
@@ -1153,7 +1164,7 @@ void keyReading( void ) {
 		break;
 		
 		case 'h' :
-			printf("\n [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\t [f]eed forward - attitude mpc\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n [c]alibrate sensor fusion and EKF - Redo calibration\n [a]lpha magnetometer outlier forgetting factor\n [b]eta Madgwick Filter gain\n [m]pc settings\n [q]ekf settings\n");
+			printf("\n [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\t [f]eed forward - attitude mpc\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n [c]alibrate sensor fusion and EKF - Redo calibration\n [a]lpha magnetometer outlier forgetting factor\n [b]eta Madgwick Filter gain\n [m]pc settings\n [q]ekf settings\n [d]ata save to file\n");
 			break;
 				
 		default :

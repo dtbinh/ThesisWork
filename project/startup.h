@@ -95,18 +95,18 @@ Keyboard listening...
 #define mpcAlt_R_1 1.0f
 
 // Default EKF weights Q
-#define ekf_Q_1 1.0e-7f
-#define ekf_Q_2 1.0e-7f
-#define ekf_Q_3 1.0e-7f
-#define ekf_Q_4 1.0e1f
-#define ekf_Q_5 1.0e1f
-#define ekf_Q_6 1.0e1f
-#define ekf_Q_7 1.0e-38f
-#define ekf_Q_8 1.0e-38f
-#define ekf_Q_9 1.0e-38f
-#define ekf_Q_10 1.0e-38f
-#define ekf_Q_11 1.0e-38f
-#define ekf_Q_12 1.0e-38f
+#define ekf_Q_1 1.0e-10f
+#define ekf_Q_2 1.0e-10f
+#define ekf_Q_3 1.0e-10f
+#define ekf_Q_4 1.0e-10f
+#define ekf_Q_5 1.0e-10f
+#define ekf_Q_6 1.0e-10f
+#define ekf_Q_7 1.0e-4f
+#define ekf_Q_8 1.0e-4f
+#define ekf_Q_9 1.0e-4f
+#define ekf_Q_10 1.0e-4f
+#define ekf_Q_11 1.0e-4f
+#define ekf_Q_12 1.0e-4f
 #define ekf_Q_13 1.0e-3f
 #define ekf_Q_14 1.0e-3f
 #define ekf_Q_15 0.00001f
@@ -119,7 +119,7 @@ Keyboard listening...
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
 #define pid_angle_kp 2.0f
-#define pid_angle_ki 5.0e-2f
+#define pid_angle_ki 1.0e-2f
 #define pid_angle_kd 0.0f
 
 

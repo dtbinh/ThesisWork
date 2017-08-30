@@ -475,32 +475,53 @@ static void *threadSensorFusion (void *arg){
 	double buffer_tau_y[BUFFER];
 	double buffer_tau_z[BUFFER];
 	double buffer_ts[BUFFER];
+	
+	double buffer_acc_x[BUFFER];
+	double buffer_acc_y[BUFFER];
+	double buffer_acc_z[BUFFER];
+	double buffer_gyr_x[BUFFER];
+	double buffer_gyr_y[BUFFER];
+	double buffer_gyr_z[BUFFER];
+	double buffer_mag_x[BUFFER];
+	double buffer_mag_y[BUFFER];
+	double buffer_mag_z[BUFFER];
+	
+	
+	
 	int buffer_counter=0;
 	//FILE *fpWrite;
 	
 	// EKF variables
-	 double Pekf9x9_bias[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	//double Pekf9x9_bias[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	double Pekf6x6[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
 	double Pekf9x9[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	 double xhat9x9_bias[9]={0,0,0,0,0,0,0,0,0};
+	//double xhat9x9_bias[9]={0,0,0,0,0,0,0,0,0};
+	double xhat6x6[6]={0,0,0,0,0,0};
 	double xhat9x9[9]={0,0,0,0,0,0,0,0,-par_g};
 	double uControl[4]={.1,.1,.1,.1};
 	
-	 double Pekf9x9_biasInit[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	//double Pekf9x9_biasInit[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	double Pekf6x6Init[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
 	double Pekf9x9Init[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	 double xhat9x9_biasInit[9]={0,0,0,0,0,0,0,0,0};
+	//double xhat9x9_biasInit[9]={0,0,0,0,0,0,0,0,0};
+	double xhat6x6Init[6]={0,0,0,0,0,0};
 	double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
 	double uControlInit[4]={.1,.1,.1,.1};
 	double uControlThrustTorques[4]={0,0,0,0};
 	
-	 double Rekf9x9_bias[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	//double Rekf9x9_bias[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	double Rekf6x6[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double Rekf9x9[9]={0,0,0,0,0,0,0,0,0};
-	double ymeas9x9_bias[6]; // vector for 9x9 EKF attitude - measurement: angles and gyro
+	//double ymeas9x9_bias[6]; // vector for 9x9 EKF attitude - measurement: angles and gyro
+	double ymeas6x6[6];
 	double ymeas9x9[3]; // vector for 9x9 EKF position - measurement: position
 
-	 double ekf09x9_bias[6]={0,0,0,0,0,0}, ekfCal9x9_bias[6*CALIBRATION];
+	//double ekf09x9_bias[6]={0,0,0,0,0,0}, ekfCal9x9_bias[6*CALIBRATION];
+	double ekf06x6[6]={0,0,0,0,0,0}, ekfCal6x6[6*CALIBRATION];
 	double ekf09x9[3]={0,0,0}, ekfCal9x9[3*CALIBRATION];
 	
-	 double tuningEkfBuffer9x9_bias[9]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_16,ekf_Q_17,ekf_Q_18}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
+	//double tuningEkfBuffer9x9_bias[9]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_16,ekf_Q_17,ekf_Q_18}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
+	double tuningEkfBuffer6x6[6]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
 	double tuningEkfBuffer9x9[9]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_14,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, distx, disty, distz}
 	
 	
@@ -544,16 +565,16 @@ static void *threadSensorFusion (void *arg){
 		// Try to enable acc, gyr, mag  and bmp sensors
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableMPU9250Flag=enableMPU9250();
-			//enableAK8963Flag=enableAK8963();
+			enableAK8963Flag=enableAK8963();
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
 		// Check that I2C sensors have been enabled
 		if(enableMPU9250Flag==-1){
 			printf("MPU9250 failed to be enabled\n");
 		}
-		//else if(enableAK8963Flag==-1){
-			//printf("AK8963 failed to be enabled\n");
-		//}
+		else if(enableAK8963Flag==-1){
+			printf("AK8963 failed to be enabled\n");
+		}
 		else{
 			// Loop for ever
 			while(1){
@@ -586,8 +607,9 @@ static void *threadSensorFusion (void *arg){
 					a=keyboardData[11];
 					beta_keyboard=keyboardData[12];
 					saveDataTrigger=(int)keyboardData[15];
-					 memcpy(tuningEkfBuffer9x9_bias, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
-					 memcpy(tuningEkfBuffer9x9_bias+6, tuningEkfData+15, sizeof(tuningEkfData)*3/18); // ekf states 16-18
+					 //memcpy(tuningEkfBuffer9x9_bias, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
+					 //memcpy(tuningEkfBuffer9x9_bias+6, tuningEkfData+15, sizeof(tuningEkfData)*3/18); // ekf states 16-18
+					memcpy(tuningEkfBuffer6x6, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
 					memcpy(tuningEkfBuffer9x9, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
 					memcpy(tuningEkfBuffer9x9+6, tuningEkfData+12, sizeof(tuningEkfData)*3/18); // ekf states 13-15
 				pthread_mutex_unlock(&mutexKeyboardData);
@@ -777,45 +799,63 @@ static void *threadSensorFusion (void *arg){
 						ymeas9x9[0]=0; // position x
 						ymeas9x9[1]=0; // position y
 						ymeas9x9[2]=0; // position z
-						ymeas9x9_bias[0]=euler_comp[2]; // phi (x-axis)
-						ymeas9x9_bias[1]=euler_comp[1]; // theta (y-axis)
-						ymeas9x9_bias[2]=euler_comp[0]; // psi (z-axis)
-						ymeas9x9_bias[3]=gyrRaw[0]; // gyro x
-						ymeas9x9_bias[4]=gyrRaw[1]; // gyro y
-						ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
+						//ymeas9x9_bias[0]=euler_comp[2]; // phi (x-axis)
+						//ymeas9x9_bias[1]=euler_comp[1]; // theta (y-axis)
+						//ymeas9x9_bias[2]=euler_comp[0]; // psi (z-axis)
+						//ymeas9x9_bias[3]=gyrRaw[0]; // gyro x
+						//ymeas9x9_bias[4]=gyrRaw[1]; // gyro y
+						//ymeas9x9_bias[5]=gyrRaw[2]; // gyro z
+						
+						ymeas6x6[0]=euler_comp[2]; // phi (x-axis)
+						ymeas6x6[1]=euler_comp[1]; // theta (y-axis)
+						ymeas6x6[2]=euler_comp[0]; // psi (z-axis)
+						ymeas6x6[3]=gyrRaw[0]; // gyro x
+						ymeas6x6[4]=gyrRaw[1]; // gyro y
+						ymeas6x6[5]=gyrRaw[2]; // gyro z
 						
 						// Flip direction of rotation and gyro around y-axis and x-axis to match model
-						ymeas9x9_bias[0]*=-1; // flip phi (x-axis)						
-						ymeas9x9_bias[1]*=-1; // flip theta (y-axis)	
-						ymeas9x9_bias[3]*=-1; // flip gyro (x-axis)						
-						//ymeas9x9_bias[4]*=-1; // flip gyro (y-axis)
-						ymeas9x9_bias[5]*=-1; // flip gyro (z-axis)
+						//ymeas9x9_bias[0]*=-1; // flip phi (x-axis)						
+						//ymeas9x9_bias[1]*=-1; // flip theta (y-axis)	
+						//ymeas9x9_bias[3]*=-1; // flip gyro (x-axis)						
+						////ymeas9x9_bias[4]*=-1; // flip gyro (y-axis)
+						//ymeas9x9_bias[5]*=-1; // flip gyro (z-axis)
+						
+						ymeas6x6[0]*=-1; // flip phi (x-axis)						
+						ymeas6x6[1]*=-1; // flip theta (y-axis)	
+						ymeas6x6[3]*=-1; // flip gyro (x-axis)						
+						//ymeas6x6[4]*=-1; // flip gyro (y-axis)
+						ymeas6x6[5]*=-1; // flip gyro (z-axis)
 
 						// Calibration routine for EKF
 						if (calibrationCounterEKF==0){
 							printf("EKF Calibration started\n");
-							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
 							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
 							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 							calibrationCounterEKF++;
 						}
 						else if(calibrationCounterEKF<CALIBRATION){
-							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							 //ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
 							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
 							//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 							calibrationCounterEKF++;
 							
 						}
 						else if(calibrationCounterEKF==CALIBRATION){
-							 ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
+							ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
 							ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
 								
 							// Save calibration in 'settings.txt' if it does not exist
 							//saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double), &fpWrite);
 							//saveSettings(ekf0,"ekf0",sizeof(ekf0)/sizeof(double), &fpWrite);
-							 saveSettings(Rekf9x9_bias,"Rekf9x9_bias",sizeof(Rekf9x9_bias)/sizeof(double));
+							 //saveSettings(Rekf9x9_bias,"Rekf9x9_bias",sizeof(Rekf9x9_bias)/sizeof(double));
+							saveSettings(Rekf6x6,"Rekf6x6",sizeof(Rekf6x6)/sizeof(double));
 							saveSettings(Rekf9x9,"Rekf9x9",sizeof(Rekf9x9)/sizeof(double));
-							 saveSettings(ekf09x9_bias,"ekf09x9_bias",sizeof(ekf09x9_bias)/sizeof(double));
+							//saveSettings(ekf09x9_bias,"ekf09x9_bias",sizeof(ekf09x9_bias)/sizeof(double));
+							saveSettings(ekf06x6,"ekf06x6",sizeof(ekf06x6)/sizeof(double));
 							saveSettings(ekf09x9,"ekf09x9",sizeof(ekf09x9)/sizeof(double));
 								
 							//printf("calibrationCounterEKF: %i\n", calibrationCounterEKF);
@@ -824,17 +864,21 @@ static void *threadSensorFusion (void *arg){
 							
 							// Initialize EKF with current available measurement
 							printf("Initialize EKF xhat with current measurments for position and orientation");
-							//xhat9x9_bias[0]=ymeas9x9_bias[0];
-							//xhat9x9_bias[1]=ymeas9x9_bias[1];
-							//xhat9x9_bias[2]=ymeas9x9_bias[2];
-							//xhat9x9_bias[3]=ymeas9x9_bias[3];
-							//xhat9x9_bias[4]=ymeas9x9_bias[4];
-							//xhat9x9_bias[5]=ymeas9x9_bias[5];
 							
+							// Attitude states initial measurments
+							xhat6x6[0]=0;
+							xhat6x6[1]=0;
+							xhat6x6[2]=0;
+							xhat6x6[3]=0;
+							xhat6x6[4]=0;
+							xhat6x6[5]=0;
+							
+							// Position states initial measurments
 							xhat9x9[0]=ymeas9x9[0];
 							xhat9x9[1]=ymeas9x9[1];
 							xhat9x9[2]=ymeas9x9[2];
 							
+							// Quaternions initial measurments
 							q_init[0]=q0;
 							q_init[1]=q1;
 							q_init[2]=q2;
@@ -846,16 +890,21 @@ static void *threadSensorFusion (void *arg){
 							if(!ekfReset){
 								// Run Extended Kalman Filter (state estimator) using position and orientation data
 								//EKF_no_inertia(Pekf,xhat,uControl,ymeas,Qekf,Rekf,tsAverage,posRawOldFlag);
-								EKF_9x9_bias(Pekf9x9_bias,xhat9x9_bias,uControl,ymeas9x9_bias,tuningEkfBuffer9x9_bias,Rekf9x9_bias,tsTrue);
-								EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,ymeas9x9_bias);
+								//EKF_9x9_bias(Pekf9x9_bias,xhat9x9_bias,uControl,ymeas9x9_bias,tuningEkfBuffer9x9_bias,Rekf9x9_bias,tsTrue);
+								
+								
+								//EKF_6x6(Pekf6x6,xhat6x6,uControl,ymeas6x6,tuningEkfBuffer6x6,Rekf6x6,tsTrue);
+								//EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6);
 									
 								stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							}
 							// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 							else{
-								memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));	
+								//memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));
+								memcpy(Pekf6x6, Pekf6x6, sizeof(Pekf6x6Init));	
 								memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
-								memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
+								//memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
+								memcpy(xhat6x6, xhat6x6Init, sizeof(xhat6x6Init));
 								memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
 								memcpy(uControl, uControlInit, sizeof(uControlInit));
 								
@@ -880,9 +929,17 @@ static void *threadSensorFusion (void *arg){
 							// saturation(xhat9x9_bias,7,0.0,0.0);
 							// saturation(xhat9x9_bias,8,0.0,0.0);
 							
-							//Check for EKF9x9_bias failure (isnan)
-							 for (int j=0;j<9;j++){
-								 if (isnan(xhat9x9_bias[j])!=0){
+							////Check for EKF9x9_bias failure (isnan)
+							 //for (int j=0;j<9;j++){
+								 //if (isnan(xhat9x9_bias[j])!=0){
+									 //isnan_flag=1;
+									 //break;
+								 //}						
+							 //}
+							 
+							//Check for EKF6x6 failure (isnan)
+							 for (int j=0;j<6;j++){
+								 if (isnan(xhat6x6[j])!=0){
 									 isnan_flag=1;
 									 break;
 								 }						
@@ -896,18 +953,21 @@ static void *threadSensorFusion (void *arg){
 								}						
 							}
 							
-							// Check for EKF9x9_bias failure (out of bounds)
-							 for (int j=0;j<9;j++){
-								 if (xhat9x9_bias[j]>1e6){
+							//// Check for EKF9x9_bias failure (out of bounds)
+							 //for (int j=0;j<9;j++){
+								 //if (xhat9x9_bias[j]>1e6){
+									 //outofbounds_flag=1;
+									 //break;
+								 //}						
+							 //}				
+							
+							// Check for EKF6x6 failure (out of bounds)
+							for (int j=0;j<6;j++){
+								if (xhat6x6[j]>1e6){
 									 outofbounds_flag=1;
 									 break;
-								 }						
-							 }
-							//// Check for EKF9x9_bias failure (out of bounds)
-							//if (xhat9x9_bias[6]>=.09 || xhat9x9_bias[7]>=.09 || xhat9x9_bias[8]>=.09){
-								//outofbounds_flag=1;
-								//break;
-							//}						
+								}						
+							}
 							
 							// Check for EKF9x9 failure (out of bounds)
 							for (int j=0;j<9;j++){
@@ -933,27 +993,40 @@ static void *threadSensorFusion (void *arg){
 						stateDataBuffer[3]=xhat9x9[3]; // velocity x
 						stateDataBuffer[4]=xhat9x9[4]; // velocity y
 						stateDataBuffer[5]=xhat9x9[5]; // velocity z
-						stateDataBuffer[6]=ymeas9x9_bias[0]; // phi (x-axis)
-						stateDataBuffer[7]=ymeas9x9_bias[1]; // theta (y-axis)
-						stateDataBuffer[8]=ymeas9x9_bias[2]; // psi (z-axis)
-						stateDataBuffer[9]=ymeas9x9_bias[3]; // omega x (gyro)
-						stateDataBuffer[10]=ymeas9x9_bias[4]; // omega y (gyro)
-						stateDataBuffer[11]=ymeas9x9_bias[5]; // omega z (gyro)
+						
+						//stateDataBuffer[6]=ymeas9x9_bias[0]; // phi (x-axis)
+						//stateDataBuffer[7]=ymeas9x9_bias[1]; // theta (y-axis)
+						//stateDataBuffer[8]=ymeas9x9_bias[2]; // psi (z-axis)
+						//stateDataBuffer[9]=ymeas9x9_bias[3]; // omega x (gyro)
+						//stateDataBuffer[10]=ymeas9x9_bias[4]; // omega y (gyro)
+						//stateDataBuffer[11]=ymeas9x9_bias[5]; // omega z (gyro)
+						stateDataBuffer[6]=xhat6x6[0]; // phi (x-axis)
+						stateDataBuffer[7]=xhat6x6[1]; // theta (y-axis)
+						stateDataBuffer[8]=xhat6x6[2]; // psi (z-axis)
+						stateDataBuffer[9]=xhat6x6[3]; // omega x (gyro)
+						stateDataBuffer[10]=xhat6x6[4]; // omega y (gyro)
+						stateDataBuffer[11]=xhat6x6[5]; // omega z (gyro)
+						
 						stateDataBuffer[12]=xhat9x9[6]; // disturbance x
 						stateDataBuffer[13]=xhat9x9[7]; // disturbance y
 						stateDataBuffer[14]=xhat9x9[8]; // disturbance z
-						 stateDataBuffer[16]=xhat9x9_bias[6]; // bias taux
-						 stateDataBuffer[17]=xhat9x9_bias[7]; // bias tauy
-						 stateDataBuffer[18]=xhat9x9_bias[8]; // bias tauz
+						
+						 //stateDataBuffer[16]=xhat9x9_bias[6]; // bias taux
+						 //stateDataBuffer[17]=xhat9x9_bias[7]; // bias tauy
+						 //stateDataBuffer[18]=xhat9x9_bias[8]; // bias tauz
+						 stateDataBuffer[16]=0; // bias taux
+						 stateDataBuffer[17]=0; // bias tauy
+						 stateDataBuffer[18]=0; // bias tauz
+						 
 						//stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 
 						if(ekfPrint){
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang°) % 2.4f % 2.4f % 2.4f (angVel°) % 2.4f % 2.4f % 2.4f (dist ang) % 1.4f % 1.4f % 1.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI),xhat9x9_bias[3]*(180/PI),xhat9x9_bias[4]*(180/PI),xhat9x9_bias[5]*(180/PI),xhat9x9_bias[6], xhat9x9_bias[7], xhat9x9_bias[8], sampleFreq);
+							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang°) % 2.4f % 2.4f % 2.4f (angVel°) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq);
 						}
 						
 						if(ekfPrint6States){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
-							printf("(ang(meas)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.4f % 1.4f % 1.4f\n",ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
+							printf("(ang(meas)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.4f % 1.4f % 1.4f (acc) % 1.4f % 1.4f % 1.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3], accRaw[0], accRaw[1], accRaw[2]);
 						}
 	
 						// Write to Controller process
@@ -970,38 +1043,59 @@ static void *threadSensorFusion (void *arg){
 						if(saveDataTrigger){ // only save data when activated from keyboard
 							//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
 							if(buffer_counter==BUFFER){ // if buffer is full, save to file
-								saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
-								saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
-								saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
-								saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
-								saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
-								saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
-								saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
-								//saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
-								//saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
-								//saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
-								saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
-								saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
-								saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
-								saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
+								//saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
+								//saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
+								//saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
+								//saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
+								//saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
+								//saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
+								//saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
+								////saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+								////saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+								////saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+								//saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
+								//saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
+								//saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
+								//saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
+								saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
+								saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
+								saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
+								saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
+								saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
+								saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
+								saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
+								saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
+								saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
 								saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
 								buffer_counter=0;
 							}
 							else{ // else keep saving data to buffer
-								buffer_u1[buffer_counter]=uControl[0];
-								buffer_u2[buffer_counter]=uControl[1];
-								buffer_u3[buffer_counter]=uControl[2];
-								buffer_u4[buffer_counter]=uControl[3];
-								buffer_omega_x[buffer_counter]=ymeas9x9_bias[3];
-								buffer_omega_y[buffer_counter]=ymeas9x9_bias[4];
-								buffer_omega_z[buffer_counter]=ymeas9x9_bias[5];
-								//buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
-								//buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
-								//buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
-								buffer_thrust[buffer_counter]=uControlThrustTorques[0];
-								buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
-								buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
-								buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
+								//buffer_u1[buffer_counter]=uControl[0];
+								//buffer_u2[buffer_counter]=uControl[1];
+								//buffer_u3[buffer_counter]=uControl[2];
+								//buffer_u4[buffer_counter]=uControl[3];
+								////buffer_omega_x[buffer_counter]=ymeas9x9_bias[3];
+								////buffer_omega_y[buffer_counter]=ymeas9x9_bias[4];
+								////buffer_omega_z[buffer_counter]=ymeas9x9_bias[5];
+								//buffer_omega_x[buffer_counter]=ymeas6x6[3];
+								//buffer_omega_y[buffer_counter]=ymeas6x6[4];
+								//buffer_omega_z[buffer_counter]=ymeas6x6[5];
+								////buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
+								////buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
+								////buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
+								//buffer_thrust[buffer_counter]=uControlThrustTorques[0];
+								//buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
+								//buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
+								//buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
+								buffer_acc_x[buffer_counter]=accRaw[0];
+								buffer_acc_y[buffer_counter]=accRaw[1];
+								buffer_acc_z[buffer_counter]=accRaw[2];
+								buffer_gyr_x[buffer_counter]=gyrRaw[0];
+								buffer_gyr_y[buffer_counter]=gyrRaw[1];
+								buffer_gyr_z[buffer_counter]=gyrRaw[2];
+								buffer_mag_x[buffer_counter]=magRaw[0];
+								buffer_mag_y[buffer_counter]=magRaw[1];
+								buffer_mag_z[buffer_counter]=magRaw[2];
 								buffer_ts[buffer_counter]=tsTrue;
 								buffer_counter++;
 							}
@@ -1086,6 +1180,9 @@ static void *threadPWMControl(void *arg){
 				pwmValueBuffer[2]=0;
 				pwmValueBuffer[3]=0;
 			}
+			//else{
+				//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
+			//}
 			
 			// Saturation pwm 0-100%
 			for(int i=0;i<4;i++){
@@ -1125,7 +1222,7 @@ static void *threadPWMControl(void *arg){
 				tsAverage=tsAverageAccum;
 				if(timerPrint){
 					printf("PWM: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
-					printf("PWM received: %3.4f %3.4f %3.4f %3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
+					//printf("PWM received: %3.4f %3.4f %3.4f %3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
 					//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.4f (torque) % 1.4f % 1.4f % 1.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3], pwmValueBuffer[4], pwmValueBuffer[5], pwmValueBuffer[6], pwmValueBuffer[7]);
 				}
 				tsAverageCounter=0;
@@ -1144,58 +1241,58 @@ static void *threadPWMControl(void *arg){
 /******************************************************************/
 
 // EKF calibration
-// void ekfCalibration6x6(double *Rekf, double *ekf0, double *ekfCal, double *ymeas, int counterCal){
-	// // Calibration routine to get mean, variance and std_deviation
-	// if(counterCal==CALIBRATION){
-		// // Mean (bias) accelerometer, gyroscope and magnetometer
-		// for (int i=0;i<CALIBRATION;i++){
-			// ekf0[0]+=ekfCal[i*6];
-			// ekf0[1]+=ekfCal[i*6+1];
-			// ekf0[2]+=ekfCal[i*6+2];
-			// ekf0[3]+=ekfCal[i*6+3];
-			// ekf0[4]+=ekfCal[i*6+4];
-			// ekf0[5]+=ekfCal[i*6+5];
-		// }
-		// ekf0[0]/=CALIBRATION;
-		// ekf0[1]/=CALIBRATION;
-		// ekf0[2]/=CALIBRATION;
-		// ekf0[3]/=CALIBRATION;
-		// ekf0[4]/=CALIBRATION;
-		// ekf0[5]/=CALIBRATION;
+ void ekfCalibration6x6(double *Rekf, double *ekf0, double *ekfCal, double *ymeas, int counterCal){
+	 // Calibration routine to get mean, variance and std_deviation
+	 if(counterCal==CALIBRATION){
+		 // Mean (bias) accelerometer, gyroscope and magnetometer
+		 for (int i=0;i<CALIBRATION;i++){
+			 ekf0[0]+=ekfCal[i*6];
+			 ekf0[1]+=ekfCal[i*6+1];
+			 ekf0[2]+=ekfCal[i*6+2];
+			 ekf0[3]+=ekfCal[i*6+3];
+			 ekf0[4]+=ekfCal[i*6+4];
+			 ekf0[5]+=ekfCal[i*6+5];
+		 }
+		 ekf0[0]/=CALIBRATION;
+		 ekf0[1]/=CALIBRATION;
+		 ekf0[2]/=CALIBRATION;
+		 ekf0[3]/=CALIBRATION;
+		 ekf0[4]/=CALIBRATION;
+		 ekf0[5]/=CALIBRATION;
 		
-		// // Sum up for variance calculation
-		// for (int i=0;i<CALIBRATION;i++){
-			// Rekf[0]+=pow((ekfCal[i*6] - ekf0[0]), 2);
-			// Rekf[7]+=pow((ekfCal[i*6+1] - ekf0[1]), 2);
-			// Rekf[14]+=pow((ekfCal[i*6+2] - ekf0[2]), 2);
-			// Rekf[21]+=pow((ekfCal[i*6+3] - ekf0[3]), 2);
-			// Rekf[28]+=pow((ekfCal[i*6+4] - ekf0[4]), 2);
-			// Rekf[35]+=pow((ekfCal[i*6+5] - ekf0[5]), 2);
-		// }
-		// // Variance (sigma)
-		// Rekf[0]/=CALIBRATION;
-		// Rekf[7]/=CALIBRATION;
-		// Rekf[14]/=CALIBRATION;
-		// Rekf[21]/=CALIBRATION;
-		// Rekf[28]/=CALIBRATION;
-		// Rekf[35]/=CALIBRATION;
+		 // Sum up for variance calculation
+		 for (int i=0;i<CALIBRATION;i++){
+			 Rekf[0]+=pow((ekfCal[i*6] - ekf0[0]), 2);
+			 Rekf[7]+=pow((ekfCal[i*6+1] - ekf0[1]), 2);
+			 Rekf[14]+=pow((ekfCal[i*6+2] - ekf0[2]), 2);
+			 Rekf[21]+=pow((ekfCal[i*6+3] - ekf0[3]), 2);
+			 Rekf[28]+=pow((ekfCal[i*6+4] - ekf0[4]), 2);
+			 Rekf[35]+=pow((ekfCal[i*6+5] - ekf0[5]), 2);
+		 }
+		 // Variance (sigma)
+		 Rekf[0]/=CALIBRATION;
+		 Rekf[7]/=CALIBRATION;
+		 Rekf[14]/=CALIBRATION;
+		 Rekf[21]/=CALIBRATION;
+		 Rekf[28]/=CALIBRATION;
+		 Rekf[35]/=CALIBRATION;
 	
-		// // Print results
-		// printf("Mean (bias) EKF 6x6\n");
-		// printmat(ekf0,6,1);
-		// printf("Covariance matrix (sigma) EKF 6x6\n");
-		// printmat(Rekf,6,6);
-	// }
-	// // Default i save calibrartion data
-	// else{
-		// ekfCal[counterCal*6]=ymeas[0];
-		// ekfCal[counterCal*6+1]=ymeas[1];
-		// ekfCal[counterCal*6+2]=ymeas[2];
-		// ekfCal[counterCal*6+3]=ymeas[3];
-		// ekfCal[counterCal*6+4]=ymeas[4];
-		// ekfCal[counterCal*6+5]=ymeas[5];
-	// }		
-// }
+		 // Print results
+		 printf("Mean (bias) EKF 6x6\n");
+		 printmat(ekf0,6,1);
+		 printf("Covariance matrix (sigma) EKF 6x6\n");
+		 printmat(Rekf,6,6);
+	 }
+	 // Default i save calibrartion data
+	 else{
+		 ekfCal[counterCal*6]=ymeas[0];
+		 ekfCal[counterCal*6+1]=ymeas[1];
+		 ekfCal[counterCal*6+2]=ymeas[2];
+		 ekfCal[counterCal*6+3]=ymeas[3];
+		 ekfCal[counterCal*6+4]=ymeas[4];
+		 ekfCal[counterCal*6+5]=ymeas[5];
+	 }		
+ }
 
 // EKF calibration bias
  void ekfCalibration9x9_bias(double *Rekf, double *ekf0, double *ekfCal, double *ymeas, int counterCal){
@@ -1480,96 +1577,96 @@ void printBits(size_t const size, void const * const ptr){
 }
 
 // State Observer - Extended Kalman Filter for 6 attitude states
-//void EKF_6x6(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts){
-	//// Local variables
-	//double xhat_pred[6]={0,0,0,0,0,0};
-	//double C[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
-	//double eye6[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
-	//double S_inv[36];
-	//double A[36], S[36], C_temp[36], Jfx_temp[36], Phat_pred[36], K_temp[36], K[36], V[6], xhat_temp[6], x_temp[6], fone=1, fzero=0;
-	//int n=6, k=6, m=6, ione=1;
+void EKF_6x6(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts){
+	// Local variables
+	double xhat_pred[6]={0,0,0,0,0,0};
+	double C[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double eye6[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double S_inv[36];
+	double A[36], S[36], C_temp[36], Jfx_temp[36], Phat_pred[36], K_temp[36], K[36], V[6], xhat_temp[6], x_temp[6], fone=1, fzero=0;
+	int n=6, k=6, m=6, ione=1;
 	
-	//// Prediction step
-	//fx_6x1(xhat_pred, xhat, u, Ts); // state 
-	//Jfx_6x6(xhat, A, u, Ts); // update Jacobian A matrix
+	// Prediction step
+	fx_6x1(xhat_pred, xhat, u, Ts); // state 
+	Jfx_6x6(xhat, A, u, Ts); // update Jacobian A matrix
 	
-	//// A*Phat_prev*A' + Q
-	//F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A,&m,Phat,&k,&fzero,Jfx_temp,&m);
-	//F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Jfx_temp,&m,A,&n,&fzero,Phat_pred,&m);
-	//Phat_pred[0]+=Q[0];
-	//Phat_pred[7]+=Q[1];
-	//Phat_pred[14]+=Q[2];
-	//Phat_pred[21]+=Q[3];
-	//Phat_pred[28]+=Q[4];
-	//Phat_pred[35]+=Q[5];
+	// A*Phat_prev*A' + Q
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,A,&m,Phat,&k,&fzero,Jfx_temp,&m);
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Jfx_temp,&m,A,&n,&fzero,Phat_pred,&m);
+	Phat_pred[0]+=Q[0];
+	Phat_pred[7]+=Q[1];
+	Phat_pred[14]+=Q[2];
+	Phat_pred[21]+=Q[3];
+	Phat_pred[28]+=Q[4];
+	Phat_pred[35]+=Q[5];
 
-	//// Update step
-	//// S=C*P*C'+R; Innovation covariance
-	//n=6, k=6, m=6;
-	//F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,Phat_pred,&k,&fzero,C_temp,&m);
-	//n=6, k=6, m=6;
-	//F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,C_temp,&m,C,&n,&fzero,S,&m);
-	//S[0]+=R[0];
-	//S[7]+=R[7];
-	//S[14]+=R[14];
-	//S[21]+=R[21];
-	//S[28]+=R[28];
-	//S[35]+=R[35];
+	// Update step
+	// S=C*P*C'+R; Innovation covariance
+	n=6, k=6, m=6;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,C,&m,Phat_pred,&k,&fzero,C_temp,&m);
+	n=6, k=6, m=6;
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,C_temp,&m,C,&n,&fzero,S,&m);
+	S[0]+=R[0];
+	S[7]+=R[7];
+	S[14]+=R[14];
+	S[21]+=R[21];
+	S[28]+=R[28];
+	S[35]+=R[35];
 
-	//// K=P*C'*S^-1; Kalman gain
-	//n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
-	//F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Phat_pred,&m,C,&n,&fzero,K_temp,&m);
-	//mInverse6x6(S,S_inv);
-	//n=6, k=6, m=6; // 6x6 * 6*6 = 6x6
-	//F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
+	// K=P*C'*S^-1; Kalman gain
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,Phat_pred,&m,C,&n,&fzero,K_temp,&m);
+	mInverse6x6(S,S_inv);
+	n=6, k=6, m=6; // 6x6 * 6*6 = 6x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K_temp,&m,S_inv,&k,&fzero,K,&m);
 
-	//// V=y_meas-C*x_hat; Innovation
-	//n=6, m=6; 
-	//F77_CALL(dgemv)("n",&m,&n,&fone,C,&m,xhat_pred,&ione,&fzero,xhat_temp,&ione);
-	//V[0]=ymeas[0]-xhat_temp[0];
-	//V[1]=ymeas[1]-xhat_temp[1];
-	//V[2]=ymeas[2]-xhat_temp[2];
-	//V[3]=ymeas[3]-xhat_temp[3];
-	//V[4]=ymeas[4]-xhat_temp[4];
-	//V[5]=ymeas[5]-xhat_temp[5];
+	// V=y_meas-C*x_hat; Innovation
+	n=6, m=6; 
+	F77_CALL(dgemv)("n",&m,&n,&fone,C,&m,xhat_pred,&ione,&fzero,xhat_temp,&ione);
+	V[0]=ymeas[0]-xhat_temp[0];
+	V[1]=ymeas[1]-xhat_temp[1];
+	V[2]=ymeas[2]-xhat_temp[2];
+	V[3]=ymeas[3]-xhat_temp[3];
+	V[4]=ymeas[4]-xhat_temp[4];
+	V[5]=ymeas[5]-xhat_temp[5];
 	
-	////printf("\nymeas:\n");
-	////printmat(ymeas,1,6);
+	//printf("\nymeas:\n");
+	//printmat(ymeas,1,6);
 	
-	////printf("\nxhat_temp:\n");
-	////printmat(xhat_temp,1,6);
+	//printf("\nxhat_temp:\n");
+	//printmat(xhat_temp,1,6);
 		
-	////printf("\nV:\n");
-	////printmat(V,1,6);
+	//printf("\nV:\n");
+	//printmat(V,1,6);
 	
-	////printf("\nK:\n");
-	////printmat(K,15,6);
+	//printf("\nK:\n");
+	//printmat(K,15,6);
 
-	//// x=x+K*v; State update
-	//n=6, m=6;
-	//F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
-	//xhat[0]=xhat_pred[0]+x_temp[0];
-	//xhat[1]=xhat_pred[1]+x_temp[1];
-	//xhat[2]=xhat_pred[2]+x_temp[2];
-	//xhat[3]=xhat_pred[3]+x_temp[3];
-	//xhat[4]=xhat_pred[4]+x_temp[4];
-	//xhat[5]=xhat_pred[5]+x_temp[5];
+	// x=x+K*v; State update
+	n=6, m=6;
+	F77_CALL(dgemv)("n",&m,&n,&fone,K,&m,V,&ione,&fzero,x_temp,&ione);
+	xhat[0]=xhat_pred[0]+x_temp[0];
+	xhat[1]=xhat_pred[1]+x_temp[1];
+	xhat[2]=xhat_pred[2]+x_temp[2];
+	xhat[3]=xhat_pred[3]+x_temp[3];
+	xhat[4]=xhat_pred[4]+x_temp[4];
+	xhat[5]=xhat_pred[5]+x_temp[5];
 	
-	////printf("\nxhat\n");
-	////printmat(xhat,15,1);
+	//printf("\nxhat\n");
+	//printmat(xhat,15,1);
 	
-	//// P=P-K*S*K'; Covariance update
-	//n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
-	//F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m); // K*S
-	//n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
-	//F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,Phat,&m); // K_temp*K'
-	//n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
-	//fzero=-1;
-	//F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,eye6,&m,Phat_pred,&k,&fzero,Phat,&m); // P=P-K*S*K'
+	// P=P-K*S*K'; Covariance update
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,K,&m,S,&k,&fzero,K_temp,&m); // K*S
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	F77_CALL(dgemm)("n","t",&m,&n,&k,&fone,K_temp,&m,K,&n,&fzero,Phat,&m); // K_temp*K'
+	n=6, k=6, m=6; // 6x6 * 6x6 = 6x6
+	fzero=-1;
+	F77_CALL(dgemm)("n","n",&m,&n,&k,&fone,eye6,&m,Phat_pred,&k,&fzero,Phat,&m); // P=P-K*S*K'
 	
-	////printf("\nPhat\n");
-	////printmat(Phat,15,15);
-//}
+	//printf("\nPhat\n");
+	//printmat(Phat,15,15);
+}
 
 // State Observer - Extended Kalman Filter for 9 attitude states (including bias estimation)
  void EKF_9x9_bias(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts){
@@ -1778,19 +1875,19 @@ void EKF_9x9(double *Phat, double *xhat, double *u, double *ymeas, double *Q, do
 }
 
 // Nonlinear Model for attitude states (6x1)
-// void fx_6x1(double *xhat, double *xhat_prev, double *u, double Ts){
-	// xhat[0]=xhat_prev[0] + Ts*(xhat_prev[3] + xhat_prev[5]*cos(xhat_prev[0])*tan(xhat_prev[1]) + xhat_prev[4]*sin(xhat_prev[0])*tan(xhat_prev[1]));
-	// xhat[1]=xhat_prev[1] + Ts*(xhat_prev[4]*cos(xhat_prev[0]) - xhat_prev[5]*sin(xhat_prev[0]));
-	// xhat[2]=xhat_prev[2] + Ts*((xhat_prev[5]*cos(xhat_prev[0]))/cos(xhat_prev[1]) + (xhat_prev[4]*sin(xhat_prev[0]))/cos(xhat_prev[1]));
-	// xhat[3]=xhat_prev[3] - Ts*((xhat_prev[4]*xhat_prev[5]*(par_i_yy - par_i_zz))/par_i_xx - (par_L*par_c_m*par_k*(pow(u[0],2) - pow(u[2],2)))/par_i_xx);
-	// xhat[4]=xhat_prev[4] + Ts*((xhat_prev[3]*xhat_prev[5]*(par_i_xx - par_i_zz))/par_i_yy + (par_L*par_c_m*par_k*(pow(u[1],2) - pow(u[3],2)))/par_i_yy);
-	// xhat[5]=xhat_prev[5] + Ts*((par_b*par_c_m*(pow(u[0],2) - pow(u[1],2) + pow(u[2],2) - pow(u[3],2)))/par_i_zz - (xhat_prev[3]*xhat_prev[4]*(par_i_xx - par_i_yy))/par_i_zz);
-// }
+ void fx_6x1(double *xhat, double *xhat_prev, double *u, double Ts){
+	 xhat[0]=xhat_prev[0] + Ts*(xhat_prev[3] + xhat_prev[5]*cos(xhat_prev[0])*tan(xhat_prev[1]) + xhat_prev[4]*sin(xhat_prev[0])*tan(xhat_prev[1]));
+	 xhat[1]=xhat_prev[1] + Ts*(xhat_prev[4]*cos(xhat_prev[0]) - xhat_prev[5]*sin(xhat_prev[0]));
+	 xhat[2]=xhat_prev[2] + Ts*((xhat_prev[5]*cos(xhat_prev[0]))/cos(xhat_prev[1]) + (xhat_prev[4]*sin(xhat_prev[0]))/cos(xhat_prev[1]));
+	 xhat[3]=xhat_prev[3] - Ts*((xhat_prev[4]*xhat_prev[5]*(par_i_yy - par_i_zz))/par_i_xx - (par_L*par_c_m*par_k*(pow(u[0],2) - pow(u[2],2)))/par_i_xx);
+	 xhat[4]=xhat_prev[4] + Ts*((xhat_prev[3]*xhat_prev[5]*(par_i_xx - par_i_zz))/par_i_yy + (par_L*par_c_m*par_k*(pow(u[1],2) - pow(u[3],2)))/par_i_yy);
+	 xhat[5]=xhat_prev[5] + Ts*((par_b*par_c_m*(pow(u[0],2) - pow(u[1],2) + pow(u[2],2) - pow(u[3],2)))/par_i_zz - (xhat_prev[3]*xhat_prev[4]*(par_i_xx - par_i_yy))/par_i_zz);
+ }
 
 // Jacobian of model for attitude states (6x6)
-// void Jfx_6x6(double *xhat, double *A, double *u, double Ts){
-	// A[0]=Ts*(xhat[4]*cos(xhat[0])*tan(xhat[1]) - xhat[5]*sin(xhat[0])*tan(xhat[1])) + 1;A[1]=-Ts*(xhat[5]*cos(xhat[0]) + xhat[4]*sin(xhat[0]));A[2]=Ts*((xhat[4]*cos(xhat[0]))/cos(xhat[1]) - (xhat[5]*sin(xhat[0]))/cos(xhat[1]));A[3]=0;A[4]=0;A[5]=0;A[6]=Ts*(xhat[5]*cos(xhat[0])*(pow(tan(xhat[1]),2) + 1) + xhat[4]*sin(xhat[0])*(pow(tan(xhat[1]),2) + 1));A[7]=1;A[8]=Ts*((xhat[5]*cos(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2) + (xhat[4]*sin(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2));A[9]=0;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=1;A[15]=0;A[16]=0;A[17]=0;A[18]=Ts;A[19]=0;A[20]=0;A[21]=1;A[22]=(Ts*xhat[5]*(par_i_xx - par_i_zz))/par_i_yy;A[23]=-(Ts*xhat[4]*(par_i_xx - par_i_yy))/par_i_zz;A[24]=Ts*sin(xhat[0])*tan(xhat[1]);A[25]=Ts*cos(xhat[0]);A[26]=(Ts*sin(xhat[0]))/cos(xhat[1]);A[27]=-(Ts*xhat[5]*(par_i_yy - par_i_zz))/par_i_xx;A[28]=1;A[29]=-(Ts*xhat[3]*(par_i_xx - par_i_yy))/par_i_zz;A[30]=Ts*cos(xhat[0])*tan(xhat[1]);A[31]=-Ts*sin(xhat[0]);A[32]=(Ts*cos(xhat[0]))/cos(xhat[1]);A[33]=-(Ts*xhat[4]*(par_i_yy - par_i_zz))/par_i_xx;A[34]=(Ts*xhat[3]*(par_i_xx - par_i_zz))/par_i_yy;A[35]=1;
-// }
+ void Jfx_6x6(double *xhat, double *A, double *u, double Ts){
+	 A[0]=Ts*(xhat[4]*cos(xhat[0])*tan(xhat[1]) - xhat[5]*sin(xhat[0])*tan(xhat[1])) + 1;A[1]=-Ts*(xhat[5]*cos(xhat[0]) + xhat[4]*sin(xhat[0]));A[2]=Ts*((xhat[4]*cos(xhat[0]))/cos(xhat[1]) - (xhat[5]*sin(xhat[0]))/cos(xhat[1]));A[3]=0;A[4]=0;A[5]=0;A[6]=Ts*(xhat[5]*cos(xhat[0])*(pow(tan(xhat[1]),2) + 1) + xhat[4]*sin(xhat[0])*(pow(tan(xhat[1]),2) + 1));A[7]=1;A[8]=Ts*((xhat[5]*cos(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2) + (xhat[4]*sin(xhat[0])*sin(xhat[1]))/pow(cos(xhat[1]),2));A[9]=0;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=1;A[15]=0;A[16]=0;A[17]=0;A[18]=Ts;A[19]=0;A[20]=0;A[21]=1;A[22]=(Ts*xhat[5]*(par_i_xx - par_i_zz))/par_i_yy;A[23]=-(Ts*xhat[4]*(par_i_xx - par_i_yy))/par_i_zz;A[24]=Ts*sin(xhat[0])*tan(xhat[1]);A[25]=Ts*cos(xhat[0]);A[26]=(Ts*sin(xhat[0]))/cos(xhat[1]);A[27]=-(Ts*xhat[5]*(par_i_yy - par_i_zz))/par_i_xx;A[28]=1;A[29]=-(Ts*xhat[3]*(par_i_xx - par_i_yy))/par_i_zz;A[30]=Ts*cos(xhat[0])*tan(xhat[1]);A[31]=-Ts*sin(xhat[0]);A[32]=(Ts*cos(xhat[0]))/cos(xhat[1]);A[33]=-(Ts*xhat[4]*(par_i_yy - par_i_zz))/par_i_xx;A[34]=(Ts*xhat[3]*(par_i_xx - par_i_zz))/par_i_yy;A[35]=1;
+ }
 
 // Nonlinear Model for position states (9x1)
 void fx_9x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_att){
