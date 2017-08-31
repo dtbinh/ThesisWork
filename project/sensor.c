@@ -1099,12 +1099,12 @@ static void *threadSensorFusion (void *arg){
 								//saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
 								//saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
 								//saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
-								saveData(buffer_acc_x,"acc_x_filt",sizeof(buffer_acc_x)/sizeof(double));
-								saveData(buffer_acc_y,"acc_y_filt",sizeof(buffer_acc_y)/sizeof(double));
-								saveData(buffer_acc_z,"acc_z_filt",sizeof(buffer_acc_z)/sizeof(double));
-								saveData(buffer_gyr_x,"gyr_x_filt",sizeof(buffer_gyr_x)/sizeof(double));
-								saveData(buffer_gyr_y,"gyr_y_filt",sizeof(buffer_gyr_y)/sizeof(double));
-								saveData(buffer_gyr_z,"gyr_z_filt",sizeof(buffer_gyr_z)/sizeof(double));
+								saveData(buffer_acc_x_filt,"acc_x_filt",sizeof(buffer_acc_x)/sizeof(double));
+								saveData(buffer_acc_y_filt,"acc_y_filt",sizeof(buffer_acc_y)/sizeof(double));
+								saveData(buffer_acc_z_filt,"acc_z_filt",sizeof(buffer_acc_z)/sizeof(double));
+								saveData(buffer_gyr_x_filt,"gyr_x_filt",sizeof(buffer_gyr_x)/sizeof(double));
+								saveData(buffer_gyr_y_filt,"gyr_y_filt",sizeof(buffer_gyr_y)/sizeof(double));
+								saveData(buffer_gyr_z_filt,"gyr_z_filt",sizeof(buffer_gyr_z)/sizeof(double));
 								saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
 								saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
 								saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
