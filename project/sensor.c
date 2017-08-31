@@ -487,6 +487,12 @@ static void *threadSensorFusion (void *arg){
 	double buffer_mag_x[BUFFER];
 	double buffer_mag_y[BUFFER];
 	double buffer_mag_z[BUFFER];
+	double buffer_acc_x_filt[BUFFER];
+	double buffer_acc_y_filt[BUFFER];
+	double buffer_acc_z_filt[BUFFER];
+	double buffer_gyr_x_filt[BUFFER];
+	double buffer_gyr_y_filt[BUFFER];
+	double buffer_gyr_z_filt[BUFFER];
 	
 	
 	
@@ -679,7 +685,27 @@ static void *threadSensorFusion (void *arg){
 				
 				// Set gain of orientation estimation Madgwick beta and activate Low Pass filtering of raw accelerometer and gyroscope after sampling frequency has stabilized
 				if(tsAverageReadyEKF==2){
-									
+					
+					if(saveDataTrigger){ // only save data when activated from keyboard
+						//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
+						if(buffer_counter==BUFFER){ // if buffer is full, save to file
+							saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
+							saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
+							saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
+							saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
+							saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
+							saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
+						}
+						else{ // else keep saving data to buffer
+							buffer_acc_x[buffer_counter]=accRaw[0];
+							buffer_acc_y[buffer_counter]=accRaw[1];
+							buffer_acc_z[buffer_counter]=accRaw[2];
+							buffer_gyr_x[buffer_counter]=gyrRaw[0];
+							buffer_gyr_y[buffer_counter]=gyrRaw[1];
+							buffer_gyr_z[buffer_counter]=gyrRaw[2];
+
+						}
+					}
 					// Low Pass Filter using Blackman Harris window
 					// Order of 24 = 12 sample delay = 0.012s
 					// Cut-off frequencies: accelerometer = 20Hz and gyroscope = 30Hz 
@@ -1073,12 +1099,12 @@ static void *threadSensorFusion (void *arg){
 								//saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
 								//saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
 								//saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
-								saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
-								saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
-								saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
-								saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
-								saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
-								saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
+								saveData(buffer_acc_x,"acc_x_filt",sizeof(buffer_acc_x)/sizeof(double));
+								saveData(buffer_acc_y,"acc_y_filt",sizeof(buffer_acc_y)/sizeof(double));
+								saveData(buffer_acc_z,"acc_z_filt",sizeof(buffer_acc_z)/sizeof(double));
+								saveData(buffer_gyr_x,"gyr_x_filt",sizeof(buffer_gyr_x)/sizeof(double));
+								saveData(buffer_gyr_y,"gyr_y_filt",sizeof(buffer_gyr_y)/sizeof(double));
+								saveData(buffer_gyr_z,"gyr_z_filt",sizeof(buffer_gyr_z)/sizeof(double));
 								saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
 								saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
 								saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
@@ -1103,15 +1129,16 @@ static void *threadSensorFusion (void *arg){
 								//buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
 								//buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
 								//buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
-								buffer_acc_x[buffer_counter]=accRaw[0];
-								buffer_acc_y[buffer_counter]=accRaw[1];
-								buffer_acc_z[buffer_counter]=accRaw[2];
-								buffer_gyr_x[buffer_counter]=gyrRaw[0];
-								buffer_gyr_y[buffer_counter]=gyrRaw[1];
-								buffer_gyr_z[buffer_counter]=gyrRaw[2];
+								buffer_acc_x_filt[buffer_counter]=accRaw[0];
+								buffer_acc_y_filt[buffer_counter]=accRaw[1];
+								buffer_acc_z_filt[buffer_counter]=accRaw[2];
+								buffer_gyr_x_filt[buffer_counter]=gyrRaw[0];
+								buffer_gyr_y_filt[buffer_counter]=gyrRaw[1];
+								buffer_gyr_z_filt[buffer_counter]=gyrRaw[2];
 								buffer_mag_x[buffer_counter]=magRaw[0];
 								buffer_mag_y[buffer_counter]=magRaw[1];
 								buffer_mag_z[buffer_counter]=magRaw[2];
+								
 								buffer_ts[buffer_counter]=tsTrue;
 								buffer_counter++;
 							}
