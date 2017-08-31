@@ -50,7 +50,7 @@ void ekfCalibration6x6(double*, double*, double*, double*, int);
 void ekfCalibration9x9_bias(double*, double*, double*, double*, int);
 void ekfCalibration9x9(double*, double*, double*, double*, int);
 
-void lowPassFilter(double*, double*, double *, double*, double *, double* , double* , double* );
+void lowPassFilter(double *, double*, double *, double* , double* , double* );
 
 int loadSettings(double*, char*, int);
 //void saveSettings(double*, char*, int, FILE**);
@@ -76,7 +76,7 @@ void saturation(double*, int, double, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
-static double keyboardData[17]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0, 0, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger}
+static double keyboardData[18]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0, 0, 0, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 
 // Variables
@@ -134,8 +134,8 @@ void startSensors(void *arg1, void *arg2){
 static void *threadPipeCommunicationToSensor(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double communicationDataBuffer[61];
-	double keyboardDataBuffer[17];
+	double communicationDataBuffer[62];
+	double keyboardDataBuffer[18];
 	double tuningEkfBuffer[18];
 	
 	/// Setup timer variables for real time performance check
@@ -161,8 +161,8 @@ static void *threadPipeCommunicationToSensor(void *arg){
 		if(read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) == -1) printf("read error in sensor from communication\n");
 		//else printf("Sensor ID: %d, Recieved Communication data: %f\n", (int)getpid(), keyboardDataBuffer[0]);
 				
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*17/61);
-		memcpy(tuningEkfBuffer, communicationDataBuffer+37, sizeof(communicationDataBuffer)*18/61);
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/62);
+		memcpy(tuningEkfBuffer, communicationDataBuffer+38, sizeof(communicationDataBuffer)*18/62);
 		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexKeyboardData);
@@ -533,9 +533,6 @@ static void *threadSensorFusion (void *arg){
 	double accRawMem[75]={0}; // memory buffer where elements 0-24=x-axis, 25-49=y-axis and 50-74=z-axis
 	double gyrRawMem[75]={0};
 	
-	double accRawFilt[3]={0};
-	double gyrRawFilt[3]={0};
-	
 	
 	// Random variables
 	double L_temp;
@@ -575,16 +572,16 @@ static void *threadSensorFusion (void *arg){
 		// Try to enable acc, gyr, mag  and bmp sensors
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableMPU9250Flag=enableMPU9250();
-			enableAK8963Flag=enableAK8963();
+			//enableAK8963Flag=enableAK8963();
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
 		// Check that I2C sensors have been enabled
 		if(enableMPU9250Flag==-1){
 			printf("MPU9250 failed to be enabled\n");
 		}
-		else if(enableAK8963Flag==-1){
-			printf("AK8963 failed to be enabled\n");
-		}
+		//else if(enableAK8963Flag==-1){
+			//printf("AK8963 failed to be enabled\n");
+		//}
 		else{
 			// Loop for ever
 			while(1){
@@ -685,10 +682,11 @@ static void *threadSensorFusion (void *arg){
 									
 					// Low Pass Filter using Blackman Harris window
 					// Order of 24 = 12 sample delay = 0.012s
+					// Cut-off frequencies: accelerometer = 20Hz and gyroscope = 30Hz 
 					// The delay is approx half of controller frequency
 					// Leaving enough time for Madgwick and EKF to converge after Low Pass filtering and before the controller need new fresh measurements
-					lowPassFilter(accRawFilt, gyrRawFilt, accRaw, gyrRaw, accRawMem, gyrRawMem, b_acc, b_gyr);
 					
+					lowPassFilter(accRaw, gyrRaw, accRawMem, gyrRawMem, b_acc, b_gyr);
 					
 					// Set gain of orientation estimation Madgwick beta after initial filter learn
 					if(k==1000){
@@ -911,8 +909,8 @@ static void *threadSensorFusion (void *arg){
 								//EKF_9x9_bias(Pekf9x9_bias,xhat9x9_bias,uControl,ymeas9x9_bias,tuningEkfBuffer9x9_bias,Rekf9x9_bias,tsTrue);
 								
 								
-								//EKF_6x6(Pekf6x6,xhat6x6,uControl,ymeas6x6,tuningEkfBuffer6x6,Rekf6x6,tsTrue);
-								//EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6);
+								EKF_6x6(Pekf6x6,xhat6x6,uControl,ymeas6x6,tuningEkfBuffer6x6,Rekf6x6,tsTrue);
+								EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6);
 									
 								stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							}
@@ -1160,6 +1158,7 @@ static void *threadPWMControl(void *arg){
 	double tsAverage=tsController;
 	int timerPrint=0;
 	int killPWM=0; // switch [0=STOP, 1=FLY]
+	int pwmRangeSetting=0; // switch for setting the PWM for tuning range of speed controllers
 	
 	/// Lock memory
 	if(mlockall(MCL_CURRENT) == -1){
@@ -1183,6 +1182,7 @@ static void *threadPWMControl(void *arg){
 			pthread_mutex_lock(&mutexKeyboardData);
 				timerPrint=(int)keyboardData[5];
 				killPWM=(int)keyboardData[3];
+				pwmRangeSetting=(int)keyboardData[17];
 			pthread_mutex_unlock(&mutexKeyboardData);
 			
 			// Read data from controller process
@@ -1193,14 +1193,24 @@ static void *threadPWMControl(void *arg){
 			
 			// killPWM is linked to keyboard start flying switch. Forces PWM to zero if stop signal is given
 			if(!killPWM){
-				pwmValueBuffer[0]=0;
-				pwmValueBuffer[1]=0;
-				pwmValueBuffer[2]=0;
-				pwmValueBuffer[3]=0;
+				pwmValueBuffer[0]=0.0f;
+				pwmValueBuffer[1]=0.0f;
+				pwmValueBuffer[2]=0.0f;
+				pwmValueBuffer[3]=0.0f;
 			}
+			
+			if(!killPWM && pwmRangeSetting){
+				pwmValueBuffer[0]=100.0f;
+				pwmValueBuffer[1]=100.0f;
+				pwmValueBuffer[2]=100.0f;
+				pwmValueBuffer[3]=100.0f;
+			}
+				
 			//else{
 				//printf("(pwm)  % 3.4f % 3.4f % 3.4f % 3.4f\n", pwmValueBuffer[0], pwmValueBuffer[1], pwmValueBuffer[2], pwmValueBuffer[3]);
 			//}
+			
+
 			
 			// Saturation pwm 0-100%
 			for(int i=0;i<4;i++){
@@ -1954,7 +1964,7 @@ void saturation(double *var, int index, double limMin, double limMax){
 }
 
 // Low Pass Filter 24 order
-void lowPassFilter(double* accRaw_filtered, double* gyrRaw_filtered, double *accRaw, double* gyrRaw, double *accRawMem, double* gyrRawMem, double* b_acc, double* b_gyr){
+void lowPassFilter(double *accRaw, double* gyrRaw, double *accRawMem, double* gyrRawMem, double* b_acc, double* b_gyr){
 	// Shift all old data in measurement memory by one element: new -> [,,,,] -> old
 	for (int k = 24; k > 0; k--){        
 		accRawMem[k]=accRawMem[k-1];		// x-axis
@@ -1973,15 +1983,23 @@ void lowPassFilter(double* accRaw_filtered, double* gyrRaw_filtered, double *acc
 	gyrRawMem[0+25]=gyrRaw[1];	// y-axis
 	gyrRawMem[0+50]=gyrRaw[2];	// z-axis
 	
+	// Zero out measurement before adding filtered data to
+	accRaw[0]=0;
+	accRaw[1]=0;
+	accRaw[2]=0;
+	gyrRaw[0]=0;
+	gyrRaw[1]=0;
+	gyrRaw[2]=0;
+	
 	// Filter the data
 	for(int i=0;i<25;i++){
-			accRaw_filtered[0]+=b_acc[i]*accRawMem[i];		// x-axis
-			accRaw_filtered[1]+=b_acc[i]*accRawMem[i+25];	// y-axis
-			accRaw_filtered[2]+=b_acc[i]*accRawMem[i+50];	// z-axis
-			gyrRaw_filtered[0]+=b_acc[i]*accRawMem[i];		// x-axis
-			gyrRaw_filtered[1]+=b_acc[i]*accRawMem[i+25];	// y-axis
-			gyrRaw_filtered[2]+=b_acc[i]*accRawMem[i+50];	// z-axis
+		accRaw[0]+=b_acc[i]*accRawMem[i];		// x-axis
+		accRaw[1]+=b_acc[i]*accRawMem[i+25];	// y-axis
+		accRaw[2]+=b_acc[i]*accRawMem[i+50];	// z-axis
+		gyrRaw[0]+=b_gyr[i]*gyrRawMem[i];		// x-axis
+		gyrRaw[1]+=b_gyr[i]*gyrRawMem[i+25];	// y-axis
+		gyrRaw[2]+=b_gyr[i]*gyrRawMem[i+50];	// z-axis
 
-			// ORIGINAL y(k) = y(k) + b(i)*acc_x(k-i);
+		// ORIGINAL y(k) = y(k) + b(i)*acc_x(k-i);
 	}
 }

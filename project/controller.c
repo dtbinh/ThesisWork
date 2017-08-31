@@ -55,7 +55,7 @@
 // Static variables for threads
 // static float globalSensorData[6]={0,0,0,0,0,0};
 // static float globalConstraintsData[6]={0,0,0,0,0,0};
-static double keyboardData[17]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, mpc position toggle, ff,save data,pid_trigger}
+static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, mpc position toggle, ff,save data,pid_trigger, pwm range setting}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
@@ -242,8 +242,8 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
 	structPipe *ptrPipe = arg; // to comm
 
-	double communicationDataBuffer[61];
-	double keyboardDataBuffer[17];
+	double communicationDataBuffer[62];
+	double keyboardDataBuffer[18];
 	double tuningMpcBuffer[14];
 	double tuningMpcBufferControl[6];
 	double tuningPidBuffer[6];
@@ -254,10 +254,10 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 		if (read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) != sizeof(communicationDataBuffer) ) printf("Error in reading 'keyboardData' from Communication to Controller\n");
 		//else printf("Controller ID: %d, Read: %f from Communication\n", (int)getpid(), keyboardDataBuffer[0]);
 		
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*17/61);
-		memcpy(tuningMpcBuffer, communicationDataBuffer+17, sizeof(communicationDataBuffer)*14/61);
-		memcpy(tuningMpcBufferControl, communicationDataBuffer+31, sizeof(communicationDataBuffer)*6/61);
-		memcpy(tuningPidBuffer, communicationDataBuffer+55, sizeof(communicationDataBuffer)*6/61);
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/62);
+		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/62);
+		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/62);
+		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/62);
 		
 		//printf("--- %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", communicationDataBuffer[0], communicationDataBuffer[1], communicationDataBuffer[2], communicationDataBuffer[3], communicationDataBuffer[4], communicationDataBuffer[5], communicationDataBuffer[6], communicationDataBuffer[7], communicationDataBuffer[8],communicationDataBuffer[9], communicationDataBuffer[10], communicationDataBuffer[11], communicationDataBuffer[12], communicationDataBuffer[13], communicationDataBuffer[14], communicationDataBuffer[15], communicationDataBuffer[16], communicationDataBuffer[17],communicationDataBuffer[18], communicationDataBuffer[19], communicationDataBuffer[20], communicationDataBuffer[21], communicationDataBuffer[22], communicationDataBuffer[23], communicationDataBuffer[24], communicationDataBuffer[25], communicationDataBuffer[26]);
 		
@@ -266,7 +266,7 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 		
 		// Put new constraints data in to global data in controller.c such that controller thread can access and use it.
 		pthread_mutex_lock(&mutexConstraintsData);
-			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/17); // {ref_x,ref_y,ref_z}
+			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/18); // {ref_x,ref_y,ref_z}
 			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)); // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref}
 			memcpy(tuningMpcData, tuningMpcBuffer, sizeof(tuningMpcBuffer));
 			memcpy(tuningMpcDataControl, tuningMpcBufferControl, sizeof(tuningMpcBufferControl));
@@ -554,10 +554,10 @@ void *threadController( void *arg ) {
 				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				
-				PWM[0]=100;
-				PWM[1]=100;
-				PWM[2]=100;
-				PWM[3]=100;
+				//PWM[0]=100;
+				//PWM[1]=100;
+				//PWM[2]=100;
+				//PWM[3]=100;
 			}
 
 			// If false, force PWM outputs to zero.
