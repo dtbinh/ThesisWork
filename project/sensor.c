@@ -49,7 +49,9 @@ void q2euler_zyx(double *, double *);
 void ekfCalibration6x6(double*, double*, double*, double*, int);
 void ekfCalibration9x9_bias(double*, double*, double*, double*, int);
 void ekfCalibration9x9(double*, double*, double*, double*, int);
-						
+
+void lowPassFilter(double*, double*, double *, double*, double *, double* , double* , double* );
+
 int loadSettings(double*, char*, int);
 //void saveSettings(double*, char*, int, FILE**);
 void saveSettings(double*, char*, int);
@@ -524,7 +526,15 @@ static void *threadSensorFusion (void *arg){
 	double tuningEkfBuffer6x6[6]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
 	double tuningEkfBuffer9x9[9]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_14,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, distx, disty, distz}
 	
+	// Low Pass filter variables
+	double b_acc[25]={1.54791392878543e-06,2.07185488006612e-05,-5.19703972529415e-20,-0.000462086226027071,-0.00215334176418159,-0.00523098435850049,-0.00693485312903388,2.82650148861993e-18,0.0249007529841827,0.0717988692685668,0.131922751556644,0.183873196192904,0.204526858025432,0.183873196192904,0.131922751556644,0.0717988692685668,0.0249007529841827,2.82650148861993e-18,-0.00693485312903388,-0.0052309843585005,-0.00215334176418159,-0.000462086226027072,-5.1970397252942e-20,2.07185488006612e-05,1.54791392878543e-06};
+	double b_gyr[25]={-1.51379393190905e-06,-2.78880561210566e-05,7.62372544145295e-20,0.000621987897327971,0.00210587658352694,0.00166218520266596,-0.00678199116255076,-0.0225713907176518,-0.0243518764618903,0.0228146386774076,0.129014835433318,0.247501215646055,0.300027841503688,0.247501215646055,0.129014835433318,0.0228146386774076,-0.0243518764618903,-0.0225713907176518,-0.00678199116255077,0.00166218520266596,0.00210587658352694,0.000621987897327972,7.62372544145302e-20,-2.78880561210566e-05,-1.51379393190905e-06};
+
+	double accRawMem[75]={0}; // memory buffer where elements 0-24=x-axis, 25-49=y-axis and 50-74=z-axis
+	double gyrRawMem[75]={0};
 	
+	double accRawFilt[3]={0};
+	double gyrRawFilt[3]={0};
 	
 	
 	// Random variables
@@ -631,7 +641,6 @@ static void *threadSensorFusion (void *arg){
 				//magRaw[1]*=1000;
 				//magRaw[2]*=1000;
 				
-				
 				// Rotate magnetometer data such that the sensor coordinate frames match.
 				// Note: For more info check the MPU9250 Product Specification (Chapter 9)
 				magRawRot[0]=magRaw[1];
@@ -671,8 +680,17 @@ static void *threadSensorFusion (void *arg){
 				
 				//tsAverageReadyEKF=2;
 				
-				// Set gain of orientation estimation Madgwick beta after initialization
+				// Set gain of orientation estimation Madgwick beta and activate Low Pass filtering of raw accelerometer and gyroscope after sampling frequency has stabilized
 				if(tsAverageReadyEKF==2){
+									
+					// Low Pass Filter using Blackman Harris window
+					// Order of 24 = 12 sample delay = 0.012s
+					// The delay is approx half of controller frequency
+					// Leaving enough time for Madgwick and EKF to converge after Low Pass filtering and before the controller need new fresh measurements
+					lowPassFilter(accRawFilt, gyrRawFilt, accRaw, gyrRaw, accRawMem, gyrRawMem, b_acc, b_gyr);
+					
+					
+					// Set gain of orientation estimation Madgwick beta after initial filter learn
 					if(k==1000){
 						beta=0.05;
 						//eulerCalFlag=1;
@@ -1932,5 +1950,38 @@ void saturation(double *var, int index, double limMin, double limMax){
 	}
 	else if(var[index]>limMax){
 		var[index]=limMax;
+	}
+}
+
+// Low Pass Filter 24 order
+void lowPassFilter(double* accRaw_filtered, double* gyrRaw_filtered, double *accRaw, double* gyrRaw, double *accRawMem, double* gyrRawMem, double* b_acc, double* b_gyr){
+	// Shift all old data in measurement memory by one element: new -> [,,,,] -> old
+	for (int k = 24; k > 0; k--){        
+		accRawMem[k]=accRawMem[k-1];		// x-axis
+		accRawMem[k+25]=accRawMem[k-1+25];	// y-axis
+		accRawMem[k+50]=accRawMem[k-1+50];	// z-axis
+		gyrRawMem[k]=gyrRawMem[k-1];		// x-axis
+		gyrRawMem[k+25]=gyrRawMem[k-1+25];	// y-axis
+		gyrRawMem[k+50]=gyrRawMem[k-1+50];	// z-axis
+	}
+	
+	// Assign fresh non filtered measurement to memory
+	accRawMem[0]=accRaw[0];		// x-axis
+	accRawMem[0+25]=accRaw[1];	// y-axis
+	accRawMem[0+50]=accRaw[2];	// z-axis
+	gyrRawMem[0]=gyrRaw[0];		// x-axis
+	gyrRawMem[0+25]=gyrRaw[1];	// y-axis
+	gyrRawMem[0+50]=gyrRaw[2];	// z-axis
+	
+	// Filter the data
+	for(int i=0;i<25;i++){
+			accRaw_filtered[0]+=b_acc[i]*accRawMem[i];		// x-axis
+			accRaw_filtered[1]+=b_acc[i]*accRawMem[i+25];	// y-axis
+			accRaw_filtered[2]+=b_acc[i]*accRawMem[i+50];	// z-axis
+			gyrRaw_filtered[0]+=b_acc[i]*accRawMem[i];		// x-axis
+			gyrRaw_filtered[1]+=b_acc[i]*accRawMem[i+25];	// y-axis
+			gyrRaw_filtered[2]+=b_acc[i]*accRawMem[i+50];	// z-axis
+
+			// ORIGINAL y(k) = y(k) + b(i)*acc_x(k-i);
 	}
 }
