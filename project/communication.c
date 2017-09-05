@@ -212,6 +212,8 @@ static void *threadPipeSensorToCommunication(void *arg){
 		if(read(ptrPipe->parent[0], sensorDataBuffer, sizeof(sensorDataBuffer)) == -1) printf("read error in communication from sensor\n");
 		//else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
 		
+		//printf("% 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f % 1.3f\n", sensorDataBuffer[0],sensorDataBuffer[1], sensorDataBuffer[2], sensorDataBuffer[3], sensorDataBuffer[4], sensorDataBuffer[5], sensorDataBuffer[6], sensorDataBuffer[7], sensorDataBuffer[8], sensorDataBuffer[9], sensorDataBuffer[10], sensorDataBuffer[11], sensorDataBuffer[12], sensorDataBuffer[13], sensorDataBuffer[14], sensorDataBuffer[15], sensorDataBuffer[16], sensorDataBuffer[17], sensorDataBuffer[18]);
+		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexSensorData);
 			memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
@@ -486,7 +488,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=0;
+	socketReady=1;
 }
 
 /* Read in PWM value */

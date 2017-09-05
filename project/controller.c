@@ -531,7 +531,7 @@ void *threadController( void *arg ) {
 				// Run controllers 
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local, tsTrue);
-				tau_x=0; tau_y=0; tau_z=0;
+				//tau_x=0; tau_y=0; tau_z=0;
 				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
 
 				// if (pid_trigger){
@@ -554,10 +554,10 @@ void *threadController( void *arg ) {
 				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				
-				//PWM[0]=100;
-				//PWM[1]=100;
-				//PWM[2]=100;
-				//PWM[3]=100;
+				PWM[0]=0;
+				//PWM[1]=0;
+				PWM[2]=0;
+				//PWM[3]=0;
 			}
 
 			// If false, force PWM outputs to zero.
