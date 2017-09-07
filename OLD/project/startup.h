@@ -54,7 +54,7 @@
 //#define par_i_yy 0.022f // quad inertia about yb
 //#define par_i_zz 0.043f // quad inertia about zb
 //#define	par_c_m 23.0907f // motor constant
-#define	par_c_m 30.0f // motor constant
+#define	par_c_m 23.0907f // motor constant
 
 /*
  * 
@@ -65,9 +65,6 @@ Current R {theta_ref,phi_ref,taux,tauy,tauz,thrust}
 Keyboard listening... 
 
  **/ 
- 
-#define manualThrust -1.0f
-
 
 // Default MPC POSITION weights Q (Qf) and R
 #define mpcPos_Q_1 10000.0f
@@ -143,14 +140,14 @@ Keyboard listening...
 #define ekf_Q_18 1.0e20f
 
 // Default PID gains
-#define pid_gyro_kp 2e-2f
+#define pid_gyro_kp 6e-2f
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
 #define pid_angle_kp 2.0f
-#define pid_angle_ki 1.0e-1f
+#define pid_angle_ki 1.0e-2f
 #define pid_angle_kd 0.0f
 
- //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries
+ //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000}
 
 typedef struct _structPipe{
 	int parent[2];

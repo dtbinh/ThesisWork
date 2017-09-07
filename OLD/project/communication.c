@@ -50,14 +50,16 @@ static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
-static double manualThrustData[1]={manualThrust};
+
+
+
 
 
 
 static int socketReady=0;
 
 //static float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
-//static double constraints[6] = {0.manualThrust0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
+//static double constraints[6] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
 //static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
 
 static int fdsocket_read, fdsocket_write;
@@ -405,7 +407,7 @@ static void *threadKeyReading( void *arg ) {
 	//int tsAverageCounter=0;
 	//double tsAverageAccum=0;
 	//double tsTrue; // tsAverage=tsController
-	double keyboardDataController[72];
+	double keyboardDataController[71];
 	//int timerPrint=0;
 	
 	/// Lock memory
@@ -425,7 +427,6 @@ static void *threadKeyReading( void *arg ) {
 		memcpy(keyboardDataController+38, tuningEkfData, sizeof(tuningEkfData));
 		memcpy(keyboardDataController+56, tuningPidData, sizeof(tuningPidData));
 		memcpy(keyboardDataController+62, tuningMpcQfData, sizeof(tuningMpcQfData));
-		memcpy(keyboardDataController+71, manualThrustData, sizeof(manualThrustData));
 		
 		//printf("%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f \n\n%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", keyboardDataController[0], keyboardDataController[1], keyboardDataController[2], keyboardDataController[3], keyboardDataController[4], keyboardDataController[5], keyboardDataController[6], keyboardDataController[7], keyboardDataController[8],keyboardDataController[9], keyboardDataController[10], keyboardDataController[11], keyboardDataController[12], keyboardDataController[13], keyboardDataController[14], keyboardDataController[15], keyboardDataController[16], keyboardDataController[17],keyboardDataController[18], keyboardDataController[19], keyboardDataController[20], keyboardDataController[21], keyboardDataController[22], keyboardDataController[23], keyboardDataController[24], keyboardDataController[25], keyboardDataController[26], keyboardDataController[27], keyboardDataController[28], keyboardDataController[29], keyboardDataController[30], keyboardDataController[31], keyboardDataController[32], keyboardDataController[33], keyboardDataController[34], keyboardDataController[35], keyboardDataController[36], keyboardDataController[37], keyboardDataController[38], keyboardDataController[39], keyboardDataController[40], keyboardDataController[41], keyboardDataController[42], keyboardDataController[43], keyboardDataController[44], keyboardDataController[45], keyboardDataController[46], keyboardDataController[47], keyboardDataController[48], keyboardDataController[49]);
 		
@@ -501,15 +502,13 @@ void keyReading( void ) {
 	double tuningMpcQfBuffer[9];
 	double tuningMpcBufferControl[6];
 	double tuningEkfBuffer[18];
-	double tuningPidBuffer[6];	
-	//double manualThrustBuffer[1];
+	double tuningPidBuffer[6];
 	
 	memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
 	memcpy(tuningMpcQfBuffer, tuningMpcQfData, sizeof(tuningMpcQfData));
 	memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 	memcpy(tuningEkfBuffer, tuningEkfData, sizeof(tuningEkfData));
-	memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));	
-	//memcpy(manualThrustBuffer, manualThrustData, sizeof(manualThrustData));
+	memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));
 	
 	char *pt;
 	int counter=0;
@@ -632,11 +631,10 @@ void keyReading( void ) {
 				}
 			}
 			break;
-		
-		// Use this for manual thrust setting instead, for now!	
-		//case 'i' :
-				//printf("X = %f, Y = %f, Z = %f and switch is %f\n", keyboardData[0], keyboardData[1], keyboardData[2], keyboardData[3]);
-			//break;
+			
+		case 'i' :
+				printf("X = %f, Y = %f, Z = %f and switch is %f\n", keyboardData[0], keyboardData[1], keyboardData[2], keyboardData[3]);
+			break;
 
 		case 'p' :
 			if (keyboardData[4]==0){
@@ -866,7 +864,6 @@ void keyReading( void ) {
 						}
 					} // "Updated: {%7.15f,%7.15f,%7.15f,%7.15f,%7.15f,%7.15f}\n"
 					
-					// Control terminal weights
 					else if( strcmp(selection, "f" ) == 0 ){
 						printf("Attitude MPC Qf {phi,phidot,theta,thetadot,psi,psidot,phi-phidot,theta-thetadot,psi-psidot}\n Old: {%f,%f,%f,%f,%f,%f,%f,%f,%f}\n New: ", tuningMpcQfData[0], tuningMpcQfData[1], tuningMpcQfData[2], tuningMpcQfData[3], tuningMpcQfData[4], tuningMpcQfData[5], tuningMpcQfData[6], tuningMpcQfData[7], tuningMpcQfData[8]);
 						scanf("%s", input_char);
@@ -939,16 +936,6 @@ void keyReading( void ) {
 						if (keyboardData[16]==0){
 							keyboardData[16]=1;
 							printf("PID attitude control active. MPC not active. Toggle: %i\n", (int)keyboardData[16]);
-							printf("Manual thrust, [y]es or [n]o?\n");
-							scanf("%s", selection);
-							if ( strcmp(selection, "y" ) == 0 ){
-								manualThrustData[0]=0;
-								printf("Manual thrust is ON\n");
-							}
-							else{
-								manualThrustData[0]=-1;
-								printf("Manual thrust is OFF\n");
-							}
 						}
 						else if(keyboardData[16]==1){
 							keyboardData[16]=0;
@@ -1245,69 +1232,7 @@ void keyReading( void ) {
 					break;
 				}
 			}
-			break;
-			
-		case 'o' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] += 1;
-				printf("UP 1 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-			
-		case 'l' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] -= 1;
-				printf("DOWN 1 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-
-		case 'i' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] += 0.1;
-				printf("UP 01 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-				
-		case 'k' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] -= 0.1;
-				printf("DOWN 01 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-						
-		case 'u' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] += 0.01;
-				printf("UP 001 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-				
-		case 'j' :
-			if (manualThrustData[0] >= 0) {
-				manualThrustData[0] -= 0.01;
-				printf("DOWN 001 - thrust = %f\n", manualThrustData[0]);
-			}
-			else {
-				printf("Manual thrust is switched OFF!\n");
-			}
-		break;
-						
-					
+		
 		case 'h' :
 			printf("\n [r]eferences - Sets the references\n [s]top - Sets the switch to 0 and stops it hopefully!\n [f]ly - Set the switch to 1!\t [f]eed forward - attitude mpc\n [i]nfo - Shows all the references and the switch\n [h]elp - Shows this again!\n [x] Aborts at every reading!\n [p]wm - Print PWM in terminal by toggle on/off\n [t]timers - Print average real time by toggle on/off\n [e]kf - Print EKF xhat (states, inertias and disturbances) by toggle on/off\n [w]ekf 6 states - Print EKF xhat (reference states) by toggle on/off\n [n]ew try - Reset EKF and MPC by toggle on/off\n [c]alibrate sensor fusion and EKF - Redo calibration\n [a]lpha magnetometer outlier forgetting factor\n [b]eta Madgwick Filter gain\n [m]pc settings\n [q]ekf settings\n [d]ata save to file\n [v] motor pwm range settings\n");
 			break;

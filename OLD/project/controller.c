@@ -60,7 +60,6 @@ static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpc
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
-static double manualThrustData[1]={manualThrust};
 
 static double PWM[4] = { 0, 0, 0, 0 };
 //static int globalWatchdog=0;
@@ -244,13 +243,12 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
 	structPipe *ptrPipe = arg; // to comm
 
-	double communicationDataBuffer[72];
+	double communicationDataBuffer[71];
 	double keyboardDataBuffer[18];
 	double tuningMpcBuffer[14];
 	double tuningMpcQfBuffer[9];
 	double tuningMpcBufferControl[6];
 	double tuningPidBuffer[6];
-	double manualThrustBuffer[1];
 	
 	//// Loop forever streaming data
 	while(1){
@@ -258,13 +256,11 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 		if (read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) != sizeof(communicationDataBuffer) ) printf("Error in reading 'keyboardData' from Communication to Controller\n");
 		//else printf("Controller ID: %d, Read: %f from Communication\n", (int)getpid(), keyboardDataBuffer[0]);
 		
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/72);
-		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/72);
-		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/72);
-		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/72);
-		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/72);	
-		memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/72);
-
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/71);
+		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/71);
+		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/71);
+		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/71);
+		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/71);
 		
 		//printf("--- %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", communicationDataBuffer[0], communicationDataBuffer[1], communicationDataBuffer[2], communicationDataBuffer[3], communicationDataBuffer[4], communicationDataBuffer[5], communicationDataBuffer[6], communicationDataBuffer[7], communicationDataBuffer[8],communicationDataBuffer[9], communicationDataBuffer[10], communicationDataBuffer[11], communicationDataBuffer[12], communicationDataBuffer[13], communicationDataBuffer[14], communicationDataBuffer[15], communicationDataBuffer[16], communicationDataBuffer[17],communicationDataBuffer[18], communicationDataBuffer[19], communicationDataBuffer[20], communicationDataBuffer[21], communicationDataBuffer[22], communicationDataBuffer[23], communicationDataBuffer[24], communicationDataBuffer[25], communicationDataBuffer[26]);
 		
@@ -279,7 +275,6 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 			memcpy(tuningMpcQfData, tuningMpcQfBuffer, sizeof(tuningMpcQfBuffer));
 			memcpy(tuningMpcDataControl, tuningMpcBufferControl, sizeof(tuningMpcBufferControl));
 			memcpy(tuningPidData, tuningPidBuffer, sizeof(tuningPidBuffer));
-			memcpy(manualThrustData, manualThrustBuffer, sizeof(manualThrustBuffer));
 			//keyboardTrigger=(int)keyboardDataBuffer[3]; // switch [0=STOP, 1=FLY]
 		pthread_mutex_unlock(&mutexConstraintsData);
 		
@@ -382,7 +377,6 @@ void *threadController( void *arg ) {
 	double tuningMpcBufferControl[6];	//R - 1 for alt, 2 for pos,  3 for att
 	double controllerBuffer[8]; // {PWM, thrust, torques} to be sent over to sensor.c
 	double tuningPidBuffer[6];
-	double manualThrustBuffer[1]={manualThrust};
 	
 	// PID variables
 	double pid_gyro_error_integral[1]={0};
@@ -398,20 +392,6 @@ void *threadController( void *arg ) {
 	double pid_angle_kp_local=1;
 	double pid_angle_ki_local=1;
 	double pid_angle_kd_local=0;
-	
-	double pid_gyro_theta_error_integral[1]={0};
-	double pid_gyro_theta_error_prev[1]={0};
-	double pid_gyro_theta_u=0;
-	double pid_gyro_theta_kp_local=1;
-	double pid_gyro_theta_ki_local=1;
-	double pid_gyro_theta_kd_local=0;
-	
-	double pid_angle_theta_error_integral[1]={0};
-	double pid_angle_theta_error_prev[1]={0};
-	double pid_angle_theta_u=0;
-	double pid_angle_theta_kp_local=1;
-	double pid_angle_theta_ki_local=1;
-	double pid_angle_theta_kd_local=0;
 	
 	int pid_trigger;
 	
@@ -460,10 +440,7 @@ void *threadController( void *arg ) {
 			memcpy(tuningMpcQfBuffer, tuningMpcQfData, sizeof(tuningMpcQfData));
 			memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 			memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));
-			memcpy(manualThrustBuffer, manualThrustData, sizeof(manualThrustData));
 		pthread_mutex_unlock(&mutexConstraintsData);
-		
-		//printf("manualThrustData controller: %f\n",manualThrustBuffer[0]);
 		
 		/// Time it and print true sampling rate
 		clock_gettime(CLOCK_MONOTONIC, &t_stop); /// stop elapsed time clock
@@ -578,48 +555,21 @@ void *threadController( void *arg ) {
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local, tsTrue);
 				//tau_x=0; tau_y=0; tau_z=0;
-				 if (manualThrustBuffer[0] >= 0) {
-					thrust = manualThrustBuffer[0];
-					//printf("thrust manual = %f\n", thrust);
-				 }
-				 else {
-					controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer );
-					//printf("thrust mpc = %f\n", thrust);
-				 }
+				controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer);
 
 				 if (pid_trigger){
 					 //printf("PID\n");
 					 // angle controller
-					 //pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					 pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
 					 // gyro controller
-					 //tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
-					 // angle controller
-					 pid_angle_u = controllerPID((measBuffer[7] - theta_dist),pid_angle_theta_error_integral,pid_angle_theta_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
-					 pid_angle_u *= -1;
-					 //pid_angle_u = 0;
-					 // gyro controller
-					 tau_y = controllerPID((measBuffer[10] - pid_angle_u),pid_gyro_theta_error_integral,pid_gyro_theta_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
-					 //tau_y = pid_angle_u;
-					 tau_y *= -1;
-					 
-					 tau_x=0;
-					 //tau_y=0;
+					 tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					 //tau_x=pid_gyro_u+pid_angle_u;
+					 tau_y=0;
 					 tau_z=0;
 					
 					 if (tau_x > .1) {tau_x = .1;}
-					 else if (tau_x < -.1) {tau_x = -.1;}	
-					 if (tau_y > .1) {tau_y = .1;}
-					 else if (tau_y < -.1) {tau_y = -.1;}					
+					 else if (tau_x < -.1) {tau_x = -.1;}					
 				 }
-				  
-				if ( thrust <= 3 ) {
-					tau_x=0; tau_y=0; tau_z=0;
-				}  
-				
-				if (thrust<0){
-					printf("thrust less than zero = %f\n", thrust);
-					thrust=0;
-				}
 
 				// Create PWM signal from calculated thrust and torques
 				PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
@@ -627,10 +577,10 @@ void *threadController( void *arg ) {
 				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				
-				PWM[0]=0;
-				//PWM[1]=0;
-				PWM[2]=0;
-				//PWM[3]=0;
+				//PWM[0]=0;
+				PWM[1]=0;
+				//PWM[2]=0;
+				PWM[3]=0;
 			}
 
 			// If false, force PWM outputs to zero.

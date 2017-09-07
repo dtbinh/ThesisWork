@@ -134,7 +134,7 @@ void startSensors(void *arg1, void *arg2){
 static void *threadPipeCommunicationToSensor(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double communicationDataBuffer[72];
+	double communicationDataBuffer[71];
 	double keyboardDataBuffer[18];
 	double tuningEkfBuffer[18];
 	
