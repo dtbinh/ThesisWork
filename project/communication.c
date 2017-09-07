@@ -46,6 +46,7 @@ static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
 static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,0,0.01,0.05,0,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control, ff attmpc toggle, save data, pid trigger,toggle motor pwm range tuning}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
+static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
@@ -406,7 +407,7 @@ static void *threadKeyReading( void *arg ) {
 	//int tsAverageCounter=0;
 	//double tsAverageAccum=0;
 	//double tsTrue; // tsAverage=tsController
-	double keyboardDataController[62];
+	double keyboardDataController[71];
 	//int timerPrint=0;
 	
 	/// Lock memory
@@ -425,6 +426,7 @@ static void *threadKeyReading( void *arg ) {
 		memcpy(keyboardDataController+32, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 		memcpy(keyboardDataController+38, tuningEkfData, sizeof(tuningEkfData));
 		memcpy(keyboardDataController+56, tuningPidData, sizeof(tuningPidData));
+		memcpy(keyboardDataController+62, tuningMpcQfData, sizeof(tuningMpcQfData));
 		
 		//printf("%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f \n\n%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", keyboardDataController[0], keyboardDataController[1], keyboardDataController[2], keyboardDataController[3], keyboardDataController[4], keyboardDataController[5], keyboardDataController[6], keyboardDataController[7], keyboardDataController[8],keyboardDataController[9], keyboardDataController[10], keyboardDataController[11], keyboardDataController[12], keyboardDataController[13], keyboardDataController[14], keyboardDataController[15], keyboardDataController[16], keyboardDataController[17],keyboardDataController[18], keyboardDataController[19], keyboardDataController[20], keyboardDataController[21], keyboardDataController[22], keyboardDataController[23], keyboardDataController[24], keyboardDataController[25], keyboardDataController[26], keyboardDataController[27], keyboardDataController[28], keyboardDataController[29], keyboardDataController[30], keyboardDataController[31], keyboardDataController[32], keyboardDataController[33], keyboardDataController[34], keyboardDataController[35], keyboardDataController[36], keyboardDataController[37], keyboardDataController[38], keyboardDataController[39], keyboardDataController[40], keyboardDataController[41], keyboardDataController[42], keyboardDataController[43], keyboardDataController[44], keyboardDataController[45], keyboardDataController[46], keyboardDataController[47], keyboardDataController[48], keyboardDataController[49]);
 		
@@ -488,7 +490,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=1;
+	socketReady=0;
 }
 
 /* Read in PWM value */
@@ -497,11 +499,13 @@ void keyReading( void ) {
 	char selection[2] = { '\0' };
 	double keyboardDataBuffer[4] = {0,0,0,0}; // {ref_x,ref_y,ref_z,switch}
 	double tuningMpcBuffer[14];
+	double tuningMpcQfBuffer[9];
 	double tuningMpcBufferControl[6];
 	double tuningEkfBuffer[18];
 	double tuningPidBuffer[6];
 	
 	memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
+	memcpy(tuningMpcQfBuffer, tuningMpcQfData, sizeof(tuningMpcQfData));
 	memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 	memcpy(tuningEkfBuffer, tuningEkfData, sizeof(tuningEkfData));
 	memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));
@@ -824,7 +828,7 @@ void keyReading( void ) {
 			// attitude tuning
 			else if ( strcmp(selection, "a" ) == 0 ) {
 				while (tuningFlag){
-					printf(" [q] state weights\n [r] control weights\n [p]id control gains\n [t] pid control toggle\n");
+					printf(" [q] state weights\n [r] control weights\n [f] qf weights\n [p]id control gains\n [t] pid control toggle\n");
 					scanf("%s", selection);
 					// State weights
 					if( strcmp(selection, "q" ) == 0 ){
@@ -855,6 +859,39 @@ void keyReading( void ) {
 									tuningMpcData[i+6]=tuningMpcBuffer[i+6];
 								}
 								printf("Updated: {%f,%f,%f,%f,%f,%f}\n", tuningMpcData[6], tuningMpcData[7], tuningMpcData[8], tuningMpcData[9], tuningMpcData[10], tuningMpcData[11]);
+							}
+							tuningFlag=0;
+						}
+					} // "Updated: {%7.15f,%7.15f,%7.15f,%7.15f,%7.15f,%7.15f}\n"
+					
+					else if( strcmp(selection, "f" ) == 0 ){
+						printf("Attitude MPC Qf {phi,phidot,theta,thetadot,psi,psidot,phi-phidot,theta-thetadot,psi-psidot}\n Old: {%f,%f,%f,%f,%f,%f,%f,%f,%f}\n New: ", tuningMpcQfData[0], tuningMpcQfData[1], tuningMpcQfData[2], tuningMpcQfData[3], tuningMpcQfData[4], tuningMpcQfData[5], tuningMpcQfData[6], tuningMpcQfData[7], tuningMpcQfData[8]);
+						scanf("%s", input_char);
+						pt = strtok(input_char, ",");
+						while (pt != NULL){
+							tuningMpcQfBuffer[counter+9]=atof(pt);
+							pt = strtok(NULL, ",");
+							counter++;
+						}
+						if (counter!=9){
+								printf("Bad format. Retry [y]?  Else press any button to cancel\n");
+							scanf("%s", selection);
+							if ( strcmp(selection, "y" ) == 0 ){
+								counter=0;
+								tuningFlag=1;
+							}
+							else{
+								tuningFlag=0;
+							}
+						}
+						else {
+							printf("\nAccept [y]? Else press any button to cancel\n");
+							scanf("%s", selection);
+							if ( strcmp(selection, "y" ) == 0 ){
+								for (int i=0;i<9;i++){
+									tuningMpcQfData[i+9]=tuningMpcQfBuffer[i+9];
+								}
+								printf("Updated: {%f,%f,%f,%f,%f,%f,%f,%f,%f}\n", tuningMpcQfData[0], tuningMpcQfData[1], tuningMpcQfData[2], tuningMpcQfData[3], tuningMpcQfData[4], tuningMpcQfData[5], tuningMpcQfData[6], tuningMpcQfData[7], tuningMpcQfData[8]);
 							}
 							tuningFlag=0;
 						}
