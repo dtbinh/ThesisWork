@@ -617,7 +617,7 @@ void keyReading( void ) {
 				//printf("It is already FLY idiot!\n");
 				printf("Feed forward attitude MPC active, [y]es or [n]o?\n");
 				scanf("%s", selection);
-				if ( strcmp(selection, "x" ) == 0 ){
+				if ( strcmp(selection, "n" ) == 0 ){
 					keyboardData[14] = 0;
 					printf(" Feed forward attitude MPC not active: %i\n", (int)keyboardData[14]);
 					break;
@@ -872,7 +872,7 @@ void keyReading( void ) {
 						scanf("%s", input_char);
 						pt = strtok(input_char, ",");
 						while (pt != NULL){
-							tuningMpcQfBuffer[counter+9]=atof(pt);
+							tuningMpcQfBuffer[counter]=atof(pt);
 							pt = strtok(NULL, ",");
 							counter++;
 						}
@@ -892,7 +892,7 @@ void keyReading( void ) {
 							scanf("%s", selection);
 							if ( strcmp(selection, "y" ) == 0 ){
 								for (int i=0;i<9;i++){
-									tuningMpcQfData[i+9]=tuningMpcQfBuffer[i+9];
+									tuningMpcQfData[i]=tuningMpcQfBuffer[i];
 								}
 								printf("Updated: {%f,%f,%f,%f,%f,%f,%f,%f,%f}\n", tuningMpcQfData[0], tuningMpcQfData[1], tuningMpcQfData[2], tuningMpcQfData[3], tuningMpcQfData[4], tuningMpcQfData[5], tuningMpcQfData[6], tuningMpcQfData[7], tuningMpcQfData[8]);
 							}

@@ -338,8 +338,8 @@ void *threadController( void *arg ) {
 		.A = { 1,0,0,0,0,0,		AttTsSec,1,0,0,0,0,	0,0,1,0,0,0,	0,0,AttTsSec,1,0,0,	0,0,0,0,1,0,	0,0,0,0,AttTsSec,1 },
 		.B = { 0,AttTsSec/mdl_param.i_xx,0,0,0,0,	0,0,0,AttTsSec/mdl_param.i_yy,0,0,	0,0,0,0,0,AttTsSec/mdl_param.i_zz },
 		.Q =  { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
-		//.Qf = { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
-		.Qf = { mpcAtt_Qf_1,mpcAtt_Qf_1_2,0,0,0,0,		mpcAtt_Qf_1_2,mpcAtt_Qf_2,0,0,0,0,	0,0,mpcAtt_Qf_3,mpcAtt_Qf_3_4,0,0,		0,0,mpcAtt_Qf_3_4,mpcAtt_Qf_4,0,0,	0,0,0,0,mpcAtt_Qf_5,mpcAtt_Qf_5_6,		0,0,0,0,mpcAtt_Qf_5_6,mpcAtt_Qf_6 },
+		.Qf =  { mpcAtt_Q_1,0,0,0,0,0,		0,mpcAtt_Q_2,0,0,0,0,	0,0,mpcAtt_Q_3,0,0,0,		0,0,0,mpcAtt_Q_4,0,0,	0,0,0,0,mpcAtt_Q_5,0,		0,0,0,0,0,mpcAtt_Q_6 },
+		//.Qf = { mpcAtt_Qf_1,mpcAtt_Qf_1_2,0,0,0,0,		mpcAtt_Qf_1_2,mpcAtt_Qf_2,0,0,0,0,	0,0,mpcAtt_Qf_3,mpcAtt_Qf_3_4,0,0,		0,0,mpcAtt_Qf_3_4,mpcAtt_Qf_4,0,0,	0,0,0,0,mpcAtt_Qf_5,mpcAtt_Qf_5_6,		0,0,0,0,mpcAtt_Qf_5_6,mpcAtt_Qf_6 },
 		// Qf with DARE with Q=2e4,1e2,2e4,1e2,1,1 and R = 1000,1000,1e10
 		//.Qf = {8.798002e+04,1.738053e+03,-2.789917e-11,-2.684214e-12,2.249382e-11,4.186520e-10,1.738053e+03,1.476911e+02,-1.032293e-12,-9.948871e-14,8.105915e-13,1.202670e-11,-2.789917e-11,-1.032293e-12,8.798002e+04,1.738053e+03,-6.083022e-09,-1.319085e-07,-2.684214e-12,-9.948871e-14,1.738053e+03,1.476911e+02,-1.600276e-10,-3.472108e-09,2.249382e-11,8.105915e-13,-6.083022e-09,-1.600276e-10,8.598367e+02,9.210742e+03,4.186520e-10,1.202670e-11,-1.319085e-07,-3.472108e-09,9.210742e+03,1.977631e+05},
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
@@ -393,7 +393,7 @@ void *threadController( void *arg ) {
 	double pid_gyro_ki_local=pid_gyro_ki;
 	double pid_gyro_kd_local=pid_gyro_kd;
 	
-	double pid_angle_error_integral[2]={0};
+	double pid_angle_error_integral[1]={0};
 	double pid_angle_error_prev[1]={0};
 	double pid_angle_u=0;
 	double pid_angle_kp_local=pid_angle_kp;
@@ -423,14 +423,6 @@ void *threadController( void *arg ) {
 	
 	int pid_trigger;
 	int controllerCounter=0;
-	
-	// Activate random number generator
-	srand((unsigned int)time(NULL));
-	double amp=0.004; // amplitude of sine wave
-	double a=amp/3; // random number max [0 a]
-	double tsTrue_accumulated=0;
-	double L=.8; // sine wave period
-	
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -522,7 +514,7 @@ void *threadController( void *arg ) {
 			posParams.Q[i*7]=tuningMpcBuffer[i];
 			posParams.Qf[i*7]=tuningMpcBuffer[i];
 			attParams.Q[i*7]=tuningMpcBuffer[i+6];
-			//attParams.Qf[i*7]=tuningMpcBuffer[i+6];
+			attParams.Qf[i*7]=tuningMpcBuffer[i+6];
 		}
 		for (i=0;i<2;i++){
 			altParams.Q[i*3]=tuningMpcBuffer[i+12];
@@ -530,19 +522,19 @@ void *threadController( void *arg ) {
 		}
 		
 		// Update controller parameters Qf
-		attParams.Qf[0]=tuningMpcQfData[0];
-		attParams.Qf[7]=tuningMpcQfData[1];
-		attParams.Qf[14]=tuningMpcQfData[2];
-		attParams.Qf[21]=tuningMpcQfData[3];
-		attParams.Qf[28]=tuningMpcQfData[4];
-		attParams.Qf[35]=tuningMpcQfData[5];
+		//attParams.Qf[0]=tuningMpcQfData[0];
+		//attParams.Qf[7]=tuningMpcQfData[1];
+		//attParams.Qf[14]=tuningMpcQfData[2];
+		//attParams.Qf[21]=tuningMpcQfData[3];
+		//attParams.Qf[28]=tuningMpcQfData[4];
+		//attParams.Qf[35]=tuningMpcQfData[5];
 		
-		attParams.Qf[1]=tuningMpcQfData[6];
-		attParams.Qf[6]=tuningMpcQfData[6];
-		attParams.Qf[15]=tuningMpcQfData[7];
-		attParams.Qf[20]=tuningMpcQfData[7];
-		attParams.Qf[29]=tuningMpcQfData[8];
-		attParams.Qf[34]=tuningMpcQfData[8];
+		//attParams.Qf[1]=tuningMpcQfData[6];
+		//attParams.Qf[6]=tuningMpcQfData[6];
+		//attParams.Qf[15]=tuningMpcQfData[7];
+		//attParams.Qf[20]=tuningMpcQfData[7];
+		//attParams.Qf[29]=tuningMpcQfData[8];
+		//attParams.Qf[34]=tuningMpcQfData[8];
 
 		// Update controller parameters R
 		posParams.R[0]=tuningMpcBufferControl[0];
@@ -632,15 +624,9 @@ void *threadController( void *arg ) {
 					 if (tau_y > .1) {tau_y = .1;}
 					 else if (tau_y < -.1) {tau_y = -.1;}	
 					 if (tau_z > .1) {tau_z = .1;}
-					 else if (tau_z < -.1) {tau_z = -.1;}	 				
+					 else if (tau_z < -.1) {tau_z = -.1;}	
+					 				
 				 }
-				 
-				 					 // Inertia identification using sin wave with white noise
-					 tsTrue_accumulated+=tsTrue;
-					 tau_x=amp*sin(2*PI*tsTrue_accumulated/L)+(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
-					 //tau_y=amp*sin(2*PI*tsTrue_accumulated/L);
-					 //tau_y=(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
-				 
 				
 				if (thrust<0){
 					printf("thrust less than zero = %f\n", thrust);
@@ -702,9 +688,7 @@ void *threadController( void *arg ) {
 				pid_gyro_error_integral[0]=0;
 				pid_gyro_error_prev[0]=0;
 				pid_angle_error_integral[0]=0.0;
-				pid_angle_error_integral[1]=0.0;
 				pid_angle_error_prev[0]=0.0;
-				tsTrue_accumulated=0; // reset tsTrue accum for sine wave function
 				
 			}
 		
@@ -867,6 +851,16 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		attInputs->U0_all[i] = 0;
 		}
 	
+	// Integrator action for angle state to get offset free control
+	 //if(mpcAtt_ff){
+		//error_integral[0] += ki*((meas[6] - phi_dist)*ts);
+	 //}
+	 //else{
+		 //error_integral[0]=0;
+	 //}
+	
+	
+	
 	// Update controller input contraints [umin/umax] to compensate for disturbances in torque
 	if(mpcAtt_ff){
 		//attParams->umax[0]=10+error_integral[0];
@@ -884,20 +878,10 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	// Get measurements and references from global data
 	attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
 	attInputs->x0[1] = meas[9] - ref[9];		//phidots
-	attInputs->x0[2] = +1*(meas[7] - theta_dist);			//theta - coming from the pos controller
-	attInputs->x0[3] = -1*(meas[10] - ref[10]);	//thetadot
+	attInputs->x0[2] = meas[7] - theta_dist;			//theta - coming from the pos controller
+	attInputs->x0[3] = meas[10] - ref[10];	//thetadot
 	attInputs->x0[4] = meas[8] - ref[8];		//psi
 	attInputs->x0[5] = meas[11] - ref[11];	//psidot
-	
-	// Integrator action for angle state to get offset free control
-	 if(mpcAtt_ff){
-		error_integral[0] += ki*((attInputs->x0[0])*ts);
-		error_integral[1] += ki*((attInputs->x0[2])*ts);
-	 }
-	 else{
-		 error_integral[0]=0;
-		 error_integral[1]=0;
-	 }
 	
 	//printf("(attInputs) % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f\n", attInputs->x0[0], attInputs->x0[1], attInputs->x0[2], attInputs->x0[3], attInputs->x0[4], attInputs->x0[5]);
 	
@@ -910,16 +894,12 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	tau_z = attU_all[2];		// psi
 	
 	// Feed forward disturbance compensation
-	if(mpcAtt_ff){
-		tau_x -= error_integral[0];
-		tau_y -= error_integral[1];
-		// attU_all[0] -= dist[0];
-		// attU_all[1] -= dist[1];
-		// attU_all[2] -= dist[2];
-	}
-	
-	//Flip to match tha axes!
-	//tau_y *= -1;
+	//if(mpcAtt_ff){
+		//tau_x -= error_integral[0];
+		//// attU_all[0] -= dist[0];
+		//// attU_all[1] -= dist[1];
+		//// attU_all[2] -= dist[2];
+	//}
 
 	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
 		if(isnan(attU_all[i])!=0){
