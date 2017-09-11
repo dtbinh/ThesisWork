@@ -42,7 +42,7 @@
 
 // Model Parameters
 #define par_g 9.81f // gravity
-#define	par_mass 0.432f // total mass
+#define	par_mass 0.4234f // total mass
 #define	par_L 0.125f // length from center to motor
 #define	par_k 0.000010107f// lift coeff
 #define	par_b 0.00000033691f // drag coeff
@@ -54,7 +54,7 @@
 //#define par_i_yy 0.022f // quad inertia about yb
 //#define par_i_zz 0.043f // quad inertia about zb
 //#define	par_c_m 23.0907f // motor constant
-#define	par_c_m 30.0f // motor constant
+#define	par_c_m 31.95f // motor constant
 
 /*
  * 
@@ -146,8 +146,8 @@ Keyboard listening...
 #define pid_gyro_kp 2e-2f
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
-#define pid_angle_kp 2.0f
-#define pid_angle_ki 1.0e-1f
+#define pid_angle_kp 4.0f
+#define pid_angle_ki 6.0e-1f
 #define pid_angle_kd 0.0f
 
  //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries

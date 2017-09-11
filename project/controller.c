@@ -344,8 +344,8 @@ void *threadController( void *arg ) {
 		.R = { mpcAtt_R_1,0,0,	0,mpcAtt_R_2,0,	0,0,mpcAtt_R_3 },
 		.umax = {  1e1, 1e1, 1e1 },
 		.umin = { -1e1,-1e1,-1e1 },
-		.n = 6, .m = 3, .T = 40, .niters = 5, .kappa = 1e-3 // niters iteration, larger better. kappa smaller better
-		//.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
+		//.n = 6, .m = 3, .T = 40, .niters = 5, .kappa = 1e-3 // niters iteration, larger better. kappa smaller better
+		.n = 6, .m = 3, .T = 10, .niters = 5, .kappa = 1e-3
 	};
 	
 	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
@@ -388,30 +388,37 @@ void *threadController( void *arg ) {
 	double pid_gyro_error_integral[1]={0};
 	double pid_gyro_error_prev[1]={0};
 	double pid_gyro_u=0;
-	double pid_gyro_kp_local=1;
-	double pid_gyro_ki_local=1;
-	double pid_gyro_kd_local=0;
+	double pid_gyro_kp_local=pid_gyro_kp;
+	double pid_gyro_ki_local=pid_gyro_ki;
+	double pid_gyro_kd_local=pid_gyro_kd;
 	
 	double pid_angle_error_integral[1]={0};
 	double pid_angle_error_prev[1]={0};
 	double pid_angle_u=0;
-	double pid_angle_kp_local=1;
-	double pid_angle_ki_local=1;
-	double pid_angle_kd_local=0;
+	double pid_angle_kp_local=pid_angle_kp;
+	double pid_angle_ki_local=pid_angle_ki;
+	double pid_angle_kd_local=pid_angle_kd;
 	
 	double pid_gyro_theta_error_integral[1]={0};
 	double pid_gyro_theta_error_prev[1]={0};
 	double pid_gyro_theta_u=0;
-	double pid_gyro_theta_kp_local=1;
-	double pid_gyro_theta_ki_local=1;
-	double pid_gyro_theta_kd_local=0;
+	double pid_gyro_theta_kp_local=pid_gyro_kp;
+	double pid_gyro_theta_ki_local=pid_gyro_ki;
+	double pid_gyro_theta_kd_local=pid_gyro_kd;
 	
 	double pid_angle_theta_error_integral[1]={0};
 	double pid_angle_theta_error_prev[1]={0};
 	double pid_angle_theta_u=0;
-	double pid_angle_theta_kp_local=1;
-	double pid_angle_theta_ki_local=1;
-	double pid_angle_theta_kd_local=0;
+	double pid_angle_theta_kp_local=pid_angle_kp;
+	double pid_angle_theta_ki_local=pid_angle_ki;
+	double pid_angle_theta_kd_local=pid_angle_kd;
+	
+	double pid_gyro_psi_error_integral[1]={0};
+	double pid_gyro_psi_error_prev[1]={0};
+	double pid_gyro_psi_u=0;
+	double pid_gyro_psi_kp_local=0.02;
+	double pid_gyro_psi_ki_local=0.0;
+	double pid_gyro_psi_kd_local=0.0;
 	
 	int pid_trigger;
 	
@@ -505,7 +512,7 @@ void *threadController( void *arg ) {
 			posParams.Q[i*7]=tuningMpcBuffer[i];
 			posParams.Qf[i*7]=tuningMpcBuffer[i];
 			attParams.Q[i*7]=tuningMpcBuffer[i+6];
-			//attParams.Qf[i*7]=tuningMpcBuffer[i+6];
+			attParams.Qf[i*7]=tuningMpcBuffer[i+6];
 		}
 		for (i=0;i<2;i++){
 			altParams.Q[i*3]=tuningMpcBuffer[i+12];
@@ -513,19 +520,19 @@ void *threadController( void *arg ) {
 		}
 		
 		// Update controller parameters Qf
-		posParams.Qf[0]=tuningMpcQfData[0];
-		posParams.Qf[7]=tuningMpcQfData[1];
-		posParams.Qf[14]=tuningMpcQfData[2];
-		posParams.Qf[21]=tuningMpcQfData[3];
-		posParams.Qf[28]=tuningMpcQfData[4];
-		posParams.Qf[35]=tuningMpcQfData[5];
+		//attParams.Qf[0]=tuningMpcQfData[0];
+		//attParams.Qf[7]=tuningMpcQfData[1];
+		//attParams.Qf[14]=tuningMpcQfData[2];
+		//attParams.Qf[21]=tuningMpcQfData[3];
+		//attParams.Qf[28]=tuningMpcQfData[4];
+		//attParams.Qf[35]=tuningMpcQfData[5];
 		
-		posParams.Qf[1]=tuningMpcQfData[6];
-		posParams.Qf[6]=tuningMpcQfData[6];
-		posParams.Qf[15]=tuningMpcQfData[7];
-		posParams.Qf[20]=tuningMpcQfData[7];
-		posParams.Qf[29]=tuningMpcQfData[8];
-		posParams.Qf[34]=tuningMpcQfData[8];
+		//attParams.Qf[1]=tuningMpcQfData[6];
+		//attParams.Qf[6]=tuningMpcQfData[6];
+		//attParams.Qf[15]=tuningMpcQfData[7];
+		//attParams.Qf[20]=tuningMpcQfData[7];
+		//attParams.Qf[29]=tuningMpcQfData[8];
+		//attParams.Qf[34]=tuningMpcQfData[8];
 
 		// Update controller parameters R
 		posParams.R[0]=tuningMpcBufferControl[0];
@@ -536,12 +543,12 @@ void *threadController( void *arg ) {
 		altParams.R[0]=tuningMpcBufferControl[5];
 		
 		// Update controller PID gains
-		pid_gyro_kp_local=tuningPidBuffer[0];
-		pid_gyro_ki_local=tuningPidBuffer[1];
-		pid_gyro_kd_local=tuningPidBuffer[2];
-		pid_angle_kp_local=tuningPidBuffer[3];
-		pid_angle_ki_local=tuningPidBuffer[4];
-		pid_angle_kd_local=tuningPidBuffer[5];
+		pid_gyro_theta_kp_local=tuningPidBuffer[0];
+		pid_gyro_theta_ki_local=tuningPidBuffer[1];
+		pid_gyro_theta_kd_local=tuningPidBuffer[2];
+		pid_angle_theta_kp_local=tuningPidBuffer[3];
+		pid_angle_theta_ki_local=tuningPidBuffer[4];
+		pid_angle_theta_kd_local=tuningPidBuffer[5];
 	
 		// To ramp the references in x, y and z
 		if ( keyRampRef ) {
@@ -586,40 +593,51 @@ void *threadController( void *arg ) {
 					controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer );
 					//printf("thrust mpc = %f\n", thrust);
 				 }
+				 
+				if(pwmPrint){
+					printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAtt_FF) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f (u_mpcAttInt) % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, attU_all[0], attU_all[1], attU_all[2], tau_x, tau_y, tau_z, thrust, pid_angle_error_integral[0]);
+				}
 
 				 if (pid_trigger){
 					 //printf("PID\n");
 					 // angle controller
-					 //pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					 pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
 					 // gyro controller
-					 //tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					 tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					 
 					 // angle controller
-					 pid_angle_u = controllerPID((measBuffer[7] - theta_dist),pid_angle_theta_error_integral,pid_angle_theta_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					 pid_angle_u = controllerPID((measBuffer[7] - theta_dist),pid_angle_theta_error_integral,pid_angle_theta_error_prev,pid_angle_theta_kp_local,pid_angle_theta_ki_local,pid_angle_theta_kd_local, tsTrue);
 					 pid_angle_u *= -1;
 					 //pid_angle_u = 0;
 					 // gyro controller
-					 tau_y = controllerPID((measBuffer[10] - pid_angle_u),pid_gyro_theta_error_integral,pid_gyro_theta_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					 tau_y = controllerPID((measBuffer[10] - pid_angle_u),pid_gyro_theta_error_integral,pid_gyro_theta_error_prev,pid_gyro_theta_kp_local,pid_gyro_theta_ki_local,pid_gyro_theta_kd_local, tsTrue);
 					 //tau_y = pid_angle_u;
 					 tau_y *= -1;
 					 
-					 tau_x=0;
+					 tau_z = controllerPID((measBuffer[11] - refBuffer[11]),pid_gyro_psi_error_integral,pid_gyro_psi_error_prev,pid_gyro_psi_kp_local,pid_gyro_psi_ki_local,pid_gyro_psi_kd_local, tsTrue);
+					 tau_z *= -1;
+					 
+					 //tau_x=0;
 					 //tau_y=0;
-					 tau_z=0;
+					 //tau_z=0;
 					
 					 if (tau_x > .1) {tau_x = .1;}
 					 else if (tau_x < -.1) {tau_x = -.1;}	
 					 if (tau_y > .1) {tau_y = .1;}
-					 else if (tau_y < -.1) {tau_y = -.1;}					
+					 else if (tau_y < -.1) {tau_y = -.1;}	
+					 if (tau_z > .1) {tau_z = .1;}
+					 else if (tau_z < -.1) {tau_z = -.1;}	
+					 				
 				 }
-				  
-				if ( thrust <= 3 ) {
-					tau_x=0; tau_y=0; tau_z=0;
-				}  
 				
 				if (thrust<0){
 					printf("thrust less than zero = %f\n", thrust);
 					thrust=0;
 				}
+				
+				if ( thrust <= 2 ) {
+					tau_x=0; tau_y=0; tau_z=0;
+				}  
 
 				// Create PWM signal from calculated thrust and torques
 				PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
@@ -627,10 +645,10 @@ void *threadController( void *arg ) {
 				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				
-				PWM[0]=0;
-				//PWM[1]=0;
-				PWM[2]=0;
-				//PWM[3]=0;
+				//PWM[0]=0;
+				PWM[1]=0;
+				//PWM[2]=0;
+				PWM[3]=0;
 			}
 
 			// If false, force PWM outputs to zero.
@@ -673,9 +691,9 @@ void *threadController( void *arg ) {
 			}
 		
 			// Print PWM signal sent to motors
-			if(pwmPrint){
-				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAtt_FF) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f (u_mpcAttInt) % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, attU_all[0], attU_all[1], attU_all[2], tau_x, tau_y, tau_z, thrust, pid_angle_error_integral[0]);
-			}
+			//if(pwmPrint){
+				//printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAtt_FF) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f (u_mpcAttInt) % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, attU_all[0], attU_all[1], attU_all[2], tau_x, tau_y, tau_z, thrust, pid_angle_error_integral[0]);
+			//}
 			
 			// Copy data over to common controller buffer before sending it to sensor.c
 			controllerBuffer[0]=PWM[0];
@@ -863,11 +881,11 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	attInputs->x0[4] = meas[8] - ref[8];		//psi
 	attInputs->x0[5] = meas[11] - ref[11];	//psidot
 	
-	//printf("(attInputs) % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f\n", attInputs->x0[0], attInputs->x0[1], attInputs->x0[2], attInputs->x0[3], attInputs->x0[4], attInputs->x0[5]);
+	printf("(attInputs) % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f % 2.4f\n", attInputs->x0[0], attInputs->x0[1], attInputs->x0[2], attInputs->x0[3], attInputs->x0[4], attInputs->x0[5]);
 	
 	attFmpc(attParams, attInputs, attX_all, attU_all);
 	
-	//printf("{% 1.4f % 1.4f % 1.4f} {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
+	printf("attU_all{% 1.4f % 1.4f % 1.4f} - dist {% 1.4f % 1.4f % 1.4f}\n", attU_all[0], attU_all[1], attU_all[2], dist[0], dist[1], dist[2]);
 	
 	tau_x = attU_all[0];		// phi
 	tau_y = attU_all[1];		// theta
