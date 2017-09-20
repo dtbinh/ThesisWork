@@ -376,6 +376,8 @@ void *threadController( void *arg ) {
 	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint, mpcAtt_ff; // feed forward activation trigger for attitude mpc;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+	double k1 = mdl_param.c_m*mdl_param.k, k2 = mdl_param.b*mdl_param.k, l = mdl_param.L; 
+	double k1k2l4 = 4*k1*k2*l;
 	int i;
 	
 	double tuningMpcBuffer[14];		//Q - 14 states
@@ -593,7 +595,7 @@ void *threadController( void *arg ) {
 				
 				// Run controllers 
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff,pid_angle_ki_local, tsTrue);
+				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff, pid_angle_theta_ki_local, tsTrue);
 				//tau_x=0; tau_y=0; tau_z=0;
 				 if (manualThrustBuffer[0] >= 0) {
 					thrust = manualThrustBuffer[0];
@@ -604,7 +606,7 @@ void *threadController( void *arg ) {
 					//printf("thrust mpc = %f\n", thrust);
 				 }
 
-				 if (pid_trigger){
+				 if (pid_trigger) {
 					 //printf("PID\n");
 					 // angle controller
 					 pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
@@ -635,13 +637,12 @@ void *threadController( void *arg ) {
 					 else if (tau_z < -.1) {tau_z = -.1;}	 				
 				 }
 				 
-				 					 // Inertia identification using sin wave with white noise
-					 tsTrue_accumulated+=tsTrue;
-					 tau_x=amp*sin(2*PI*tsTrue_accumulated/L)+(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
-					 //tau_y=amp*sin(2*PI*tsTrue_accumulated/L);
-					 //tau_y=(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
+				 //// Inertia identification using sin wave with white noise
+				 //tsTrue_accumulated+=tsTrue;
+				 //tau_x=amp*sin(2*PI*tsTrue_accumulated/L)+(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
+				 ////tau_y=amp*sin(2*PI*tsTrue_accumulated/L);
+				 ////tau_y=(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
 				 
-				
 				if (thrust<0){
 					printf("thrust less than zero = %f\n", thrust);
 					thrust=0;
@@ -654,17 +655,38 @@ void *threadController( void *arg ) {
 					}
 				}
 				controllerCounter++;
-
-				// Create PWM signal from calculated thrust and torques
-				PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-				PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-				PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-				PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				
+				//tau_x = 0.000;
+				//tau_y = 0.000;
+				//tau_z = 0.000;
+				
+				// PWM from tau and thrust using inverse of M matrix using controller paper frames
+				PWM[0] = sqrt( (  2*k2*tau_y + thrust*k2*l - k1*l*tau_z )/k1k2l4 );
+				PWM[1] = sqrt( ( -2*k2*tau_x + thrust*k2*l + k1*l*tau_z )/k1k2l4 );
+				PWM[2] = sqrt( ( -2*k2*tau_y + thrust*k2*l - k1*l*tau_z )/k1k2l4 );
+				PWM[3] = sqrt( (  2*k2*tau_x + thrust*k2*l + k1*l*tau_z )/k1k2l4 );
+				//// Create PWM signal from calculated thrust and torques
+				//PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				// PWM from tau and thrust using inverse of M matrix using our own frames!
+				PWM[0] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[1] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				
+				//printf("[1]=% 1.6f   [2]=% 1.6f   [3]=% 1.6f   [4]=% 1.6f \n", PWM[0], PWM[1],PWM[2],PWM[3]);
+				
+				PWM[0]=0;
+				PWM[1]=0;
+				PWM[2]=0;
+				PWM[3]=0;
 				
 				//PWM[0]=0;
-				PWM[1]=0;
+				//PWM[1]=10;
 				//PWM[2]=0;
-				PWM[3]=0;
+				//PWM[3]=0;
 			}
 
 			// If false, force PWM outputs to zero.
@@ -885,9 +907,16 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
 	attInputs->x0[1] = meas[9] - ref[9];		//phidots
 	attInputs->x0[2] = +1*(meas[7] - theta_dist);			//theta - coming from the pos controller
-	attInputs->x0[3] = -1*(meas[10] - ref[10]);	//thetadot
+	attInputs->x0[3] = +1*(meas[10] - ref[10]);	//thetadot
 	attInputs->x0[4] = meas[8] - ref[8];		//psi
 	attInputs->x0[5] = meas[11] - ref[11];	//psidot
+	//// Rotate 90 around its Z LH
+	//attInputs->x0[0] = -1*(meas[7] - theta_dist);		//phi 
+	//attInputs->x0[1] = -1*(meas[10] - ref[10]);			//phidots
+	//attInputs->x0[2] = meas[6] - phi_dist;				//theta 
+	//attInputs->x0[3] = meas[9] - ref[9];				//thetadot
+	//attInputs->x0[4] = meas[8] - ref[8];				//psi
+	//attInputs->x0[5] = meas[11] - ref[11];				//psidot
 	
 	// Integrator action for angle state to get offset free control
 	 if(mpcAtt_ff){

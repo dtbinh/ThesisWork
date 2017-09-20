@@ -47,8 +47,8 @@
 #define	par_k 0.000010107f// lift coeff
 #define	par_b 0.00000033691f // drag coeff
 #define	par_k_d 0.25f // air friction
-#define par_i_xx 0.00144703915602229f // quad inertia about xb
-#define par_i_yy 0.00144703915602229f // quad inertia about yb
+#define par_i_xx 0.001692037f // quad inertia about xb
+#define par_i_yy 0.001463176f // quad inertia about yb
 #define par_i_zz 0.0023f // quad inertia about zb
 //#define par_i_xx 0.022f // quad inertia about xb
 //#define par_i_yy 0.022f // quad inertia about yb
@@ -143,7 +143,7 @@ Keyboard listening...
 #define pid_gyro_ki 0.0f
 #define pid_gyro_kd 0.0f
 #define pid_angle_kp 4.0f
-#define pid_angle_ki 5.0e-1f
+#define pid_angle_ki 3.0e-1f
 #define pid_angle_kd 0.0f
 
 // pid_angle_ki 6.0e-1f for PID controller!
