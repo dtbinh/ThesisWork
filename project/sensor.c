@@ -592,16 +592,16 @@ static void *threadSensorFusion (void *arg){
 						}
 					}									
 					
-				    euler[0]   = atan2(2.0f * ((double)q[1] * (double)q[2] + (double)q[0] * (double)q[3]), (double)q[0] * (double)q[0] + (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] - (double)q[3] * (double)q[3]);   
-					euler[1] = -asin(2.0f * ((double)q[1] * (double)q[3] - (double)q[0] * (double)q[2]));
-					euler[2]  = atan2(2.0f * ((double)q[0] * (double)q[1] + (double)q[2] * (double)q[3]), (double)q[0] * (double)q[0] - (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] + (double)q[3] * (double)q[3]);
+				    //euler[0]   = atan2(2.0f * ((double)q[1] * (double)q[2] + (double)q[0] * (double)q[3]), (double)q[0] * (double)q[0] + (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] - (double)q[3] * (double)q[3]);   
+					//euler[1] = -asin(2.0f * ((double)q[1] * (double)q[3] - (double)q[0] * (double)q[2]));
+					//euler[2]  = atan2(2.0f * ((double)q[0] * (double)q[1] + (double)q[2] * (double)q[3]), (double)q[0] * (double)q[0] - (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] + (double)q[3] * (double)q[3]);
 					//euler[1] *= 180.0f / PI;
 					//euler[0]   *= 180.0f / PI; 
 					////yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
 					//euler[2]  *= 180.0f / PI;
 					
 					// Quaternions to eulers (rad)
-					//q2euler_zyx(euler,q_comp);
+					q2euler_zyx(euler,q_comp);
 					//q2euler_zyx(euler2,q_comp2);
 					
 					//Allignment compensation for initial point of orientation angles
