@@ -1,0 +1,12 @@
+heading = atan2(2*qy*qw-2*qx*qz , 1 - 2*qy2 - 2*qz2)
+attitude = asin(2*qx*qy + 2*qz*qw) 
+bank = atan2(2*qx*qw-2*qy*qz , 1 - 2*qx2 - 2*qz2)
+
+except when qx*qy + qz*qw = 0.5 (north pole)
+which gives:
+heading = 2 * atan2(x,w)
+bank = 0
+and when qx*qy + qz*qw = -0.5 (south pole)
+which gives:
+heading = -2 * atan2(x,w)
+bank = 0
