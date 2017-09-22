@@ -343,6 +343,7 @@ static void *threadSensorFusion (void *arg){
 	double euler2[3]={0.0};
 	double euler_mean[3]={0.0};
 	int eulerCalFlag=0;
+	int betaCalFlag=0;
 	float beta_keyboard;
 	int isnan_flag=0, outofbounds_flag=0;
 
@@ -373,16 +374,16 @@ static void *threadSensorFusion (void *arg){
 		// Try to enable acc, gyr, mag  and bmp sensors
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableMPU9250Flag=enableMPU9250();
-			enableAK8963Flag=enableAK8963();
+			//enableAK8963Flag=enableAK8963();
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
 		// Check that I2C sensors have been enabled
 		if(enableMPU9250Flag==-1){
 			printf("MPU9250 failed to be enabled\n");
 		}
-		else if(enableAK8963Flag==-1){
-			printf("AK8963 failed to be enabled\n");
-		}
+		//else if(enableAK8963Flag==-1){
+			//printf("AK8963 failed to be enabled\n");
+		//}
 		else{
 			// Loop for ever
 			while(1){
@@ -515,13 +516,13 @@ static void *threadSensorFusion (void *arg){
 					// Set gain of orientation estimation Madgwick beta after initial filter learn
 					if(k==1000){
 						beta=0.05;
-						//eulerCalFlag=1;
+						betaCalFlag=1;
 					}
 					else{
 						printf("SampleFre: %f Sample: %i\n", sampleFreq, k++);
 					}
 						
-					if(eulerCalFlag==1){
+					if(betaCalFlag==1){
 						beta = beta_keyboard;
 					}
 						
@@ -570,36 +571,36 @@ static void *threadSensorFusion (void *arg){
 					//// Calibration routine
 					//if ( calibrationCounterM0 >  CALIBRATION ) {
 						//// Measurement update of EKF with mag
-						//double nom_mag[3]={0,sqrt(pow(mag0[0],2)+pow(mag0[1],2)),mag0[2]};
-						//magnetometerUpdate(q_comp, Pmag, magRawRot, nom_mag, Rmag, Lmag, alpha_mag, outlierFlag);
+						////double nom_mag[3]={0,sqrt(pow(mag0[0],2)+pow(mag0[1],2)),mag0[2]};
+						////magnetometerUpdate(q_comp, Pmag, magRawRot, nom_mag, Rmag, Lmag, alpha_mag, outlierFlag);
 						
-						//// outlier percentage
-						//ioutlierFlagPercentage = 0;
-						//for (int i=1; i<1000; i++) {
-							//outlierFlagMem[i-1] = outlierFlagMem[i];
-							//ioutlierFlagPercentage += outlierFlagMem[i-1];
-						//}
-						//outlierFlagMem[999] = outlierFlag[0];
-						//ioutlierFlagPercentage += outlierFlagMem[999];
+						////// outlier percentage
+						////ioutlierFlagPercentage = 0;
+						////for (int i=1; i<1000; i++) {
+							////outlierFlagMem[i-1] = outlierFlagMem[i];
+							////ioutlierFlagPercentage += outlierFlagMem[i-1];
+						////}
+						////outlierFlagMem[999] = outlierFlag[0];
+						////ioutlierFlagPercentage += outlierFlagMem[999];
 						
-						//// calibrationCounterP routine
-						//if ( calibrationCounterP <= MAG_CALIBRATION ) {
-							//calibrationCounterP++;
-							//if ( calibrationCounterP == 1) {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
-								//printf("Magnometer calibration STARTED\n");
-							//}
-							//else if ( calibrationCounterP == MAG_CALIBRATION ) {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);
-								//printf("Pmag = \n");
-								//printmat(Pmag,4,4);
-								//printf("Magnometer calibration FINISHED\n5 seconds to leave it for alignment!\n");
-							//}
-							//else {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
-							//}							
-						//}
-						//calibrationCounterP = MAG_CALIBRATION+1;
+						////// calibrationCounterP routine
+						////if ( calibrationCounterP <= MAG_CALIBRATION ) {
+							////calibrationCounterP++;
+							////if ( calibrationCounterP == 1) {
+								////printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
+								////printf("Magnometer calibration STARTED\n");
+							////}
+							////else if ( calibrationCounterP == MAG_CALIBRATION ) {
+								////printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);
+								////printf("Pmag = \n");
+								////printmat(Pmag,4,4);
+								////printf("Magnometer calibration FINISHED\n5 seconds to leave it for alignment!\n");
+							////}
+							////else {
+								////printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
+							////}							
+						////}
+						////calibrationCounterP = MAG_CALIBRATION+1;
 					//}
 					//else {
 						//if ( calibrationCounterM0 == 0 ){
@@ -630,8 +631,8 @@ static void *threadSensorFusion (void *arg){
 					q2euler_zyx(euler,q_comp);
 					
 					//Allignment compensation for initial point of orientation angles
-					if ( eulerCalFlag != 1 && calibrationCounterP >  MAG_CALIBRATION ) {
-					//if ( eulerCalFlag != 1 ) {
+					////~ if ( eulerCalFlag != 1 && calibrationCounterP >  MAG_CALIBRATION ) {
+					if ( betaCalFlag==1 && eulerCalFlag != 1 ) {
 						if( counterCalEuler < 1000 ) {
 							// Mean (bias) accelerometer, gyroscope and magnetometer
 							if ( counterCalEuler == 0 ) { euler_mean[0]=0.0; euler_mean[1]=0.0; euler_mean[2]=0.0; printf("all euler_mean = %f\n", euler_mean[0]+euler_mean[1]+euler_mean[2]);}
@@ -639,7 +640,7 @@ static void *threadSensorFusion (void *arg){
 							euler_mean[1]+=euler[1];
 							euler_mean[2]+=euler[2];												
 							counterCalEuler++;
-							printf("euler_sum: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0]*180/PI, euler_mean[1]*180/PI, euler_mean[2]*180/PI, counterCalEuler);
+							//printf("euler_sum: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0]*180/PI, euler_mean[1]*180/PI, euler_mean[2]*180/PI, counterCalEuler);
 						}
 						else if(counterCalEuler==1000){
 							euler_mean[0]/=1000.0f;
@@ -807,6 +808,7 @@ static void *threadSensorFusion (void *arg){
 							EKF_8x8(Pekf8x8,xhat8x8,uControl,ymeas8x8,tuningEkfBuffer8x8,Rekf8x8,tsTrue,posRawOldFlag,par_att); // Position state estimation
 							//EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6); // Position state estimation
 							stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
+							xhat8x8[7]=-9.81;
 						}
 						// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 						else{
@@ -833,7 +835,7 @@ static void *threadSensorFusion (void *arg){
 						}
 						
 						// Override disturbance estimation in x and y direction
-						//xhat9x9[6]=0;
+						xhat8x8[6]=0;
 						//xhat9x9[7]=0;
 						
 						// Torque disturbance saturation
@@ -920,13 +922,13 @@ static void *threadSensorFusion (void *arg){
 						
 						if(ekfPrint && tSensorFusionCounter % 10 == 0){
 							//double norm_mag = 1/sqrt(magRawRot[0] * magRawRot[0] + magRawRot[1] * magRawRot[1] + magRawRot[2] * magRawRot[2]);
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq);
+							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f (freq) % 3.1f (posRawOldFlag) %i\n",xhat8x8[0],xhat8x8[1],xhat8x8[2],xhat8x8[3],xhat8x8[4],xhat8x8[5],xhat8x8[6],xhat8x8[7],xhat8x8[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq, posRawOldFlag);
 							//printf("(mag) % 1.4f % 1.4f % 1.4f (atan2(y/x)) % 1.4f\n", magRawRot[0]*norm_mag, magRawRot[1]*norm_mag, magRawRot[2]*norm_mag, atan2(magRawRot[1]*norm_mag, magRawRot[0]*norm_mag)*(180/PI));
 						}
 						
 						if(ekfPrint6States && tSensorFusionCounter % 10 == 0){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
-							printf("(ang(xhat)) % 2.4f % 2.4f % 2.4f (pos(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), xhat9x9[0],xhat9x9[1],xhat9x9[2], uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
+							printf("(ang(xhat)) % 2.4f % 2.4f % 2.4f (pos(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), xhat8x8[0],xhat8x8[1],xhat8x8[2], uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
 							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (OLP) %i %i (L) %f (normMag) %f (rawMag) %f %f %f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), 	xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), 	ioutlierFlagPercentage, outlierFlag[0],		Lmag[0],normMag,	magRawRot[0],magRawRot[1],magRawRot[2],		ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), 	xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
 							//printf("(ang(conj)) % 2.4f % 2.4f % 2.4f (ang) % 2.4f % 2.4f % 2.4f \n",euler[2]*(180/PI),euler[1]*(180/PI),euler[0]*(180/PI),euler2[2]*(180/PI),euler2[1]*(180/PI),euler2[0]*(180/PI));
 						
@@ -1297,9 +1299,9 @@ void ekfCalibration9x9(double *Rekf, double *ekf0, double *ekfCal, double *ymeas
 		Rekf[8]/=CALIBRATION;
 		
 		// Overide calibration when position measurements are gone
-		Rekf[0]=1;
-		Rekf[4]=1;
-		Rekf[8]=1;
+		//Rekf[0]=1;
+		//Rekf[4]=1;
+		//Rekf[8]=1000;
 	
 		// Print results
 		printf("Mean (bias) EKF 9x9\n");
@@ -1946,9 +1948,9 @@ void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
 	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
 	xhat[2]=xhat_prev[2] + Ts*xhat_prev[5];
-	xhat[3]=xhat_prev[3] - Ts*((par_par_k_d*xhat_prev[3])/par_mass - (par_c_m*par_k*(sin(par_att[0])*sin(xhat_prev[6]) + cos(par_att[0])*cos(xhat_prev[6])*sin(par_att[1]))*(u1^2 + u2^2 + u3^2 + u4^2))/par_mass);
-	xhat[4]=xhat_prev[4] - Ts*((par_par_k_d*xhat_prev[4])/par_mass + (par_c_m*par_k*(cos(xhat_prev[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat_prev[6]))*(u1^2 + u2^2 + u3^2 + u4^2))/par_mass);
-	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[7] - (par_par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(u1^2 + u2^2 + u3^2 + u4^2))/par_mass);
+	xhat[3]=xhat_prev[3] - Ts*((par_k_d*xhat_prev[3])/par_mass - (par_c_m*par_k*(sin(par_att[0])*sin(xhat_prev[6]) + cos(par_att[0])*cos(xhat_prev[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass + (par_c_m*par_k*(cos(xhat_prev[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat_prev[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[7] - (par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
 	xhat[6]=xhat_prev[6] + Ts*((par_att[3]*cos(par_att[0]))/cos(par_att[1]) + (par_att[2]*sin(par_att[0]))/cos(par_att[1]));
 	xhat[7]=xhat_prev[7];
 }
@@ -1956,7 +1958,7 @@ void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 // Jacobian of model for position states (8x8) including yaw and disturbance z estimation
 void Jfx_8x8(double *xhat, double *A, double *u, double Ts, double *par_att){
 	// par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
-	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=1;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=1;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=Ts;A[25]=0;A[26]=0;A[27]=1 - (Ts*par_par_k_d)/par_mass;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=0;A[33]=Ts;A[34]=0;A[35]=0;A[36]=1 - (Ts*par_par_k_d)/par_mass;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=Ts;A[43]=0;A[44]=0;A[45]=1 - (Ts*par_par_k_d)/par_mass;A[46]=0;A[47]=0;A[48]=0;A[49]=0;A[50]=0;A[51]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat[6]))*(u[0]^2 + u[1]^2 + u[2]^2 + u[3]^2))/par_mass;A[52]=(Ts*par_c_m*par_k*(sin(par_att[0])*sin(xhat[6]) + cos(par_att[0])*cos(xhat[6])*sin(par_att[1]))*(u[0]^2 + u[1]^2 + u[2]^2 + u[3]^2))/par_mass;A[53]=0;A[54]=1;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=1;
+	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=1;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=1;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=Ts;A[25]=0;A[26]=0;A[27]=1 - (Ts*par_k_d)/par_mass;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=0;A[33]=Ts;A[34]=0;A[35]=0;A[36]=1 - (Ts*par_k_d)/par_mass;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=Ts;A[43]=0;A[44]=0;A[45]=1 - (Ts*par_k_d)/par_mass;A[46]=0;A[47]=0;A[48]=0;A[49]=0;A[50]=0;A[51]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[52]=(Ts*par_c_m*par_k*(sin(par_att[0])*sin(xhat[6]) + cos(par_att[0])*cos(xhat[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[53]=0;A[54]=1;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=1;
 }
 
 // Nonlinear Model for attitude states including bias estimation (9x1)

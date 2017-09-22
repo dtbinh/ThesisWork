@@ -622,14 +622,14 @@ void *threadController( void *arg ) {
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff, pid_angle_theta_ki_local, tsTrue);
 				//tau_x=0; tau_y=0; tau_z=0;
-				 if (manualThrustBuffer[0] >= 0) {
-					thrust = manualThrustBuffer[0];
+				 //if (manualThrustBuffer[0] >= 0) {
+					//thrust = manualThrustBuffer[0];
 					//printf("thrust manual = %f\n", thrust);
-				 }
-				 else {
+				 //}
+				 //else {
 					controllerAlt( &altParams, &altInputs, altX_all, altU_all, attU_all, measBuffer, refBuffer, distBuffer );
 					//printf("thrust mpc = %f\n", thrust);
-				 }
+				 //}
 
 				 if (pid_trigger) {
 					 //printf("PID\n");
@@ -669,14 +669,14 @@ void *threadController( void *arg ) {
 				 ////tau_y=(-a)+2*((double)rand()/(double)(RAND_MAX)) * a;
 				 
 				if (thrust<0){
-					printf("thrust less than zero = %f\n", thrust);
+					//printf("thrust less than zero = %f\n", thrust);
 					thrust=0;
 				}
 				
 				if ( thrust <= 2 ) {
 					tau_x=0; tau_y=0; tau_z=0;
 					if ( controllerCounter % 40 == 0 ) {
-						printf("thrust less than %f\n", thrust);
+						//printf("thrust less than %f\n", thrust);
 					}
 				}
 	
@@ -1040,7 +1040,8 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 
 	altFmpc(altParams, altInputs, altX_all, altU_all);
 	
-	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
+	//thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
+	thrust = altU_all[0]*mdl_param.mass;	// gravity compensation
 }
 
 /* interact with fast MPC POS */
