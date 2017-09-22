@@ -498,10 +498,10 @@ void *threadController( void *arg ) {
 		if(!triggerMpcPos){
 			measBuffer[0]=0; // override position x control
  			measBuffer[1]=0; // override position y control
- 			measBuffer[2]=0; // override position z control
+ 			//measBuffer[2]=0; // override position z control
 			measBuffer[3]=0; // override position xdot control
  			measBuffer[4]=0; // override position ydot control
- 			measBuffer[5]=0; // override position zdot control
+ 			//measBuffer[5]=0; // override position zdot control
 		}
 		
 		// Update controller parameters Q
@@ -615,6 +615,7 @@ void *threadController( void *arg ) {
 				//printmat(refBuffer, 1, 12);
 				
 				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 	
+				//printf("(xyz) %f %f %f\n", measBuffer[0], measBuffer[1], measBuffer[2]);
 				
 				//printf("%f\n", pid_angle_ki_local);
 				
@@ -1035,13 +1036,14 @@ static void controllerAlt( struct AltParams *altParams, struct AltInputs *altInp
 	getAltitudeInputConstraints( dist , altParams, attU_all );	
 	
 	// Get measurements and references from global data
+	//printf("MPC_alt error: %f (meas) %f (ref) %f\n", meas[2] - ref[2], meas[2], ref[2]);
 	altInputs->x0[0] = meas[2] - ref[2];
 	altInputs->x0[1] = meas[5] - ref[5];
 
 	altFmpc(altParams, altInputs, altX_all, altU_all);
 	
-	//thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
-	thrust = altU_all[0]*mdl_param.mass;	// gravity compensation
+	thrust = (altU_all[0]-dist[2])*mdl_param.mass;	// gravity compensation
+	//thrust = altU_all[0]*mdl_param.mass;	// gravity compensation
 }
 
 /* interact with fast MPC POS */
