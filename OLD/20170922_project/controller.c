@@ -61,8 +61,6 @@ static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
 static double manualThrustData[1]={manualThrust};
-static double positionsData[9]={0};
-static double positions_timeoutData[3]={1};
 
 static double PWM[4] = { 0, 0, 0, 0 };
 //static int globalWatchdog=0;
@@ -117,6 +115,7 @@ struct PosInputs posInputs = {
 
 // These will later come from standalone computer and estimator
 double references[12] = { 0,0,0,	0,0,0,	NAN,NAN,0,	0,0,0 };
+double references_formation[2] = { 0,0 };
 double measurements[12] = { 0,0,0,	0,0,0,	0,0,0,	0,0,0 };
 double disturbances [3] = { 0,0,-par_g };	// x , y and z disturbances
 double disturbances_tau[3] = {0,0,0}; // torque disturbance attitude x,y,z
@@ -127,18 +126,30 @@ int sensorInitReady=0; // ekfReady[0=not, 1=mpc can start]
 static double PosTsSec = 0.05;
 static double AttTsSec = 0.05;
 static double AltTsSec = 0.05;
+//const static double PosTs = 0.05*(1e+9);	//nano for RPi implementation
+//const static double AttTs = 0.05*(1e+9); 	//nano for RPi implementation
+//const static double AltTs = 0.05*(1e+9); 	//nano for RPi implementation
 
 // Predeclarations
 static void *threadUpdateMeasurements(void*);
 static void *threadController(void*);
 static void *threadUpdateConstraintsSettingsReferences(void*);
+
+//static void *threadControllerWatchdog(void*);
+// static void *threadControllerPos(void*);
+// static void *threadControllerWatchdogPos(void*);
+// static void *threadControllerAtt(void*);
+// static void *threadControllerWatchdogAtt(void*);
+// static void *threadControllerAlt(void*);
+// static void *threadControllerWatchdogAlt(void*);
+
 static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
 static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, double, double);
 static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
 static void altFmpc( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all );
-static void refGen_formation( double *, double *, double * );
+//static void refGen_formation( double *x_agent1, double *x_agent2 );
 
 static double controllerPID(double, double*, double*, double, double, double, double);
 
@@ -165,6 +176,8 @@ static void dnudz(double *A, double *B, double *At, double *Bt, double *eyen,
 // Predeclare thread mutexes
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexConstraintsData = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexWatchdog = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t mutexPWM = PTHREAD_MUTEX_INITIALIZER;
 
 /******************************************************************/
 /*************************START PROCESS****************************/
@@ -231,15 +244,13 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;	// to comm
 	structPipe *ptrPipe = arg; // to comm
 
-	double communicationDataBuffer[84];
+	double communicationDataBuffer[72];
 	double keyboardDataBuffer[18];
 	double tuningMpcBuffer[14];
 	double tuningMpcQfBuffer[9];
 	double tuningMpcBufferControl[6];
 	double tuningPidBuffer[6];
 	double manualThrustBuffer[1];
-	double positionsBuffer[9];
-	double positions_timeoutBuffer[3];
 	
 	//// Loop forever streaming data
 	while(1){
@@ -247,18 +258,19 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 		if (read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) != sizeof(communicationDataBuffer) ) printf("Error in reading 'keyboardData' from Communication to Controller\n");
 		//else printf("Controller ID: %d, Read: %f from Communication\n", (int)getpid(), keyboardDataBuffer[0]);
 		
-		// Put new data in to local variables
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/84);
-		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/84);
-		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/84);
-		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/84);
-		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/84);	
-		memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/84);
-		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/84);	
-		memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/84);
-		memcpy(positionsBuffer, communicationDataBuffer+72, sizeof(communicationDataBuffer)*9/84);	
-		memcpy(positions_timeoutBuffer, communicationDataBuffer+81, sizeof(communicationDataBuffer)*3/84);
-	
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/72);
+		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/72);
+		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/72);
+		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/72);
+		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/72);	
+		memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/72);
+
+		
+		//printf("--- %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", communicationDataBuffer[0], communicationDataBuffer[1], communicationDataBuffer[2], communicationDataBuffer[3], communicationDataBuffer[4], communicationDataBuffer[5], communicationDataBuffer[6], communicationDataBuffer[7], communicationDataBuffer[8],communicationDataBuffer[9], communicationDataBuffer[10], communicationDataBuffer[11], communicationDataBuffer[12], communicationDataBuffer[13], communicationDataBuffer[14], communicationDataBuffer[15], communicationDataBuffer[16], communicationDataBuffer[17],communicationDataBuffer[18], communicationDataBuffer[19], communicationDataBuffer[20], communicationDataBuffer[21], communicationDataBuffer[22], communicationDataBuffer[23], communicationDataBuffer[24], communicationDataBuffer[25], communicationDataBuffer[26]);
+		
+		//printf("Q {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}\n{%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f}\n", tuningMpcBuffer[0], tuningMpcBuffer[1], tuningMpcBuffer[2], tuningMpcBuffer[3], tuningMpcBuffer[4], tuningMpcBuffer[5], tuningMpcBuffer[6], tuningMpcBuffer[7], tuningMpcBuffer[8], tuningMpcBuffer[9], tuningMpcBuffer[10], tuningMpcBuffer[11], tuningMpcBuffer[12], tuningMpcBuffer[13]);
+		//printf("R {theta_ref,phi_ref,taux,tauy,tauz,thrust}\n{%f,%f,%f,%f,%f,%f\n", tuningMpcBufferControl[0], tuningMpcBufferControl[1], tuningMpcBufferControl[2], tuningMpcBufferControl[3], tuningMpcBufferControl[4], tuningMpcBufferControl[5]);				
+		
 		// Put new constraints data in to global data in controller.c such that controller thread can access and use it.
 		pthread_mutex_lock(&mutexConstraintsData);
 			memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/18); // {ref_x,ref_y,ref_z}
@@ -268,13 +280,10 @@ void *threadUpdateConstraintsSettingsReferences(void *arg) {
 			memcpy(tuningMpcDataControl, tuningMpcBufferControl, sizeof(tuningMpcBufferControl));
 			memcpy(tuningPidData, tuningPidBuffer, sizeof(tuningPidBuffer));
 			memcpy(manualThrustData, manualThrustBuffer, sizeof(manualThrustBuffer));
-			memcpy(positionsData, positionsBuffer, sizeof(positionsBuffer));
-			memcpy(positions_timeoutData, positions_timeoutBuffer, sizeof(positions_timeoutBuffer));
-			//printf("positions_timeout: %f, %f, %f\n",positions_timeoutData[0], positions_timeoutData[1], positions_timeoutData[2]);
+			//keyboardTrigger=(int)keyboardDataBuffer[3]; // switch [0=STOP, 1=FLY]
 		pthread_mutex_unlock(&mutexConstraintsData);
 		
-		
-
+		//printf("keyboardDataBuffer %f, %f, %f, %f \n", keyboardDataBuffer[0], keyboardDataBuffer[1], keyboardDataBuffer[2], keyboardDataBuffer[3]);
 	}
 
 return NULL;
@@ -363,10 +372,12 @@ void *threadController( void *arg ) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
 
 	// Local variables to store global data in to using mutexes
-	double measBuffer[12], refBuffer[12], ref_formBuffer[2]={0}, distBuffer[3], distBufferTau[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.2, alpha = -1;	
+	double measBuffer[12], refBuffer[12], ref_formBuffer[2], distBuffer[3], distBufferTau[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.2, alpha = -1;	
 	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint, mpcAtt_ff; // feed forward activation trigger for attitude mpc;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+	double k1 = mdl_param.c_m*mdl_param.k, k2 = mdl_param.b*mdl_param.k, l = mdl_param.L; 
+	double k1k2l4 = 4*k1*k2*l;
 	int i;
 	
 	double tuningMpcBuffer[14];		//Q - 14 states
@@ -375,14 +386,11 @@ void *threadController( void *arg ) {
 	double controllerBuffer[8]; // {PWM, thrust, torques} to be sent over to sensor.c
 	double tuningPidBuffer[6];
 	double manualThrustBuffer[1]={manualThrust};
-	double positionsBuffer[9]; // positions of all directly from 'gps'
-	double positions_timeoutBuffer[3]; // timeout data
-	double positions_agents[6]; // position of other agents used for formation flying
-	double positions_self_prev[3]; // previous self position used in case positioning system has time out
 	
 	// PID variables
 	double pid_gyro_error_integral[1]={0};
 	double pid_gyro_error_prev[1]={0};
+	double pid_gyro_u=0;
 	double pid_gyro_kp_local=pid_gyro_kp;
 	double pid_gyro_ki_local=pid_gyro_ki;
 	double pid_gyro_kd_local=pid_gyro_kd;
@@ -396,18 +404,21 @@ void *threadController( void *arg ) {
 	
 	double pid_gyro_theta_error_integral[1]={0};
 	double pid_gyro_theta_error_prev[1]={0};
+	double pid_gyro_theta_u=0;
 	double pid_gyro_theta_kp_local=pid_gyro_kp;
 	double pid_gyro_theta_ki_local=pid_gyro_ki;
 	double pid_gyro_theta_kd_local=pid_gyro_kd;
 	
 	double pid_angle_theta_error_integral[1]={0};
 	double pid_angle_theta_error_prev[1]={0};
+	double pid_angle_theta_u=0;
 	double pid_angle_theta_kp_local=pid_angle_kp;
 	double pid_angle_theta_ki_local=pid_angle_ki;
 	double pid_angle_theta_kd_local=pid_angle_kd;
 	
 	double pid_gyro_psi_error_integral[1]={0};
 	double pid_gyro_psi_error_prev[1]={0};
+	double pid_gyro_psi_u=0;
 	double pid_gyro_psi_kp_local=0.02;
 	double pid_gyro_psi_ki_local=0.0;
 	double pid_gyro_psi_kd_local=0.0;
@@ -415,8 +426,13 @@ void *threadController( void *arg ) {
 	int pid_trigger;
 	int controllerCounter=0;
 	
-	// Activate random number generator seed
+	// Activate random number generator
 	srand((unsigned int)time(NULL));
+	double amp=0.004; // amplitude of sine wave
+	double a=amp/3; // random number max [0 a]
+	double tsTrue_accumulated=0;
+	double L=.8; // sine wave period
+	
 	
 	/// Setup timer variables for real time
 	struct timespec t,t_start,t_stop;
@@ -448,9 +464,10 @@ void *threadController( void *arg ) {
 			sensorReady=sensorInitReady;
 		pthread_mutex_unlock(&mutexSensorData);
 		
-		// Get references, positions (other agents) and tuning values(keyboard for now)
+		// Get references and tuning values(keyboard for now)
 		pthread_mutex_lock(&mutexConstraintsData);
 			memcpy(refBuffer, references, sizeof(references));
+			memcpy(ref_formBuffer, references_formation, sizeof(references_formation));
 			triggerFly=(int)keyboardData[3];
 			triggerMpcPos=(int)keyboardData[13];
 			pwmPrint=(int)keyboardData[4];
@@ -463,12 +480,10 @@ void *threadController( void *arg ) {
 			memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
 			memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));
 			memcpy(manualThrustBuffer, manualThrustData, sizeof(manualThrustData));
-			memcpy(positionsBuffer, positionsData, sizeof(positionsData));
-			memcpy(positions_timeoutBuffer, positions_timeoutData, sizeof(positions_timeoutData));
 		pthread_mutex_unlock(&mutexConstraintsData);
-			
-		//printf("triggerFly: %i pwmPrint: %i sensorReady: %i\n", triggerFly, pwmPrint, sensorInitReady);
-			
+		
+		//printf("manualThrustData controller: %f\n",manualThrustBuffer[0]);
+		
 		/// Time it and print true sampling rate
 		clock_gettime(CLOCK_MONOTONIC, &t_stop); /// stop elapsed time clock
 		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
@@ -547,51 +562,11 @@ void *threadController( void *arg ) {
 		pid_angle_theta_ki_local=tuningPidBuffer[4];
 		pid_angle_theta_kd_local=tuningPidBuffer[5];
 	
-		//// Formation flying *********************
-		// Copy over other 2 agents to buffer
-		switch (MYSELF){
-			case AGENT1:
-				memcpy(positions_agents, positionsBuffer+3, sizeof(positionsBuffer)*6/9); // agents 2 and 3
-				break;
-			case AGENT2:
-				memcpy(positions_agents, positionsBuffer, sizeof(positionsBuffer)*3/9); // agent 1
-				memcpy(positions_agents+3, positionsBuffer+6, sizeof(positionsBuffer)*3/9); // agent 3
-				break;
-			case AGENT3:
-				memcpy(positions_agents, positionsBuffer, sizeof(positionsBuffer)*6/9); // agents 1 and 2
-				break;
-		}
-	
-		// Check for timeouts. If not timeouts, compute the formation reference
-		if (!positions_timeoutBuffer[0] && !positions_timeoutBuffer[1] && !positions_timeoutBuffer[2]){
-			refGen_formation(positions_agents,measBuffer,ref_formBuffer);
-			
-			// save current position
-			positions_self_prev[0]=measBuffer[0]; // x
-			positions_self_prev[1]=measBuffer[1]; // y
-			positions_self_prev[2]=measBuffer[2]; // z
-			
-			//printf("no timeout, positions_self_prev: %f, %f, %f\n",positions_self_prev[0], positions_self_prev[1], positions_self_prev[2]);
-		}
-		// If any timeout present, deactivate formation flying and "stop" drone by setting final reference to previous position.
-		else{
-			// deactivate formation flying by setting error=0
-			ref_formBuffer[0]=measBuffer[0];
-			ref_formBuffer[1]=measBuffer[1];
-			
-			//printf("timeout, ref_formBuffer: %f, %f\n", ref_formBuffer[0], ref_formBuffer[1]);
-			
-			// setting final reference to previous position
-			//refBuffer[0]=positions_self_prev[0];
-			//refBuffer[1]=positions_self_prev[1];
-			//refBuffer[2]=positions_self_prev[2];
-		}
-		
-	
 		// To ramp the references in x, y and z
 		if ( keyRampRef ) {
 			memcpy(point_1, measBuffer, sizeof(measBuffer)*3/12);
 			memcpy(point_2, refBuffer, sizeof(refBuffer)*3/12);
+			
 			
 			distance = sqrt( pow(point_2[0]-point_1[0],2) + pow(point_2[1]-point_1[1],2) + pow(point_2[2]-point_1[2],2) );
 			
@@ -679,18 +654,39 @@ void *threadController( void *arg ) {
 						printf("thrust less than %f\n", thrust);
 					}
 				}
-	
+				controllerCounter++;
+				
 				//tau_x = 0.000;
 				//tau_y = 0.000;
 				//tau_z = 0.000;
 				
-				//// PWM from tau and thrust using inverse of M matrix using our own frames!
+				// PWM from tau and thrust using inverse of M matrix using controller paper frames
+				PWM[0] = sqrt( (  2*k2*tau_y + thrust*k2*l - k1*l*tau_z )/k1k2l4 );
+				PWM[1] = sqrt( ( -2*k2*tau_x + thrust*k2*l + k1*l*tau_z )/k1k2l4 );
+				PWM[2] = sqrt( ( -2*k2*tau_y + thrust*k2*l - k1*l*tau_z )/k1k2l4 );
+				PWM[3] = sqrt( (  2*k2*tau_x + thrust*k2*l + k1*l*tau_z )/k1k2l4 );
+				//// Create PWM signal from calculated thrust and torques
+				//PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+				// PWM from tau and thrust using inverse of M matrix using our own frames!
 				PWM[0] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[1] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
 				PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-
-				controllerCounter++;
+				
+				//printf("[1]=% 1.6f   [2]=% 1.6f   [3]=% 1.6f   [4]=% 1.6f \n", PWM[0], PWM[1],PWM[2],PWM[3]);
+				
+				PWM[0]=0;
+				PWM[1]=0;
+				PWM[2]=0;
+				PWM[3]=0;
+				
+				//PWM[0]=0;
+				//PWM[1]=10;
+				//PWM[2]=0;
+				//PWM[3]=0;
 			}
 
 			// If false, force PWM outputs to zero.
@@ -729,7 +725,9 @@ void *threadController( void *arg ) {
 				pid_gyro_error_prev[0]=0;
 				pid_angle_error_integral[0]=0.0;
 				pid_angle_error_integral[1]=0.0;
-				pid_angle_error_prev[0]=0.0;		
+				pid_angle_error_prev[0]=0.0;
+				tsTrue_accumulated=0; // reset tsTrue accum for sine wave function
+				
 			}
 		
 			// Print PWM signal sent to motors
@@ -779,45 +777,6 @@ void *threadController( void *arg ) {
 /*************************   FUNCTIONS   **************************/
 /******************************************************************/
 
-/* Generates x and y refs for formation states for pos controller */
-void refGen_formation( double *pos_agents, double *pos_self, double *ref_formation ){
-	double points[4]={0};	// intersection points of the agents, first ind is the point number
-	double r = 2;	// the radius around other agents for the formation
-	double x1, x2, y1, y2, d1, d2;
-	
-	//% re-arrange variables
-	x1=pos_agents[0];
-	y1=pos_agents[1];
-	x2=pos_agents[3];
-	y2=pos_agents[4];
-
-
-	// If circles DO intersect
-	// Reference points becomes the closest intersection points
-	if ( sqrt(pow(x1 - x2, 2) + pow((y1 - y2), 2) ) < 2*r ) {
-		//% generate circle intersections gfor desired distance between agents
-		points[1]=(x1*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - x2*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - pow(r,2)*y1 + pow(r,2)*y2 + pow(r,2)*y1 - pow(r,2)*y2 + pow(x1,2)*y1 + pow(x1,2)*y2 + pow(x2,2)*y1 + pow(x2,2)*y2 - y1*pow(y2,2) - pow(y1,2)*y2 + pow(y1,3) + pow(y1,3) - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2)));
-		points[0]=1/(2*x1-2*x2)*(pow(r,2)-pow(r,2)-(pow(x2,2)-pow(x1,2))-points[1]*(2*y1-2*y2)-(pow(y2,2)-pow(y1,2)));
-				
-		points[3]=(x2*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - x1*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - pow(r,2)*y1 + pow(r,2)*y2 + pow(r,2)*y1 - pow(r,2)*y2 + pow(x1,2)*y1 + pow(x1,2)*y2 + pow(x2,2)*y1 + pow(x2,2)*y2 - y1*pow(y2,2) - pow(y1,2)*y2 + pow(y1,3) + pow(y1,3) - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2)));
-		points[2]=1/(2*x1-2*x2)*(pow(r,2)-pow(r,2)-(pow(x2,2)-pow(x1,2))-points[3]*(2*y1-2*y2)-(pow(y2,2)-pow(y1,2)));
-	}
-	
-	// generate distance between self position and two new reference options
-	 d1=sqrt(pow(points[0] - pos_self[0], 2) + pow((points[1] - pos_self[1]), 2) );
-	 d2=sqrt(pow(points[2] - pos_self[0], 2) + pow((points[3] - pos_self[1]), 2) );
-	
-	// select closest intersection point as new formation reference
-	if(d1<d2){
-		ref_formation[0]=points[0];
-		ref_formation[1]=points[1];
-	}
-	else{
-		ref_formation[0]=points[2];
-		ref_formation[1]=points[3];
-	}
-}
-
 /* PID controller - Gains: kp = proportional, ki = integral, kd = derivative*/
 static double controllerPID(double error_current, double *error_integral, double *error_prev, double kp, double ki, double kd, double ts){
 	// Integral error
@@ -848,36 +807,17 @@ static void getAltitudeInputConstraints( double *dist , struct AltParams *altPar
 	double G[8];
 	double umin, umax;
 	
-	//// Create PWM signal from calculated thrust and torques
-	//PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//// PWM from tau and thrust using inverse of M matrix using our own frames!
-	//PWM[0] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[1] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[2] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	//PWM[3] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
-	
 	// equations to find minimum G representing 0% PWM
-	//G[0]=-(2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	//G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	//G[2]=(2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	//G[3]=(2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[0]=( 2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[1]=( 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[2]=(-2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
-	G[3]=(-2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[0]=-(2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[1]=(mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[2]=(2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
+	G[3]=(2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(mdl_param.L*mdl_param.b*mdl_param.mass);
 
 	// equations to find maximum G representing 100% PWM
-	//G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
-	//G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	//G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	//G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	G[4]=-(4*mdl_param.c_m*mdl_param.k*((-2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
-	G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] + 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	G[6]=(4*mdl_param.c_m*mdl_param.k*((-2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
-	G[7]=(4*mdl_param.c_m*mdl_param.k*((-2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[4]=-(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] + mdl_param.L*mdl_param.k*attU_all[2] - mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) - 10000))/mdl_param.mass;
+	G[5]=(4*mdl_param.c_m*mdl_param.k*((mdl_param.L*mdl_param.k*attU_all[2] - 2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[6]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[0] - mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
+	G[7]=(4*mdl_param.c_m*mdl_param.k*((2*mdl_param.b*attU_all[1] + mdl_param.L*mdl_param.k*attU_all[2] + mdl_param.L*mdl_param.b*dist[2]*mdl_param.mass)/(4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k) + 10000))/mdl_param.mass;
 
 	// max of G[0:3] becomes altitude control umin
 	umin=G[0];
@@ -1006,6 +946,9 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 		// attU_all[1] -= dist[1];
 		// attU_all[2] -= dist[2];
 	}
+	
+	//Flip to match tha axes!
+	//tau_y *= -1;
 
 	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
 		if(isnan(attU_all[i])!=0){
@@ -2260,3 +2203,666 @@ void resdresp(double *rd, double *rp, int T, int n, int nz, double *resd,
     return;
 }
 
+/* Generates x and y refs for formation states for pos controller */
+void refGen_formation( double *x_agent1, double *x_agent2 ) {
+	double points[2][2];	// intersection points of the agents, first ind is the point number
+	double r = 1;	// the radius around other agents for the formation
+	double x1, x2, y1, y2;
+	
+	//% re-arrange variables
+	x1=x_agent1[0];
+	y1=x_agent1[1];
+	x2=x_agent2[0];
+	y2=x_agent2[1];
+
+
+	//%% If circles DO intersect
+	//% Reference points becomes the closest intersection points
+	if ( sqrt(pow(x1 - x2, 2) + pow((y1 - y2), 2) ) < 2*r ) {
+		//% generate circle intersections gfor desired distance between agents
+		points[0][1]=(x1*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - x2*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - pow(r,2)*y1 + pow(r,2)*y2 + pow(r,2)*y1 - pow(r,2)*y2 + pow(x1,2)*y1 + pow(x1,2)*y2 + pow(x2,2)*y1 + pow(x2,2)*y2 - y1*pow(y2,2) - pow(y1,2)*y2 + pow(y1,3) + pow(y1,3) - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2)));
+		points[1][1]=(x2*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - x1*sqrt((- pow(r,2) + 2*r*r - pow(r,2) + pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2))*(pow(r,2) + 2*r*r + pow(r,2) - pow(x1,2) + 2*x1*x2 - pow(x2,2) - pow(y1,2) + 2*y1*y2 - pow(y2,2))) - pow(r,2)*y1 + pow(r,2)*y2 + pow(r,2)*y1 - pow(r,2)*y2 + pow(x1,2)*y1 + pow(x1,2)*y2 + pow(x2,2)*y1 + pow(x2,2)*y2 - y1*pow(y2,2) - pow(y1,2)*y2 + pow(y1,3) + pow(y1,3) - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(pow(x1,2) - 2*x1*x2 + pow(x2,2) + pow(y1,2) - 2*y1*y2 + pow(y2,2)));
+		points[0][0]=1/(2*x1-2*x2)*(pow(r,2)-pow(r,2)-(pow(x2,2)-pow(x1,2))-points[0][1]*(2*y1-2*y2)-(pow(y2,2)-pow(y1,2)));
+		points[1][0]=1/(2*x1-2*x2)*(pow(r,2)-pow(r,2)-(pow(x2,2)-pow(x1,2))-points[1][1]*(2*y1-2*y2)-(pow(y2,2)-pow(y1,2)));
+	}
+	
+	
+	
+	
+	
+	
+	
+	////% generate distance between self position and two new reference options
+	//d1=norm(points(1,:)'-x_pos_self(1:2));
+	//d2=norm(points(2,:)'-x_pos_self(1:2));
+	
+	//% select closest reference as new reference
+	//if(d1<d2)
+		//ref_pos=[points(1,1);0;points(1,2);0];
+	//else
+		//ref_pos=[points(2,1);0;points(2,2);0];
+	//end
+
+
+
+
+
+
+	//% re-arrange variables
+	//x1=x_constraints(1);
+	//y1=x_constraints(2);
+	//x2=x_constraints(4);
+	//y2=x_constraints(5);
+
+
+	//%% If circles DO intersect
+	//% Reference points becomes the closest intersection points
+	//if(norm([x1;y1]-[x2;y2])<2*r)
+		//% generate circle intersections gfor desired distance between agents
+		//points(1,2)=(x1*((- r1^2 + 2*r1*r2 - r2^2 + x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2)*(r1^2 + 2*r1*r2 + r2^2 - x1^2 + 2*x1*x2 - x2^2 - y1^2 + 2*y1*y2 - y2^2))^(1/2) - x2*((- r1^2 + 2*r1*r2 - r2^2 + x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2)*(r1^2 + 2*r1*r2 + r2^2 - x1^2 + 2*x1*x2 - x2^2 - y1^2 + 2*y1*y2 - y2^2))^(1/2) - r1^2*y1 + r1^2*y2 + r2^2*y1 - r2^2*y2 + x1^2*y1 + x1^2*y2 + x2^2*y1 + x2^2*y2 - y1*y2^2 - y1^2*y2 + y1^3 + y2^3 - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2));
+		//points(2,2)=(x2*((- r1^2 + 2*r1*r2 - r2^2 + x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2)*(r1^2 + 2*r1*r2 + r2^2 - x1^2 + 2*x1*x2 - x2^2 - y1^2 + 2*y1*y2 - y2^2))^(1/2) - x1*((- r1^2 + 2*r1*r2 - r2^2 + x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2)*(r1^2 + 2*r1*r2 + r2^2 - x1^2 + 2*x1*x2 - x2^2 - y1^2 + 2*y1*y2 - y2^2))^(1/2) - r1^2*y1 + r1^2*y2 + r2^2*y1 - r2^2*y2 + x1^2*y1 + x1^2*y2 + x2^2*y1 + x2^2*y2 - y1*y2^2 - y1^2*y2 + y1^3 + y2^3 - 2*x1*x2*y1 - 2*x1*x2*y2)/(2*(x1^2 - 2*x1*x2 + x2^2 + y1^2 - 2*y1*y2 + y2^2));
+		//points(1,1)=1/(2*x1-2*x2)*(r2^2-r1^2-(x2^2-x1^2)-points(1,2)*(2*y1-2*y2)-(y2^2-y1^2));
+		//points(2,1)=1/(2*x1-2*x2)*(r2^2-r1^2-(x2^2-x1^2)-points(2,2)*(2*y1-2*y2)-(y2^2-y1^2));
+		
+		//% generate distance between self position and two new reference options
+		//d1=norm(points(1,:)'-x_pos_self(1:2));
+			//d2=norm(points(2,:)'-x_pos_self(1:2));
+			
+			//% select closest reference as new reference
+			//if(d1<d2)
+				//ref_pos=[points(1,1);0;points(1,2);0];
+			//else
+				//ref_pos=[points(2,1);0;points(2,2);0];
+			//end
+			
+		//%% If circles DONT intersect
+		//% Reference points becomes the point on circle around leader
+		//else
+			//% Normalize
+			//v=[x1-x_pos_self(1),y1-x_pos_self(2)];
+			//u = v/norm(v);
+			//ref=[x1,y1]-r*u;
+			//ref_pos=[ref(1);0;ref(2);0];
+		//end
+
+		//ref_pos_f=[ref_pos(1);ref_pos(3)];
+}
+
+
+
+
+
+
+/******************************************************************/
+/********************* Individual controllers  ********************/
+/******************************************************************/
+
+
+// Thread - Watchdog for all controllers to flag if sampling time is not satisfied.
+/*void *threadControllerWatchdog(void *arg){
+	// Local Variables
+	int watchdog_current, watchdog_prev=0;
+
+	/// Setup timer variables for real time
+	struct timespec t,t_start,t_stop;
+	double tsTrue=tsController;
+
+	/// Lock memory
+	if(mlockall(MCL_CURRENT) == -1){
+		perror("mlockall failed in threadSensorFusion");
+	}
+	
+	/// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		/// Time it and wait until next shot
+		clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL); // sleep for necessary time to reach desired sampling time
+			
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		/// Calculate next shot
+		t.tv_nsec += tsWatchdog;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}	
+		
+		/// Print true sampling rate
+		clock_gettime(CLOCK_MONOTONIC, &t_stop);
+		tsTrue=(t_stop.tv_sec - t_start.tv_sec) + (t_stop.tv_nsec - t_start.tv_nsec) / NSEC_PER_SEC;
+		printf("Sampling time [s] mpc watchdog: %lf\n",tsTrue);
+	}
+	
+	return NULL;
+}
+*/
+
+
+/* Individual controllers if we want to run them at different sampling rates
+// Thread - Controller algorithm for Position (with pipe to sensor (PWM) and communication process)
+ void *threadControllerPos(void *arg) {
+	struct PosParams posParams = { 
+		.A = { 1,0,0,0,0,0,		PosTsSec,1,0,0,PosTsSec,0,		0,0,1,0,0,0,		0,0,PosTsSec,1,0,PosTsSec,		0,0,0,0,1,0,		0,0,0,0,0,1 },
+		.B = { 0,mdl_param.g*PosTsSec,0,0,0,0,		0,0,0,-mdl_param.g*PosTsSec,0,0 },
+		.Q =  { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
+		.Qf = { 10000,0,0,0,0,0,	0,1,0,0,0,0,	0,0,10000,0,0,0,	0,0,0,1,0,0,	0,0,0,0,6000,0,	0,0,0,0,0,6000 },
+		.R = { 100,0,		0,100 },
+		.umax = { 6*PI/180, 6*PI/180 },
+		.umin = { -6*PI/180, -6*PI/180 },
+		.n = 6, .m = 2, .T = 10, .niters = 5, .kappa = 1e-1
+	};	
+	
+	posX_all = calloc(posParams.n*posParams.T, sizeof(double));
+	posU_all = calloc(posParams.m*posParams.T, sizeof(double));
+	int i;
+    
+    ////printf("size of a double is %i", sizeof(double));
+   
+    ////for (i = 0; i < posParams.n*posParams.T; i++) {
+		////posX_all[i] = i;
+		////}
+		////printmat(posX_all, posParams.n, posParams.T);
+		    
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+		// Run controller
+
+		// Warm start before running the controller
+		//memcpy(&posInputs.X0_all[0], &posX_all[posParams.n], sizeof(double)*posParams.n*posParams.T-posParams.n); 	
+		//memcpy(&posInputs.U0_all[0], &posU_all[posParams.m], sizeof(double)*posParams.m*posParams.T-posParams.m); 	
+		for ( i = posParams.n*posParams.T-posParams.n; i < posParams.n*posParams.T; i++ ) {
+			posInputs.X0_all[i] = 0;
+			}
+		for ( i = posParams.m*posParams.T-posParams.m; i < posParams.m*posParams.T; i++ ) {
+			posInputs.U0_all[i] = 0;
+			}
+			
+		posInputs.x0[0] = measurements[0] - references[0];		// x
+		posInputs.x0[1] = measurements[3] - references[3];		// xdot
+		posInputs.x0[2] = measurements[1] - references[1];		// y
+		posInputs.x0[3] = measurements[4] - references[4];		// ydot
+		posInputs.x0[4] = measurements[0] - references_formation[0];		// x_formation
+		posInputs.x0[5] = measurements[1] - references_formation[1];		// y_formation
+
+
+		//printf("posInputs.X0_all\n");
+		//printmat(&posInputs.X0_all[0], posParams.n, posParams.T);
+		//printf("posInputs.U0_all\n");
+		//printmat(&posInputs.U0_all[0], posParams.m, posParams.T);
+		
+		posFmpc(&posParams, &posInputs, posX_all, posU_all);
+		
+		
+		//printf("posX_all\n");
+		//printmat(posX_all, posParams.n, posParams.T);
+		//printf("posU_all\n");
+		//printmat(posU_all, posParams.m, posParams.T);
+	
+		theta_dist = posU_all[0]-disturbances[0]/mdl_param.g;		//theta with disturbance compensation
+		phi_dist = posU_all[1]-disturbances[1]/mdl_param.g;			//phi with disturbance compensation
+
+		
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += PosTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Position controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogPos(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += PosTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+
+
+// Thread - Controller algorithm for Attitude (with pipe to sensor (PWM) and communication process)
+ void *threadControllerAtt(void *arg) {
+	struct AttParams attParams = { 
+		.A = { 1,0,0,0,0,0,		AttTsSec,1,0,0,0,0,	0,0,1,0,0,0,	0,0,AttTsSec,1,0,0,	0,0,0,0,1,0,	0,0,0,0,AttTsSec,1 },
+		.B = { 0,AttTsSec/mdl_param.i_xx,0,0,0,0,	0,0,0,AttTsSec/mdl_param.i_yy,0,0,	0,0,0,0,0,AttTsSec/mdl_param.i_zz },
+		.Q =  { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
+		.Qf = { 1000,0,0,0,0,0,		0,1,0,0,0,0,	0,0,1000,0,0,0,		0,0,0,1,0,0,	0,0,0,0,1000,0,		0,0,0,0,0,1 },
+		.R = { 1000,0,0,	0,1000,0,	0,0,1000 },
+		.umax = {  .1, .1, .1 },
+		.umin = { -.1,-.1,-.1 },
+		.n = 6, .m = 3, .T = 10, .niters = 20, .kappa = 1e-5
+	};
+	attX_all = calloc(attParams.n*attParams.T, sizeof(double));
+	attU_all = calloc(attParams.m*attParams.T, sizeof(double));
+    int i;
+    double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+		// Run controller
+
+		// Warm start before running the controller
+		//memcpy(&attInputs.X0_all[0], &attX_all[attParams.n], sizeof(double)*attParams.n*attParams.T-attParams.n); 	
+		//memcpy(&attInputs.U0_all[0], &attU_all[attParams.m], sizeof(double)*attParams.m*attParams.T-attParams.m); 	
+		for ( i = attParams.n*attParams.T-attParams.n; i < attParams.n*attParams.T; i++ ) {
+			attInputs.X0_all[i] = 0;
+			}
+		for ( i = attParams.m*attParams.T-attParams.m; i < attParams.m*attParams.T; i++ ) {
+			attInputs.U0_all[i] = 0;
+			}
+		
+		attInputs.x0[0] = measurements[6] - phi_dist;			//phi - coming from the pos controller
+		attInputs.x0[1] = measurements[9] - references[9];		//phidot
+		attInputs.x0[2] = measurements[7] - theta_dist;			//theta - coming from the pos controller
+		attInputs.x0[3] = measurements[10] - references[10];	//thetadot
+		attInputs.x0[4] = measurements[8] - references[8];		//psi
+		attInputs.x0[5] = measurements[11] - references[11];	//psidot
+		
+		attFmpc(&attParams, &attInputs, attX_all, attU_all);
+		
+		////printf("attX_all\n");
+		////printmat(attX_all, attParams.n, attParams.T);
+		////printf("attU_all\n");
+		////printmat(attU_all, attParams.m, attParams.T);
+		
+		tau_x = attU_all[0];		// theta or phi?!
+		tau_y = attU_all[1];		// theta or phi?!
+		tau_z = attU_all[2];		// psi
+		
+		//pthread_mutex_lock(&mutexPWM);
+			PWM[0] = sqrt( (  2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[1] = sqrt( (  2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//pthread_mutex_unlock(&mutexPWM);
+
+			
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += AttTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Attitude controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogAtt(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += AttTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+
+
+// Thread - Controller algorithm for Altitude (with pipe to sensor (PWM) and communication process)
+ void *threadControllerAlt(void *arg) {
+	
+    struct AltParams altParams = { 
+		.A = { 1, 0, AltTsSec, 1 },
+		.B = { 0, AltTsSec },
+		.Q =  { 100000, 0, 0, 100 },
+		.Qf = { 100000, 0, 0, 100 },
+		.R = { .1 },
+		.umax = { -mdl_param.g+100*100*(4*mdl_param.c_m*mdl_param.k)/mdl_param.mass },
+		.umin = { .8*(-mdl_param.g+(0)/mdl_param.mass) },
+		.n = 2, .m = 1, .T = 10, .niters = 5, .kappa = 1e+1
+	};
+	altX_all = calloc(altParams.n*altParams.T, sizeof(double));
+	altU_all = calloc(altParams.m*altParams.T, sizeof(double));
+
+    int i;
+	//double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
+    
+	//// Get pipe array and define local variables
+	////pipeArray *pipeArrayStruct = arg;
+	////structPipe *ptrPipe1 = pipeArrayStruct->pipe1;
+	////structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
+	
+	//// Get pipe and define local variables
+	//struct timespec t;
+	//struct sched_param param;
+
+	//// Declare ourself as a real time task
+	//param.sched_priority = 39;
+	//if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		//perror("sched_setscheduler failed");
+	//}
+
+	//// Lock memory
+	//if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		//perror("mlockall failed");
+	//}
+	
+	//// Pre-fault our stack
+	////stack_prefault();
+	
+	//// Start after 1 second
+	//clock_gettime(CLOCK_MONOTONIC, &t);
+	//t.tv_sec++;
+	
+	//// Loop forever at specific sampling rate
+	//while(1){
+		//// Wait until next shot
+		//clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+			
+
+		// Run controller
+
+		
+		// Warm start before running the controller
+		//memcpy(&altInputs.X0_all[0], &altX_all[altParams.n], sizeof(double)*altParams.n*altParams.T-altParams.n); 	
+		//memcpy(&altInputs.U0_all[0], &altU_all[altParams.m], sizeof(double)*altParams.m*altParams.T-altParams.m); 	
+		for ( i = altParams.n*altParams.T-altParams.n; i < altParams.n*altParams.T; i++ ) {
+			altInputs.X0_all[i] = 0;
+			}
+		for ( i = altParams.m*altParams.T-altParams.m; i < altParams.m*altParams.T; i++ ) {
+			altInputs.U0_all[i] = 0;
+			}
+	
+		altInputs.x0[0] = measurements[2] - references[2];
+		altInputs.x0[1] = measurements[5] - references[5];
+		
+		//printf("altInputs.U0_all\n");
+		//printmat(&altInputs.U0_all[0], 1, 10);		
+		//printf("altInputs.X0_all\n");
+		//printmat(&altInputs.X0_all[0], 2, 10);
+		
+		altFmpc(&altParams, &altInputs, altX_all, altU_all);
+		
+		//printf("altX_all\n");
+		//printmat(altX_all, altParams.n, altParams.T);
+		//printf("altU_all\n");
+		//printmat(altU_all, altParams.m, altParams.T);
+		
+		thrust = (altU_all[0]+mdl_param.g)*mdl_param.mass;	// gravity compensation
+		
+		//pthread_mutex_lock(&mutexPWM);
+			//PWM[0] = sqrt( ( 2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[1] = sqrt( ( 2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[2] = sqrt( ( -2*mdl_param.b*tau_x + thrust*mdl_param.L*mdl_param.b + mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+			//PWM[3] = sqrt( ( -2*mdl_param.b*tau_y + thrust*mdl_param.L*mdl_param.b - mdl_param.L*mdl_param.k*tau_z )/Lbc_mk4 );
+		//pthread_mutex_unlock(&mutexPWM);	
+			
+		//// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
+		////if (write(ptrPipe1->parent[1], value, sizeof(value)) != sizeof(value)) printf("write error in controller to sensor\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+	
+		//// Set update of constraints and controller results by writing to the communication.c process which applies the changes over UDP.
+		////if (write(ptrPipe2->parent[1], controllerDataBuffer, sizeof(controllerDataBuffer)) != sizeof(controllerDataBuffer)) printf("write error in controller to communication\n");
+		////else printf("Controller ID: %d, Sent: %f to Communication\n", (int)getpid(), controllerDataBuffer[0]);
+
+		//// Update watchdog
+		//pthread_mutex_lock(&mutexWatchdog);
+			//globalWatchdog++;
+		//pthread_mutex_unlock(&mutexWatchdog);
+		
+		//// Calculate next shot
+		//t.tv_nsec += AltTs;	//	nanosec sampling time
+		//while (t.tv_nsec >= NSEC_PER_SEC) {
+			//t.tv_nsec -= NSEC_PER_SEC;
+			//t.tv_sec++;
+		//}
+	//}
+	
+	return NULL;
+}
+
+// Thread - Watchdog for Altitude controller to flag if sampling time is not satisfied.
+
+void *threadControllerWatchdogAlt(void *arg) {	
+	// Get pipe and define local variables
+	struct timespec t;
+	struct sched_param param;
+	int watchdog_current, watchdog_prev=0;
+
+	// Declare ourself as a real time task
+	param.sched_priority = 40;
+	if(sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1){
+		perror("sched_setscheduler failed");
+	}
+	
+	// Lock memory
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1){
+		perror("mlockall failed");
+	}
+	
+	// Pre-fault our stack
+	//stack_prefault();
+	
+	// Start after 1 second
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	t.tv_sec++;
+	
+	// Run controller algorithm
+	while(1){
+		// Wait until next shot
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+		
+		// Get watchdog status
+		pthread_mutex_lock(&mutexWatchdog);
+			watchdog_current=globalWatchdog; // current
+			globalWatchdog=watchdog_prev+1; // update to new
+		pthread_mutex_unlock(&mutexWatchdog);
+		
+		// Check if deadline was met
+		if (watchdog_current==watchdog_prev){
+			printf("MPC did NOT meet deadline2\n");
+		}
+		
+		// Update previous watchdog to current
+		watchdog_prev++;
+		
+		// Calculate next shot
+		t.tv_sec += AltTs;
+		while (t.tv_nsec >= NSEC_PER_SEC) {
+			t.tv_nsec -= NSEC_PER_SEC;
+			t.tv_sec++;
+		}
+	}
+	
+	return NULL;
+}
+*/

@@ -85,9 +85,6 @@ static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c t
 static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
 static double keyboardData[18]= { 0, 0, 0, 0, 0, 0, 0, 0 , 0, 0, 0, 0.01, 0.05, 0, 0, 0, 0, 0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
-static double positionsData[9]={0};
-static double positions_timeoutData[3]={0};
-
 
 // Variables
 static int beaconConnected=0;
@@ -120,21 +117,21 @@ void startSensors(void *arg1, void *arg2){
 	pthread_t threadSenFus, threadPWMCtrl, threadCommToSens;
 	int threadPID2, threadPID3, threadPID4; 
 	
-	threadPID2=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
+	//threadPID2=pthread_create(&threadSenFus, NULL, &threadSensorFusion, &pipeArrayStruct);
 	threadPID3=pthread_create(&threadPWMCtrl, NULL, &threadPWMControl, arg1);
 	threadPID4=pthread_create(&threadCommToSens, NULL, &threadPipeCommunicationToSensor, arg2);
 	
 	// Set up thread scheduler priority for real time tasks
 	struct sched_param paramThread2, paramThread3, paramThread4; // paramThread1, 
-	paramThread2.sched_priority = PRIORITY_SENSOR_FUSION;
+	//paramThread2.sched_priority = PRIORITY_SENSOR_FUSION;
 	paramThread3.sched_priority = PRIORITY_SENSOR_PWM;
 	paramThread4.sched_priority = PRIORITY_SENSOR_PIPE_COMMUNICATION;
-	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
+	//if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
 	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	
 	// If threads created successful, start them
-	if (!threadPID2) pthread_join( threadSenFus, NULL);
+	//if (!threadPID2) pthread_join( threadSenFus, NULL);
 	if (!threadPID3) pthread_join( threadPWMCtrl, NULL);
 	if (!threadPID4) pthread_join( threadCommToSens, NULL);
 }
@@ -148,11 +145,9 @@ void startSensors(void *arg1, void *arg2){
 static void *threadPipeCommunicationToSensor(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double communicationDataBuffer[84];
+	double communicationDataBuffer[72];
 	double keyboardDataBuffer[18];
 	double tuningEkfBuffer[18];
-	double positionsBuffer[9];
-	double positions_timeoutBuffer[3];
 	
 	/// Setup timer variables for real time performance check
 	struct timespec t_start,t_stop;
@@ -177,18 +172,14 @@ static void *threadPipeCommunicationToSensor(void *arg){
 		if(read(ptrPipe->child[0], communicationDataBuffer, sizeof(communicationDataBuffer)) == -1) printf("read error in sensor from communication\n");
 		//else printf("Sensor ID: %d, Recieved Communication data: %f\n", (int)getpid(), keyboardDataBuffer[0]);
 				
-		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/84);
-		memcpy(tuningEkfBuffer, communicationDataBuffer+38, sizeof(communicationDataBuffer)*18/84);
-		memcpy(positionsBuffer, communicationDataBuffer+72, sizeof(communicationDataBuffer)*9/84);
-		memcpy(positions_timeoutBuffer, communicationDataBuffer+81, sizeof(communicationDataBuffer)*3/84);
+		memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/71);
+		memcpy(tuningEkfBuffer, communicationDataBuffer+38, sizeof(communicationDataBuffer)*18/71);
 		
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexKeyboardData);
 			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer));
 			memcpy(tuningEkfData, tuningEkfBuffer, sizeof(tuningEkfBuffer));
 			timerPrint=(int)keyboardData[5];
-			memcpy(positionsData, positionsBuffer, sizeof(positionsBuffer));
-			memcpy(positions_timeoutData, positions_timeoutBuffer, sizeof(positions_timeoutBuffer));
 		pthread_mutex_unlock(&mutexKeyboardData);
 		
 		/// Print true sampling rate
@@ -229,9 +220,7 @@ static void *threadSensorFusion (void *arg){
 	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double tsTrue=tsSensorsFusion; // true sampling time measured using clock_gettime() ,ts_save_buffer
 	int  calibrationCounterEKF=0, posRawOldFlag=0, enableMPU9250Flag=-1, enableAK8963Flag=-1, calibrationCounterM0=0, calibrationCounterP=0; // , calibrationLoaded=0,
-	double positionsBuffer[9];
-	double positions_timeoutBuffer[3];
-	
+
 	
 	// Save to file buffer variable
 	double buffer_u1[BUFFER];
@@ -382,9 +371,9 @@ static void *threadSensorFusion (void *arg){
 				pthread_mutex_unlock(&mutexI2CBusy);
 				
 				// Read raw position data from global to local variable
-				//pthread_mutex_lock(&mutexPositionSensorData);	
-					//memcpy(posRaw, sensorRawDataPosition, sizeof(sensorRawDataPosition));		
-				//pthread_mutex_unlock(&mutexPositionSensorData);
+				pthread_mutex_lock(&mutexPositionSensorData);	
+					memcpy(posRaw, sensorRawDataPosition, sizeof(sensorRawDataPosition));		
+				pthread_mutex_unlock(&mutexPositionSensorData);
 				
 				// Read latest control signal from globale variable to local variable
 				pthread_mutex_lock(&mutexControlData);	
@@ -407,8 +396,6 @@ static void *threadSensorFusion (void *arg){
 					memcpy(tuningEkfBuffer6x6, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
 					memcpy(tuningEkfBuffer9x9, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
 					memcpy(tuningEkfBuffer9x9+6, tuningEkfData+12, sizeof(tuningEkfData)*3/18); // ekf states 13-15
-					memcpy(positionsBuffer, positionsData, sizeof(positionsData));
-					memcpy(positions_timeoutBuffer, positions_timeoutData, sizeof(positions_timeoutData));
 				pthread_mutex_unlock(&mutexKeyboardData);
 				
 				// Convert sensor data to correct (filter) units:
@@ -464,6 +451,8 @@ static void *threadSensorFusion (void *arg){
 					tsAverageCounter=0;
 					tsAverageAccum=0;
 				}
+				
+				//tsAverageReadyEKF=2;
 				
 				// Set gain of orientation estimation Madgwick beta and activate Low Pass filtering of raw accelerometer and gyroscope after sampling frequency has stabilized
 				if(tsAverageReadyEKF==2){
@@ -535,7 +524,7 @@ static void *threadSensorFusion (void *arg){
 					// Orientation estimation with Madgwick filter
 					//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
 					//if ( tsTrue < 10*tsSensorsFusion/NSEC_PER_SEC ) {
-						MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
+						//MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 						MadgwickQuaternionUpdate((float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2], q, (float)tsTrue);	
 					//}
 
@@ -544,46 +533,40 @@ static void *threadSensorFusion (void *arg){
 					q_comp[2]=-(double)q[2];
 					q_comp[3]=-(double)q[3];
 					
-					q_comp2[0]=q0;
-					q_comp2[1]=q1;
-					q_comp2[2]=q2;
-					q_comp2[3]=q3;
 					
-					
-					normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
 					// Calibration routine
 					if ( calibrationCounterM0 >  CALIBRATION ) {
 						// Measurement update of EKF with mag
 						//double nom_mag[3]={0,sqrt(pow(mag0[0],2)+pow(mag0[1],2)),mag0[2]};
 						//magnetometerUpdate(q_comp, Pmag, magRawRot, nom_mag, Rmag, Lmag, alpha_mag, outlierFlag);
+						normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
 						
-						//// outlier percentage
-						//ioutlierFlagPercentage = 0;
-						//for (int i=1; i<1000; i++) {
-							//outlierFlagMem[i-1] = outlierFlagMem[i];
-							//ioutlierFlagPercentage += outlierFlagMem[i-1];
-						//}
-						//outlierFlagMem[999] = outlierFlag[0];
-						//ioutlierFlagPercentage += outlierFlagMem[999];
+						// outlier percentage
+						ioutlierFlagPercentage = 0;
+						for (int i=1; i<1000; i++) {
+							outlierFlagMem[i-1] = outlierFlagMem[i];
+							ioutlierFlagPercentage += outlierFlagMem[i-1];
+						}
+						outlierFlagMem[999] = outlierFlag[0];
+						ioutlierFlagPercentage += outlierFlagMem[999];
 						
-						//// calibrationCounterP routine
-						//if ( calibrationCounterP <= MAG_CALIBRATION ) {
-							//calibrationCounterP++;
-							//if ( calibrationCounterP == 1) {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
-								//printf("Magnometer calibration STARTED\n");
-							//}
-							//else if ( calibrationCounterP == MAG_CALIBRATION ) {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);
-								//printf("Pmag = \n");
-								//printmat(Pmag,4,4);
-								//printf("Magnometer calibration FINISHED\n5 seconds to leave it for alignment!\n");
-							//}
-							//else {
-								//printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
-							//}							
-						//}
-						calibrationCounterP = MAG_CALIBRATION+1;
+						// calibrationCounterP routine
+						if ( calibrationCounterP <= MAG_CALIBRATION ) {
+							calibrationCounterP++;
+							if ( calibrationCounterP == 1) {
+								printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
+								printf("Magnometer calibration STARTED\n");
+							}
+							else if ( calibrationCounterP == MAG_CALIBRATION ) {
+								printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);
+								printf("Pmag = \n");
+								printmat(Pmag,4,4);
+								printf("Magnometer calibration FINISHED\n5 seconds to leave it for alignment!\n");
+							}
+							else {
+								printf("Eulers: % 1.3f, % 1.3f, % 1.3f | counter: %i\n", euler[0]*180/PI, euler[1]*180/PI, euler[2]*180/PI, calibrationCounterP);	
+							}							
+						}
 					}
 					else {
 						if ( calibrationCounterM0 == 0 ){
@@ -609,9 +592,17 @@ static void *threadSensorFusion (void *arg){
 						}
 					}									
 					
+				    //euler[0]   = atan2(2.0f * ((double)q[1] * (double)q[2] + (double)q[0] * (double)q[3]), (double)q[0] * (double)q[0] + (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] - (double)q[3] * (double)q[3]);   
+					//euler[1] = -asin(2.0f * ((double)q[1] * (double)q[3] - (double)q[0] * (double)q[2]));
+					//euler[2]  = atan2(2.0f * ((double)q[0] * (double)q[1] + (double)q[2] * (double)q[3]), (double)q[0] * (double)q[0] - (double)q[1] * (double)q[1] - (double)q[2] * (double)q[2] + (double)q[3] * (double)q[3]);
+					//euler[1] *= 180.0f / PI;
+					//euler[0]   *= 180.0f / PI; 
+					////yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+					//euler[2]  *= 180.0f / PI;
+					
 					// Quaternions to eulers (rad)
 					q2euler_zyx(euler,q_comp);
-					q2euler_zyx(euler2,q_comp2);
+					//q2euler_zyx(euler2,q_comp2);
 					
 					//Allignment compensation for initial point of orientation angles
 					if ( eulerCalFlag != 1 && calibrationCounterP >  MAG_CALIBRATION ) {
@@ -634,30 +625,17 @@ static void *threadSensorFusion (void *arg){
 							printf("euler_mean: %1.4f %1.4f %1.4f counter: %i\n", euler_mean[0]*180/PI, euler_mean[1]*180/PI, euler_mean[2]*180/PI, counterCalEuler);
 						}
 					}
-					euler_comp[0]=euler[0]-euler_mean[0];
-					euler_comp[1]=euler[1]-euler_mean[1];
-					euler_comp[2]=euler[2]-euler_mean[2];
-					// euler_comp[0]=euler[0];
-					// euler_comp[1]=euler[1];
-					// euler_comp[2]=euler[2];
+					//euler_comp[0]=euler[0]-euler_mean[0];
+					//euler_comp[1]=euler[1]-euler_mean[1];
+					//euler_comp[2]=euler[2]-euler_mean[2];
+					euler_comp[0]=euler[0];
+					euler_comp[1]=euler[1];
+					euler_comp[2]=euler[2];
 				}
 				else{
 					printf("SampleFre: %f\n", sampleFreq);
 				}
-						
-				// Put position data in to posRaw
-				switch (MYSELF){
-					case AGENT1:
-						memcpy(posRaw, positionsBuffer, sizeof(positionsBuffer)*3/9); // agents 1
-						break;
-					case AGENT2:
-						memcpy(posRaw, positionsBuffer+3, sizeof(positionsBuffer)*3/9); // agent 2
-						break;
-					case AGENT3:
-						memcpy(posRaw, positionsBuffer+6, sizeof(positionsBuffer)*3/9); // agents 3
-						break;
-				}
-										
+								
 				// Move over data to communication.c via pipe
 				sensorDataBuffer[0]=gyrRaw[0];
 				sensorDataBuffer[1]=gyrRaw[1];
@@ -671,25 +649,21 @@ static void *threadSensorFusion (void *arg){
 				sensorDataBuffer[9]=euler_comp[0];
 				sensorDataBuffer[10]=euler_comp[1];
 				sensorDataBuffer[11]=euler_comp[2];
-				sensorDataBuffer[12]=q_comp[0];
-				sensorDataBuffer[13]=q_comp[1];
-				sensorDataBuffer[14]=q_comp[2];
-				sensorDataBuffer[15]=q_comp[3];
-				//sensorDataBuffer[16]=posRaw[0];
-				//sensorDataBuffer[17]=posRaw[1];
-				//sensorDataBuffer[18]=posRaw[2];
+				sensorDataBuffer[12]=(double)q_comp[0];
+				sensorDataBuffer[13]=(double)q_comp[1];
+				sensorDataBuffer[14]=(double)q_comp[2];
+				sensorDataBuffer[15]=(double)q_comp[3];
+				sensorDataBuffer[16]=posRaw[0];
+				sensorDataBuffer[17]=posRaw[1];
+				sensorDataBuffer[18]=posRaw[2];
 				
 				// Write to Communication process
 				if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
 				//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
 						
-				// Check that positioning system is connected
-				if (!positions_timeoutBuffer[0])
-					beaconConnected=1;
-				else
-					beaconConnected=0;
+				beaconConnected=1;
 						
-				if(tsAverageReadyEKF==2 && eulerCalFlag==1){
+				if(beaconConnected==1 && tsAverageReadyEKF==2 && eulerCalFlag==1){
 					// Check if raw position data is new or old
 					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
 						posRawOldFlag=1;
@@ -700,9 +674,9 @@ static void *threadSensorFusion (void *arg){
 					}
 					
 					// Move data from (euler and posRaw) array to ymeas in to EKF's
-					ymeas9x9[0]=posRaw[0]; // position x
-					ymeas9x9[1]=posRaw[1]; // position y
-					ymeas9x9[2]=posRaw[2]; // position z
+					ymeas9x9[0]=0; // position x
+					ymeas9x9[1]=0; // position y
+					ymeas9x9[2]=0; // position z
 					
 					ymeas6x6[0]=euler_comp[2]; // phi (x-axis)
 					ymeas6x6[1]=euler_comp[1]; // theta (y-axis)
@@ -712,7 +686,7 @@ static void *threadSensorFusion (void *arg){
 					ymeas6x6[5]=gyrRaw[2]; // gyro z
 
 					// Calibration routine for EKF
-					if (calibrationCounterEKF==0 && beaconConnected){
+					if (calibrationCounterEKF==0){
 						printf("EKF Calibration started\n");
 						//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
@@ -720,7 +694,7 @@ static void *threadSensorFusion (void *arg){
 						//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 						calibrationCounterEKF++;
 					}
-					else if(calibrationCounterEKF<CALIBRATION && beaconConnected){
+					else if(calibrationCounterEKF<CALIBRATION){
 						 //ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
 						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
@@ -728,7 +702,7 @@ static void *threadSensorFusion (void *arg){
 						calibrationCounterEKF++;
 						
 					}
-					else if(calibrationCounterEKF==CALIBRATION && beaconConnected){
+					else if(calibrationCounterEKF==CALIBRATION){
 						//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
 						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
@@ -764,15 +738,13 @@ static void *threadSensorFusion (void *arg){
 						xhat9x9[2]=ymeas9x9[2];
 						
 						// Quaternions initial measurments
-						memcpy(q_init, q, sizeof(q));
-						//q_init[0]=q0;
-						//q_init[1]=q1;
-						//q_init[2]=q2;
-						//q_init[3]=q3;
+						q_init[0]=q0;
+						q_init[1]=q1;
+						q_init[2]=q2;
+						q_init[3]=q3;
 					}
 					// State Estimator
-					else if(calibrationCounterEKF>CALIBRATION){
-						//printf("idiot\n");
+					else{
 						// Run EKF as long as ekfReset keyboard input is false
 						if(!ekfReset){
 							// Run Extended Kalman Filter (state estimator) using position and orientation data
@@ -790,12 +762,10 @@ static void *threadSensorFusion (void *arg){
 							memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
 							memcpy(uControl, uControlInit, sizeof(uControlInit));
 							
-							memcpy(q, q_init, sizeof(q_init));
-							
-							//q0=q_init[0];
-							//q1=q_init[1];
-							//q2=q_init[2];
-							//q3=q_init[3];
+							q0=q_init[0];
+							q1=q_init[1];
+							q2=q_init[2];
+							q3=q_init[3];
 							
 							stateDataBuffer[15]=0; // set ready flag for MPC false during reset
 							isnan_flag=0;
@@ -853,7 +823,7 @@ static void *threadSensorFusion (void *arg){
 							stateDataBuffer[15]=0;
 							printf("EKF xhat=out of bounds\n");
 						}
-
+\
 						// Move over data to controller.c via pipe
 						stateDataBuffer[0]=xhat9x9[0]; // position x
 						stateDataBuffer[1]=xhat9x9[1]; // position y
@@ -880,22 +850,22 @@ static void *threadSensorFusion (void *arg){
 						tSensorFusionCounter++;
 						
 						if(ekfPrint && tSensorFusionCounter % 10 == 0){
-							//double norm_mag = 1/sqrt(magRawRot[0] * magRawRot[0] + magRawRot[1] * magRawRot[1] + magRawRot[2] * magRawRot[2]);
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq);
-							//printf("(mag) % 1.4f % 1.4f % 1.4f (atan2(y/x)) % 1.4f\n", magRawRot[0]*norm_mag, magRawRot[1]*norm_mag, magRawRot[2]*norm_mag, atan2(magRawRot[1]*norm_mag, magRawRot[0]*norm_mag)*(180/PI));
+							double norm_mag = 1/sqrt(magRawRot[0] * magRawRot[0] + magRawRot[1] * magRawRot[1] + magRawRot[2] * magRawRot[2]);
+							//printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist pos) % 1.4f % 1.4f % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq);
+							printf("(mag) % 1.4f % 1.4f % 1.4f (atan2(y/x)) % 1.4f\n", magRawRot[0]*norm_mag, magRawRot[1]*norm_mag, magRawRot[2]*norm_mag, atan2(magRawRot[1]*norm_mag, magRawRot[0]*norm_mag)*(180/PI));
 						}
 						
 						if(ekfPrint6States && tSensorFusionCounter % 10 == 0){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
-							printf("(ang(xhat)) % 2.4f % 2.4f % 2.4f (pos(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), xhat9x9[0],xhat9x9[1],xhat9x9[2], uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
+							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
 							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (OLP) %i %i (L) %f (normMag) %f (rawMag) %f %f %f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), 	xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), 	ioutlierFlagPercentage, outlierFlag[0],		Lmag[0],normMag,	magRawRot[0],magRawRot[1],magRawRot[2],		ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), 	xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
-							//printf("(ang(conj)) % 2.4f % 2.4f % 2.4f (ang) % 2.4f % 2.4f % 2.4f \n",euler[2]*(180/PI),euler[1]*(180/PI),euler[0]*(180/PI),euler2[2]*(180/PI),euler2[1]*(180/PI),euler2[0]*(180/PI));
+							printf("(ang(conj)) % 2.4f % 2.4f % 2.4f (ang) % 2.4f % 2.4f % 2.4f \n",euler[2]*(180/PI),euler[1]*(180/PI),euler[0]*(180/PI),euler2[2]*(180/PI),euler2[1]*(180/PI),euler2[0]*(180/PI));
 						
 						}
 	
 						// Write to Controller process
 						if (write(ptrPipe1->child[1], stateDataBuffer, sizeof(stateDataBuffer)) != sizeof(stateDataBuffer)) printf("pipe write error in Sensor to Controller\n");
-						//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), stateDataBuffer[15]);
+						//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), sensorDataBuffer[0]);
 						
 						// Restart sensor fusion and EKF calibration
 						if(sensorCalibrationRestart){

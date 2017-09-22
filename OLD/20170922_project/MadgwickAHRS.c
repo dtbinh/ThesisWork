@@ -22,7 +22,7 @@
 // Definitions
 
 //#define sampleFreq	512.0f		// sample frequency in Hz
-#define sampleFreqDef 100.0f
+#define sampleFreqDef 100.0F
 //#define betaDef		0.005f		// 2 * proportional gain
 #define betaDef		5.0f		// 2 * proportional gain
 
@@ -234,7 +234,7 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 
 float invSqrt(float x) {
 	//float halfx = 0.5f * x;
-	float y = 1/sqrtf(x);
+	float y = 1/sqrt(x);
 	//long i = *(long*)&y;
 	//i = 0x5f3759df - (i>>1);
 	//y = *(float*)&i;

@@ -34,9 +34,12 @@
 //#define tsUDP 100000000
 #define tsSensorsFusion 10e+6 // 0.025s
 #define tsReadBeacon 50000000 // 0.05s
-#define tsUdpWrite 10e+6 // 0.1s
+#define tsUdpWrite 1000e+6 // 0.1s
 
 /******************************/
+
+
+
 // Model Parameters
 #define par_g 9.81f // gravity
 #define	par_mass 0.4234f // total mass
@@ -80,8 +83,8 @@ Keyboard listening...
 // Default MPC ATTITUDE weights Q (Qf) and R
 #define mpcAtt_Q_1 1500.0f
 #define mpcAtt_Q_2 100.0f
-#define mpcAtt_Q_3 1500.0f
-#define mpcAtt_Q_4 100.0f
+#define mpcAtt_Q_3 150.0f
+#define mpcAtt_Q_4 10.0f
 #define mpcAtt_Q_5 1.0f
 #define mpcAtt_Q_6 1.0f
 
@@ -95,18 +98,18 @@ Keyboard listening...
 
 #define mpcAtt_Qf_1 17760.1
 #define mpcAtt_Qf_2 110.167
-#define mpcAtt_Qf_3 17760.1
-#define mpcAtt_Qf_4 110.167
+#define mpcAtt_Qf_3 1898.2
+#define mpcAtt_Qf_4 22.2999
 #define mpcAtt_Qf_5 859.837
 #define mpcAtt_Qf_6 197763
 #define mpcAtt_Qf_1_2 406.515
-#define mpcAtt_Qf_3_4 406.515
+#define mpcAtt_Qf_3_4 76.5355
 #define mpcAtt_Qf_5_6 9210.74
 
 
 //2000.000000,2000.000000,10000000000000.000000
 #define mpcAtt_R_1 1.0f
-#define mpcAtt_R_2 1.0f
+#define mpcAtt_R_2 5000.0f
 #define mpcAtt_R_3 100000000000.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
@@ -122,18 +125,15 @@ Keyboard listening...
 #define ekf_Q_4 1.0e-10f
 #define ekf_Q_5 1.0e-10f
 #define ekf_Q_6 1.0e-10f
-
 #define ekf_Q_7 1.0e-4f
 #define ekf_Q_8 1.0e-4f
 #define ekf_Q_9 1.0e-4f
 #define ekf_Q_10 1.0e-4f
 #define ekf_Q_11 1.0e-4f
 #define ekf_Q_12 1.0e-4f
-
 #define ekf_Q_13 1.0e-3f
 #define ekf_Q_14 1.0e-3f
 #define ekf_Q_15 0.00001f
-
 #define ekf_Q_16 1.0e20f
 #define ekf_Q_17 1.0e20f
 #define ekf_Q_18 1.0e20f
@@ -148,13 +148,6 @@ Keyboard listening...
 
 // pid_angle_ki 6.0e-1f for PID controller!
  //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries
-
-// Agent ID's
-//#define SUPERVISOR "A0"
-#define AGENT1 1601
-#define AGENT2 1602
-#define AGENT3 1603
-#define MYSELF AGENT1
 
 typedef struct _structPipe{
 	int parent[2];

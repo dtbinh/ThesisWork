@@ -51,24 +51,26 @@ static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
 static double manualThrustData[1]={manualThrust};
-static double communicationData[84]={0}; // variable that is sent to sensor.c and communication.c
+
+
 
 static int socketReady=0;
 
+//static float setpoint[] = {0.0,0.0,0.0}; // coordinates {x,y,z}
+//static double constraints[6] = {0.manualThrust0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // coordinates {x1,y1,z1,x2,y2,z2,x3,y3,z3}
+//static float tuning[] = {0.0,0.0,0.0}; // temporary tuning parameters
 
 static int fdsocket_read, fdsocket_write;
 static struct sockaddr_in addr_read, addr_write;
-static socklen_t fromlen = sizeof(addr_read);
+//static socklen_t fromlen = sizeof(addr_read);
 static int broadcast=1;
-static char readBuff[BUFFER_LENGTH];
+//static char readBuff[BUFFER_LENGTH];
 static char writeBuff[BUFFER_LENGTH];
 
 static pthread_mutex_t mutexControllerData = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mutexPipeData = PTHREAD_MUTEX_INITIALIZER;
 
-static void messageDecode(char*, double *, struct timespec *, int *);
-static void initPipeVariable();
+//static void messageDecode(char*);
 
 
 /******************************************************************/
@@ -76,53 +78,53 @@ static void initPipeVariable();
 /******************************************************************/
 
 // Function to start the sensor process threads
-void startCommunication(void *arg1, void *arg2){
+void startCommunication(void *arg1, void *arg2)
+{
 	pipeArray pipeArray1 = {.pipe1 = arg1, .pipe2 = arg2 };
 
-	// Initialize pipe variable with default values
-	initPipeVariable();
-
 	// Create thread
-	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpW, threadkeyRead, threadUdpR;
-	int threadPID1, threadPID2, threadPID3, threadPID4, threadPID5;
+	pthread_t threadPipeCtrlToComm, threadPipeSensorToComm, threadUdpW, threadkeyRead; // threadUdpR
+	int threadPID1, threadPID2, threadPID4, threadPID5; // threadPID3
 	
 	// Activate socket communication before creating UDP threads
 	openSocketCommunication();
 
 	threadPID1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
 	threadPID2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
-	threadPID3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
-	//threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	//threadPID3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
+	threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
 	threadPID5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
 	
 	// Set up thread scheduler priority for real time tasks
-	struct sched_param paramThread1, paramThread2, paramThread3, paramThread4,paramThread5;
+	struct sched_param paramThread1, paramThread2, paramThread4,paramThread5; // paramThread3
 	paramThread1.sched_priority = PRIORITY_COMMUNICATION_PIPE_CONTROLLER; // set priorities
 	paramThread2.sched_priority = PRIORITY_COMMUNICATION_PIPE_SENSOR;
-	paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
-	//paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
+	//paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
+	paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
 	paramThread5.sched_priority = PRIORITY_COMMUNICATION_KEYBOARD;
 	
 	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
 	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
-	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
-	//if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	//if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	if(sched_setscheduler(threadPID5, SCHED_FIFO, &paramThread5)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	
 	// If threads created successful, start them
 	if (!threadPID1) pthread_join( threadPipeCtrlToComm, NULL);
 	if (!threadPID2) pthread_join( threadPipeSensorToComm, NULL);
-	if (!threadPID3) pthread_join( threadUdpR, NULL);
-	//if (!threadPID4) pthread_join( threadUdpW, NULL);
+	//if (!threadPID3) pthread_join( threadUdpR, NULL);
+	if (!threadPID4) pthread_join( threadUdpW, NULL);
 	if (!threadPID5) pthread_join( threadkeyRead, NULL);
 }
+
 
 /******************************************************************/
 /*****************************THREADS******************************/
 /******************************************************************/
 
 // Thread - Pipe Communication from Controller read
-static void *threadPipeControllerToComm(void *arg){
+static void *threadPipeControllerToComm(void *arg)
+{
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
 	float controllerDataBuffer[9];
@@ -178,6 +180,7 @@ static void *threadPipeControllerToComm(void *arg){
 	}
 	return NULL;
 }
+
 
 // Thread - Pipe Communication from Sensor read
 static void *threadPipeSensorToCommunication(void *arg){
@@ -239,61 +242,70 @@ static void *threadPipeSensorToCommunication(void *arg){
 	return NULL;
 }
 
+/*
+//// Thread - Pipe Communication to Controller write
+//static void *threadPipeCommunicationtoController(void *arg)
+//{
+	//// Get pipe and define local variables
+	//structPipe *ptrPipe = arg;
+	//double sensorDataBuffer[19];
+	
+	//// Loop forever reading/waiting for data
+	//while(1){
+		//// Read data from sensor process
+		////if(write(ptrPipe->parent[1], keyboardData, sizeof(keyboardData)) == -1) printf("Write error in keyboardData communication to controller\n");
+		////else printf("Communication ID: %d, Recieved Sensor data: %f\n", (int)getpid(), sensorDataBuffer[0]);
+
+		
+		//// Put new data in to global variable in communication.c
+		//pthread_mutex_lock(&mutexSensorData);
+			//memcpy(sensorData, sensorDataBuffer, sizeof(sensorDataBuffer));
+		//pthread_mutex_unlock(&mutexSensorData);
+		
+		//sleep(1);
+	//}
+	//return NULL;
+//}
+*/
+
+
 // UDP read thread
 static void *threadUdpRead(void *arg){
 	// Get pipe array and define local variables
-	pipeArray *pipeArray1 = arg;
-	structPipe *ptrPipe1 = pipeArray1->pipe1;
-	structPipe *ptrPipe2 = pipeArray1->pipe2;
-	double positions[9]={0};
-	int timeout_UDP_flag[3]={0};
-	
-	/// Timing for UDP read timout
-	struct timespec timeout_UDP[6]; // {a1_start,a1_stop,a2_start,a2_stop,a3_start,a3_stop}
-	clock_gettime(CLOCK_MONOTONIC ,&timeout_UDP[0]); // start elapsed time clock a1
-	clock_gettime(CLOCK_MONOTONIC ,&timeout_UDP[2]); // start elapsed time clock a2
-	clock_gettime(CLOCK_MONOTONIC ,&timeout_UDP[4]); // start elapsed time clock a3
+	//pipeArray *pipeArray1 = arg;
+	//structPipe *ptrPipe1 = pipeArray1->pipe1;
+	//structPipe *ptrPipe2 = pipeArray1->pipe2;
+	//float udpDataBuffer[6]={2,2,2,2,2,2};
 	
 	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
 	while(1){
-		
+		/*
 		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
-			//perror("read");
-			timeout_UDP_flag[0]=1;
-			timeout_UDP_flag[1]=1;
-			timeout_UDP_flag[2]=1;
+			perror("read");
 		}
-		else{
+		else{*/
 			// Call messageDecode
-			messageDecode(readBuff, positions, timeout_UDP, timeout_UDP_flag);
-			//printf("Positions: (%f %f %f), (%f %f %f), (%f %f %f) Flag (%i %i %i)\n", positions[0],positions[1],positions[2],positions[3],positions[4],positions[5],positions[6],positions[7], positions[8], timeout_UDP_flag[0], timeout_UDP_flag[1], timeout_UDP_flag[2]);
-					
-			// Clear readBuffer
-			memset(&readBuff[0], 0, sizeof(readBuff));
-		}
-		
-		//printf("Positions: (%f %f %f), (%f %f %f), (%f %f %f) Flag (%i %i %i)\n", positions[0],positions[1],positions[2],positions[3],positions[4],positions[5],positions[6],positions[7], positions[8], timeout_UDP_flag[0], timeout_UDP_flag[1], timeout_UDP_flag[2]);
-	
-		pthread_mutex_lock(&mutexPipeData);
-			// move data from inidividual variables to pipe variable
-			memcpy(communicationData+72, positions, sizeof(positions));
-			communicationData[81]=(double)timeout_UDP_flag[0];
-			communicationData[82]=(double)timeout_UDP_flag[1];
-			communicationData[83]=(double)timeout_UDP_flag[2];
-		
+			//messageDecode(readBuff);
+			
 			// Write data to Controller process
-			if (write(ptrPipe1->child[1], communicationData, sizeof(communicationData)) != sizeof(communicationData) ) printf("Error in writing keyboardData from Communication to Controller\n");
-			//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), keyboardData[0]);
-		
+			//if (write(ptrPipe1->child[1], udpDataBuffer, sizeof(udpDataBuffer)) != sizeof(udpDataBuffer)) printf("write error in parent\n");
+			//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), udpDataBuffer[0]);
+			
+			// Clear readBuffer
+			//memset(&readBuff[0], 0, sizeof(readBuff));
+			
 			// Write data to Sensor process
-			if (write(ptrPipe2->child[1], communicationData, sizeof(communicationData)) != sizeof(communicationData)) printf("Error in writing keyboardData from Communication to Sensor\n");
-			//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), keyboardData[0]);
-			pthread_mutex_unlock(&mutexPipeData);
-		
+			//float sensorTuning[3]={9,9,9};
+			//if (write(ptrPipe2->child[1], sensorTuning, sizeof(sensorTuning)) != sizeof(sensorTuning)) printf("write error in parent\n");
+			//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), sensorTuning[0]);
+			sleep(5);
+				
+		//}
 	}
 	
 	return NULL;
 }
+
 
 // UDP write thread
 static void *threadUdpWrite(){
@@ -339,8 +351,7 @@ static void *threadUdpWrite(){
 				
 			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
 			//printf("%s\n", writeBuff);
-			
-			 //Send data over UDP
+			// Send data over UDP
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
 				perror("write");
 			}
@@ -379,6 +390,7 @@ static void *threadUdpWrite(){
 	return NULL;
 }
 
+
 // Thread - reading from the keyboard from the stand-alone computer
 static void *threadKeyReading( void *arg ) {
 	// Get pipe and define local variables
@@ -393,7 +405,7 @@ static void *threadKeyReading( void *arg ) {
 	//int tsAverageCounter=0;
 	//double tsAverageAccum=0;
 	//double tsTrue; // tsAverage=tsController
-	//double keyboardDataController[72];
+	double keyboardDataController[72];
 	//int timerPrint=0;
 	
 	/// Lock memory
@@ -406,27 +418,24 @@ static void *threadKeyReading( void *arg ) {
 		//clock_gettime(CLOCK_MONOTONIC ,&t_start); // start elapsed time clock
 		
 		keyReading();
-			
+		
+		memcpy(keyboardDataController, keyboardData, sizeof(keyboardData));
+		memcpy(keyboardDataController+18, tuningMpcData, sizeof(tuningMpcData));
+		memcpy(keyboardDataController+32, tuningMpcDataControl, sizeof(tuningMpcDataControl));
+		memcpy(keyboardDataController+38, tuningEkfData, sizeof(tuningEkfData));
+		memcpy(keyboardDataController+56, tuningPidData, sizeof(tuningPidData));
+		memcpy(keyboardDataController+62, tuningMpcQfData, sizeof(tuningMpcQfData));
+		memcpy(keyboardDataController+71, manualThrustData, sizeof(manualThrustData));
+		
 		//printf("%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f \n\n%2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f %2.1f\n", keyboardDataController[0], keyboardDataController[1], keyboardDataController[2], keyboardDataController[3], keyboardDataController[4], keyboardDataController[5], keyboardDataController[6], keyboardDataController[7], keyboardDataController[8],keyboardDataController[9], keyboardDataController[10], keyboardDataController[11], keyboardDataController[12], keyboardDataController[13], keyboardDataController[14], keyboardDataController[15], keyboardDataController[16], keyboardDataController[17],keyboardDataController[18], keyboardDataController[19], keyboardDataController[20], keyboardDataController[21], keyboardDataController[22], keyboardDataController[23], keyboardDataController[24], keyboardDataController[25], keyboardDataController[26], keyboardDataController[27], keyboardDataController[28], keyboardDataController[29], keyboardDataController[30], keyboardDataController[31], keyboardDataController[32], keyboardDataController[33], keyboardDataController[34], keyboardDataController[35], keyboardDataController[36], keyboardDataController[37], keyboardDataController[38], keyboardDataController[39], keyboardDataController[40], keyboardDataController[41], keyboardDataController[42], keyboardDataController[43], keyboardDataController[44], keyboardDataController[45], keyboardDataController[46], keyboardDataController[47], keyboardDataController[48], keyboardDataController[49]);
 		
-		pthread_mutex_lock(&mutexPipeData);
-			// move data from inidividual variables to pipe variable
-			memcpy(communicationData, keyboardData, sizeof(keyboardData));
-			memcpy(communicationData+18, tuningMpcData, sizeof(tuningMpcData));
-			memcpy(communicationData+32, tuningMpcDataControl, sizeof(tuningMpcDataControl));
-			memcpy(communicationData+38, tuningEkfData, sizeof(tuningEkfData));
-			memcpy(communicationData+56, tuningPidData, sizeof(tuningPidData));
-			memcpy(communicationData+62, tuningMpcQfData, sizeof(tuningMpcQfData));
-			memcpy(communicationData+71, manualThrustData, sizeof(manualThrustData));
-		
-			// Write data to Controller process
-			if (write(ptrPipe1->child[1], communicationData, sizeof(communicationData)) != sizeof(communicationData) ) printf("Error in writing keyboardData from Communication to Controller\n");
-			//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), keyboardData[0]);
-		
-			// Write data to Sensor process
-			if (write(ptrPipe2->child[1], communicationData, sizeof(communicationData)) != sizeof(communicationData)) printf("Error in writing keyboardData from Communication to Sensor\n");
-			//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), keyboardData[0]);
-		pthread_mutex_unlock(&mutexPipeData);
+		// Write data to Controller process
+		if (write(ptrPipe1->child[1], keyboardDataController, sizeof(keyboardDataController)) != sizeof(keyboardDataController) ) printf("Error in writing keyboardData from Communication to Controller\n");
+		//else printf("Communication ID: %d, Sent: %f to Controller\n", (int)getpid(), keyboardData[0]);
+	
+		// Write data to Sensor process
+		if (write(ptrPipe2->child[1], keyboardDataController, sizeof(keyboardDataController)) != sizeof(keyboardDataController)) printf("Error in writing keyboardData from Communication to Sensor\n");
+		//else printf("Communication ID: %d, Sent: %f to Sensor\n", (int)getpid(), keyboardData[0]);
 		
 		///// Print true sampling rate
 		//clock_gettime(CLOCK_MONOTONIC, &t_stop);
@@ -436,16 +445,13 @@ static void *threadKeyReading( void *arg ) {
 	return NULL;
 }
 
+
 /******************************************************************/
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
 
 // Create UDP sockets and bind.
 static void openSocketCommunication(){
-	/// UDP read timeout specification
-	struct timeval t_timout;
-	t_timout.tv_sec=UDP_READ_TIMEOUT;
-	
 	// Create sockets. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
 	fdsocket_read = socket(AF_INET, SOCK_DGRAM, 0);
 	fdsocket_write = socket(AF_INET, SOCK_DGRAM, 0);	
@@ -461,16 +467,11 @@ static void openSocketCommunication(){
 	// Activate UDP broadcasting
 	if (setsockopt(fdsocket_read, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
 		perror("setup read");
-		//exit(1);
+		exit(1);
 	}
 	if (setsockopt(fdsocket_write, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
-		perror("setup write");
-		//exit(1);
-	}
-	/// Activate Timeout UDP read
-	if (setsockopt(fdsocket_read, SOL_SOCKET, SO_RCVTIMEO, (const char*)&t_timout, sizeof(t_timout)) == -1){
-		perror("setup read");
-		//exit(1);
+	perror("setup write");
+	exit(1);
 	}
 	
 	// Socket settings
@@ -488,7 +489,7 @@ static void openSocketCommunication(){
 		perror("bind read");
 	}
 	printf("Socket ready\n");
-	socketReady=1;
+	socketReady=0;
 }
 
 /* Read in PWM value */
@@ -1316,102 +1317,141 @@ void keyReading( void ) {
 	}
 }
 
-// Data messages decoding of 
-static void messageDecode(char *input, double *positions, struct timespec *t_timeout_UDP, int *timeout_flags ){
-	char *pt;
-	int counter_message=0; // message counter
-	int flag_position=0;
-	int agent_id=0;
-	double position_temp[3]={0};
-	// Identifiy comma separated information received
-	pt = strtok(input, ",");
-	while (pt != NULL){
-		// Check if position flag set = already got the "Track" identifier
-		if (!flag_position){	
-			if (!strcmp(pt, "Track")){ // "Track" = position message
-				//printf("Position message received from agent: %s\n", input);
-				flag_position=1;
+/*
+
+// Data messages decoded with respect to the documentation i sharelatex
+static void messageDecode(char *input)
+{
+	if (!strncmp(input,MYSELF,2)){
+		printf("Message from myself. No actions\n");
+	}
+	else if (!strncmp(input,SUPERVISOR,2)){
+		printf("Message from SUPERVISOR\n");
+		// Check if supervisor message concerns me
+		if (!strncmp(input+2,MYSELF,2)){	
+			// Activate/deactivate data stream
+			if (!strncmp(input+4,STREAM,2)){
+				char value[1];
+				strncpy(value,input+6,1);
+				if (!strcmp(value,"1")){
+					stream=1;
+				}
+				else if(!strcmp(value,"0")){
+					stream=0;
+				}
+				else{
+					printf("Error. Bad stream activation format\n");
+				}
+			}
+			// Setpoint change
+			else if (!strncmp(input+4,SETPOINT,2)){
+				char value[5];
+				if (!strncmp(input+8,".",1) && !strncmp(input+11,",",1) && !strncmp(input+14,".",1) && !strncmp(input+17,",",1) && !strncmp(input+20,".",1)){
+					strncpy(value,input+6,5); // setpoint x coordinate
+					setpoint[0]=strtof(value,NULL);
+					strncpy(value,input+12,5); // setpoint y coordinate
+					setpoint[1]=strtof(value,NULL);
+					strncpy(value,input+18,5); // setpoint z coordinate
+					setpoint[2]=strtof(value,NULL);
+					printf("New setpoints: %.2f %.2f %.2f\n", setpoint[0], setpoint[1], setpoint[2]);
+				}
+				else{
+					printf("Error. Bad setpoint format\n");
+				}
+			}
+			// Tuning change
+			else if (!strncmp(input+4,TUNING,2)){
+				char value[5];
+				if (!strncmp(input+11,",",1) && !strncmp(input+17,",",1)){
+					strncpy(value,input+6,5); // tuning[0]
+					tuning[0]=strtof(value,NULL);
+					strncpy(value,input+12,5); // tuning[1]
+					tuning[1]=strtof(value,NULL);
+					strncpy(value,input+18,5); // tuning[2]
+					tuning[2]=strtof(value,NULL);
+					printf("New tuning parameters: %.2f %.2f %.2f\n", tuning[0], tuning[1], tuning[2]);
+				}
+				else{
+					printf("Error. Bad tuning format\n");
+				}
 			}
 			else{
-				printf("Unknown message received\n");
-				return;
+				printf("Error. Bad type code\n");
 			}
 		}
-		// When got "Track" identifier, continue collecting position data
 		else{
-			// Collect data from message with array index: 0="Track", 1=time stamp, 2=agent_id, 3=x, 4=y , 5=z
-			switch (counter_message){
-				case 2: // get agent id number
-					agent_id=atoi(pt);
-					break;
-				case 3: // get x position
-					position_temp[0]=atof(pt);
-					break;
-				case 4: // get y position
-					position_temp[1]=atof(pt);
-					break;
-				case 5: // get z position
-					position_temp[2]=atof(pt);
-					break;
-			}
-		
+			printf("Error. Bad supervisor to agent address or the message does not concern me.\n");
 		}
-		
-		counter_message++; // increase array index of received message
-		pt = strtok(NULL, ","); // clear comma separated value received
 	}
-	
-	// Move temporary xyz positions over to corret agent id	
-	// Stop timer for agent id and check if it has exceeded timeout value UDP_READ_TIMEOUT defined in communication.h				
-	switch(agent_id){
-		case AGENT1:
-			memcpy(positions, position_temp, sizeof(position_temp)); // position
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[1]); // stop timer a1
-			if((t_timeout_UDP[1].tv_sec - t_timeout_UDP[0].tv_sec) + (t_timeout_UDP[1].tv_nsec - t_timeout_UDP[0].tv_nsec) / NSEC_PER_SEC > UDP_READ_TIMEOUT){
-				timeout_flags[0]=1;// set timeout true
+	else if (!strncmp(input,AGENT1,2)){
+		printf("Message from AGENT1\n");
+		// Agent1 constraint updates
+		if (!strncmp(input+4,DATA,2)){
+			char value[5];
+			if (!strncmp(input+8,".",1) && !strncmp(input+11,",",1) && !strncmp(input+14,".",1) && !strncmp(input+17,",",1) && !strncmp(input+20,".",1)){
+				strncpy(value,input+6,5); // constraints[0]
+				constraints[0]=strtof(value,NULL);
+				strncpy(value,input+12,5); // constraints[1]
+				constraints[1]=strtof(value,NULL);
+				strncpy(value,input+18,5); // constraints[2]
+				constraints[2]=strtof(value,NULL);
+				printf("New constrained positions: %.2f %.2f %.2f\n", constraints[0], constraints[1], constraints[2]);
 			}
 			else{
-				timeout_flags[0]=0;// set timeout false
+				printf("Error. Bad constraints format from AGENT1\n");
 			}
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[0]); // start timer a1
-			break;
-		case AGENT2:
-			memcpy(positions+3, position_temp, sizeof(position_temp)); // position
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[3]); // stop timer a2
-			if((t_timeout_UDP[3].tv_sec - t_timeout_UDP[2].tv_sec) + (t_timeout_UDP[3].tv_nsec - t_timeout_UDP[2].tv_nsec) / NSEC_PER_SEC > UDP_READ_TIMEOUT){
-				timeout_flags[1]=1;// set timeout true
+		}
+		else{
+			printf("Error. Bad type code\n");
+		}
+	}
+	else if (!strncmp(input,AGENT2,2)){
+		printf("Message from AGENT2\n");
+		// Agent2 constraint updates
+		if (!strncmp(input+4,DATA,2)){
+			char value[5];
+			if (!strncmp(input+8,".",1) && !strncmp(input+11,",",1) && !strncmp(input+14,".",1) && !strncmp(input+17,",",1) && !strncmp(input+20,".",1)){
+				strncpy(value,input+6,5); // constraints[3]
+				constraints[3]=strtof(value,NULL);
+				strncpy(value,input+12,5); // constraints[4]
+				constraints[4]=strtof(value,NULL);
+				strncpy(value,input+18,5); // constraints[5]
+				constraints[5]=strtof(value,NULL);
+				printf("New constrained positions: %.2f %.2f %.2f\n", constraints[3], constraints[4], constraints[5]);
 			}
 			else{
-				timeout_flags[1]=0;// set timeout false
+				printf("Error. Bad constraints format from AGENT2\n");
 			}
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[2]); // start timer a2
-			break;
-		case AGENT3:
-			memcpy(positions+6, position_temp, sizeof(position_temp)); // position
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[5]); // stop timer a3
-			if((t_timeout_UDP[5].tv_sec - t_timeout_UDP[4].tv_sec) + (t_timeout_UDP[5].tv_nsec - t_timeout_UDP[4].tv_nsec) / NSEC_PER_SEC > UDP_READ_TIMEOUT){
-				timeout_flags[2]=1;// set timeout true
+		}
+		else{
+			printf("Error. Bad type code\n");
+		}
+	}
+	else if (!strncmp(input,AGENT3,2)){
+		printf("Message from AGENT3\n");
+		// Agent3 constraint updates
+		if (!strncmp(input+4,DATA,2)){
+			char value[5];
+			if (!strncmp(input+8,".",1) && !strncmp(input+11,",",1) && !strncmp(input+14,".",1) && !strncmp(input+17,",",1) && !strncmp(input+20,".",1)){
+				strncpy(value,input+6,5); // constraints[6]
+				constraints[6]=strtof(value,NULL);
+				strncpy(value,input+12,5); // constraints[7]
+				constraints[7]=strtof(value,NULL);
+				strncpy(value,input+18,5); // constraints[8]
+				constraints[8]=strtof(value,NULL);
+				printf("New constrained positions: %.2f %.2f %.2f\n", constraints[6], constraints[7], constraints[8]);
 			}
 			else{
-				timeout_flags[2]=0;// set timeout false
+				printf("Error. Bad constraints format from AGENT3\n");
 			}
-			clock_gettime(CLOCK_MONOTONIC, &t_timeout_UDP[4]); // start timer a3
-			break;
+		}
+		else{
+			printf("Error. Bad type code\n");
+		}
+	}
+	else{
+		printf("Error. Bad device code\n");
 	}
 }
 
-// Init pipe variable with default values
-static void initPipeVariable(){
-	pthread_mutex_lock(&mutexPipeData);
-		memcpy(communicationData, keyboardData, sizeof(keyboardData));
-		memcpy(communicationData+18, tuningMpcData, sizeof(tuningMpcData));
-		memcpy(communicationData+32, tuningMpcDataControl, sizeof(tuningMpcDataControl));
-		memcpy(communicationData+38, tuningEkfData, sizeof(tuningEkfData));
-		memcpy(communicationData+56, tuningPidData, sizeof(tuningPidData));
-		memcpy(communicationData+62, tuningMpcQfData, sizeof(tuningMpcQfData));
-		memcpy(communicationData+71, manualThrustData, sizeof(manualThrustData));
-		//memcpy(communicationData+72, , sizeof()); // position
-		//memcpy(communicationData+81, , sizeof()); // timeout values
-	pthread_mutex_unlock(&mutexPipeData);
-}
-
+*/
