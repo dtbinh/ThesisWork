@@ -74,8 +74,8 @@ Keyboard listening...
 #define mpcPos_Q_5 1.0f
 #define mpcPos_Q_6 1.0f
 
-#define mpcPos_R_1 10000.0f
-#define mpcPos_R_2 10000.0f
+#define mpcPos_R_1 500.0f
+#define mpcPos_R_2 500.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
 #define mpcAtt_Q_1 1500.0f
@@ -116,27 +116,27 @@ Keyboard listening...
 #define mpcAlt_R_1 1.0f
 
 // Default EKF weights Q
-#define ekf_Q_1 1.0e-7f
-#define ekf_Q_2 1.0e-7f
-#define ekf_Q_3 1.0e-7f
+#define ekf_Q_1 1.0e-6f
+#define ekf_Q_2 1.0e-6f
+#define ekf_Q_3 1.0e-6f
 #define ekf_Q_4 1.0e-7f
 #define ekf_Q_5 1.0e-7f
 #define ekf_Q_6 1.0e-7f
 
 #define ekf_Q_7 1.0e-4f
 #define ekf_Q_8 1.0e-4f
-#define ekf_Q_9 1.0e-4f
+#define ekf_Q_9 1.0e-6f
 #define ekf_Q_10 1.0e-4f
 #define ekf_Q_11 1.0e-4f
-#define ekf_Q_12 1.0e-4f
+#define ekf_Q_12 1.0e-6f
 
-#define ekf_Q_13 1.0f // yaw
-#define ekf_Q_14 1.0e-3f // not used
+#define ekf_Q_13 1.0e-15f // yaw
+#define ekf_Q_14 1.0f // not used
 #define ekf_Q_15 1.0e-10f // dist z
 
-#define ekf_Q_16 1.0e20f
-#define ekf_Q_17 1.0e20f
-#define ekf_Q_18 1.0e20f
+#define ekf_Q_16 1.0f
+#define ekf_Q_17 1.0f
+#define ekf_Q_18 1.0f
 
 // Default PID gains
 #define pid_gyro_kp 2e-2f
