@@ -2041,9 +2041,9 @@ void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
 	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
 	xhat[2]=xhat_prev[2] + Ts*xhat_prev[5];
-	xhat[3]=xhat_prev[3] - Ts*((par_k_d*xhat_prev[3])/par_mass - (par_c_m*par_k*(sin(par_att[0])*sin(xhat_prev[6]) + cos(par_att[0])*cos(xhat_prev[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
-	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass + (par_c_m*par_k*(cos(xhat_prev[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat_prev[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
-	xhat[5]=xhat_prev[5] - Ts*( - xhat_prev[7] + (par_k_d*xhat_prev[5])/par_mass - (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[3]=xhat_prev[3] - Ts*((par_k_d*xhat_prev[3])/par_mass - (par_c_m*par_k*(sin(par_att[2] + xhat_prev[6])*sin(par_att[0]) + cos(par_att[2] + xhat_prev[6])*cos(par_att[0])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass + (par_c_m*par_k*(cos(par_att[2] + xhat_prev[6])*sin(par_att[0]) - sin(par_att[2] + xhat_prev[6])*cos(par_att[0])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[7] - (par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
 	xhat[6]=xhat_prev[6];
 	xhat[7]=xhat_prev[7];
 }
