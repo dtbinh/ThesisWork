@@ -284,9 +284,9 @@ static void *threadSensorFusion (void *arg){
 	double par_att[4]; // par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z 
 	
 	//double Pekf9x9_bias[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf6x6[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double Pekf6x6[36]={1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5};
 	//double Pekf9x9[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf8x8[64]={1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
+	double Pekf8x8[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
 	//double xhat9x9_bias[9]={0,0,0,0,0,0,0,0,0};
 	double xhat6x6[6]={0,0,0,0,0,0};
 	//double xhat9x9[9]={0,0,0,0,0,0,0,0,-par_g};
@@ -294,9 +294,9 @@ static void *threadSensorFusion (void *arg){
 	double uControl[4]={.1,.1,.1,.1};
 	
 	//double Pekf9x9_biasInit[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf6x6Init[36]={1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1};
+	double Pekf6x6Init[36]={1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5};
 	//double Pekf9x9Init[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf8x8Init[64]={1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
+	double Pekf8x8Init[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
 	//double xhat9x9_biasInit[9]={0,0,0,0,0,0,0,0,0};
 	double xhat6x6Init[6]={0,0,0,0,0,0};
 	//double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
@@ -848,8 +848,14 @@ static void *threadSensorFusion (void *arg){
 						if(!ekfReset){
 							// Run Extended Kalman Filter (state estimator) using position and orientation data
 							EKF_6x6(Pekf6x6,xhat6x6,uControl,ymeas6x6,tuningEkfBuffer6x6,Rekf6x6,tsTrue); // Attitude state estimation
-							par_att[0]=xhat6x6[0]; par_att[1]=xhat6x6[1]; par_att[2]=xhat6x6[4]; par_att[3]=xhat6x6[5]; // par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
+							
+							// par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
+							par_att[0]=xhat6x6[0];
+							par_att[1]=xhat6x6[1];
+							par_att[2]=xhat6x6[2];
+							par_att[3]=xhat6x6[5]; 
 							EKF_8x8(Pekf8x8,xhat8x8,uControl,ymeas8x8,tuningEkfBuffer8x8,Rekf8x8,tsTrue,posRawOldFlag,par_att); // Position state estimation
+							
 							//EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6); // Position state estimation
 							stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							
@@ -932,6 +938,9 @@ static void *threadSensorFusion (void *arg){
 							stateDataBuffer[15]=0;
 							printf("EKF xhat=out of bounds\n");
 						}
+						
+						double yaw_bias;
+						yaw_bias=xhat8x8[6]-xhat6x6[2];
 
 						// Move over data to controller.c via pipe
 						//stateDataBuffer[0]=xhat9x9[0]; // position x
@@ -950,7 +959,7 @@ static void *threadSensorFusion (void *arg){
 						
 						stateDataBuffer[6]=xhat6x6[0]; // phi (x-axis)
 						stateDataBuffer[7]=xhat6x6[1]; // theta (y-axis)
-						stateDataBuffer[8]=xhat6x6[2]; // psi (z-axis)
+						stateDataBuffer[8]=xhat6x6[2]+yaw_bias; // psi (z-axis) - bias (drift) compensated data
 						stateDataBuffer[9]=xhat6x6[3]; // omega x (gyro)
 						stateDataBuffer[10]=xhat6x6[4]; // omega y (gyro)
 						stateDataBuffer[11]=xhat6x6[5]; // omega z (gyro)
@@ -976,7 +985,7 @@ static void *threadSensorFusion (void *arg){
 						if(ekfPrint6States && tSensorFusionCounter % 10 == 0){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
 							//printf("(ang(xhat)) % 2.4f % 2.4f % 2.4f (pos(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), xhat8x8[0],xhat8x8[1],xhat8x8[2], uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
-							printf("(P8x8) % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f (yaw) % 1.4f \n", Pekf8x8[0], Pekf8x8[9], Pekf8x8[18], Pekf8x8[27], Pekf8x8[36], Pekf8x8[45], Pekf8x8[54], Pekf8x8[63], xhat8x8[6]*(180/PI));
+							printf("(P8x8) % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f (yaw est) % 1.4f (yaw drift) % 1.4f (yaw comp) % 1.4f\n", Pekf8x8[0], Pekf8x8[9], Pekf8x8[18], Pekf8x8[27], Pekf8x8[36], Pekf8x8[45], Pekf8x8[54], Pekf8x8[63], xhat8x8[6]*(180/PI), xhat6x6[2]*(180/PI), stateDataBuffer[8]*(180/PI));
 							
 							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (OLP) %i %i (L) %f (normMag) %f (rawMag) %f %f %f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), 	xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), 	ioutlierFlagPercentage, outlierFlag[0],		Lmag[0],normMag,	magRawRot[0],magRawRot[1],magRawRot[2],		ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), 	xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
 							//printf("(ang(conj)) % 2.4f % 2.4f % 2.4f (ang) % 2.4f % 2.4f % 2.4f \n",euler[2]*(180/PI),euler[1]*(180/PI),euler[0]*(180/PI),euler2[2]*(180/PI),euler2[1]*(180/PI),euler2[0]*(180/PI));
