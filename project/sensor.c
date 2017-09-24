@@ -1992,7 +1992,8 @@ void Jfx_9x9(double *xhat, double *A, double *u, double Ts, double *par_att){
 }
 
 // Nonlinear Model for position states (8x1) including yaw and disturbance z estimation
-void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_att){
+// Yaw estimation is based on the nonlinear model including gyro scope measurements
+/*void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_att){
 	// par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
 	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
 	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
@@ -2002,11 +2003,33 @@ void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[7] - (par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
 	xhat[6]=xhat_prev[6] + Ts*((par_att[3]*cos(par_att[0]))/cos(par_att[1]) + (par_att[2]*sin(par_att[0]))/cos(par_att[1]));
 	xhat[7]=xhat_prev[7];
+}*/
+
+// Nonlinear Model for position states (8x1) including yaw and disturbance z estimation
+// Yaw estimation is based on pure position estimation and measurement update using the random walk model
+void fx_8x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_att){
+	// par_att[0]=phi, par_att[1]=theta
+	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
+	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
+	xhat[2]=xhat_prev[2] + Ts*xhat_prev[5];
+	xhat[3]=xhat_prev[3] - Ts*((par_k_d*xhat_prev[3])/par_mass - (par_c_m*par_k*(sin(par_att[0])*sin(xhat_prev[6]) + cos(par_att[0])*cos(xhat_prev[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass + (par_c_m*par_k*(cos(xhat_prev[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat_prev[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[5]=xhat_prev[5] - Ts*(par_g - xhat_prev[7] + (par_k_d*xhat_prev[5])/par_mass - (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[6]=xhat_prev[6];
+	xhat[7]=xhat_prev[7];
 }
 
-// Jacobian of model for position states (8x8) including yaw and disturbance z estimation
-void Jfx_8x8(double *xhat, double *A, double *u, double Ts, double *par_att){
+// Jacobian of model for position states (8x8) including yaw and disturbance z estimation.
+// Yaw estimation is based on the nonlinear model including gyro scope measurements
+/*void Jfx_8x8(double *xhat, double *A, double *u, double Ts, double *par_att){
 	// par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
+	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=1;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=1;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=Ts;A[25]=0;A[26]=0;A[27]=1 - (Ts*par_k_d)/par_mass;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=0;A[33]=Ts;A[34]=0;A[35]=0;A[36]=1 - (Ts*par_k_d)/par_mass;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=Ts;A[43]=0;A[44]=0;A[45]=1 - (Ts*par_k_d)/par_mass;A[46]=0;A[47]=0;A[48]=0;A[49]=0;A[50]=0;A[51]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[52]=(Ts*par_c_m*par_k*(sin(par_att[0])*sin(xhat[6]) + cos(par_att[0])*cos(xhat[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[53]=0;A[54]=1;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=1;
+}*/
+
+// Jacobian of model for position states (8x8) including yaw and disturbance z estimation.
+// Yaw estimation is based on pure position estimation and measurement update using the random walk model
+void Jfx_8x8(double *xhat, double *A, double *u, double Ts, double *par_att){
+	// par_att[0]=phi, par_att[1]=theta
 	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=1;A[10]=0;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=1;A[19]=0;A[20]=0;A[21]=0;A[22]=0;A[23]=0;A[24]=Ts;A[25]=0;A[26]=0;A[27]=1 - (Ts*par_k_d)/par_mass;A[28]=0;A[29]=0;A[30]=0;A[31]=0;A[32]=0;A[33]=Ts;A[34]=0;A[35]=0;A[36]=1 - (Ts*par_k_d)/par_mass;A[37]=0;A[38]=0;A[39]=0;A[40]=0;A[41]=0;A[42]=Ts;A[43]=0;A[44]=0;A[45]=1 - (Ts*par_k_d)/par_mass;A[46]=0;A[47]=0;A[48]=0;A[49]=0;A[50]=0;A[51]=(Ts*par_c_m*par_k*(cos(xhat[6])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(xhat[6]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[52]=(Ts*par_c_m*par_k*(sin(par_att[0])*sin(xhat[6]) + cos(par_att[0])*cos(xhat[6])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass;A[53]=0;A[54]=1;A[55]=0;A[56]=0;A[57]=0;A[58]=0;A[59]=0;A[60]=0;A[61]=Ts;A[62]=0;A[63]=1;
 }
 
