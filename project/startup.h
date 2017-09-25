@@ -103,6 +103,19 @@ Keyboard listening...
 #define mpcAtt_Qf_3_4 406.515
 #define mpcAtt_Qf_5_6 9210.74
 
+#define mpcPos_Qf_1 4.531983e+03
+#define mpcPos_Qf_2 1.194034e+03
+#define mpcPos_Qf_3 4.531983e+03
+#define mpcPos_Qf_4 1.194034e+03
+#define mpcPos_Qf_5 1.0
+#define mpcPos_Qf_6 1.0
+#define mpcPos_Qf_1_2 1.634923e+03
+#define mpcPos_Qf_3_4 1.634923e+03
+#define mpcPos_Qf_5_6 1.0
+
+#define mpcAlt_Qf_1 3.524190e+04
+#define mpcAlt_Qf_2 1.120085e+04
+#define mpcAlt_Qf_1_2 1.308437e+04
 
 //2000.000000,2000.000000,10000000000000.000000
 #define mpcAtt_R_1 1.0f
@@ -113,7 +126,7 @@ Keyboard listening...
 #define mpcAlt_Q_1 1000.0f
 #define mpcAlt_Q_2 100.0f
 
-#define mpcAlt_R_1 1.0f
+#define mpcAlt_R_1 100.0f
 
 // Default EKF weights Q
 #define ekf_Q_1 1.0e-6f
