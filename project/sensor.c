@@ -86,7 +86,7 @@ void saturation(double*, int, double, double);
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
 static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
-static double keyboardData[18]= {0,0,0,0,0,0,0,0,0,0,0,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
+static double keyboardData[18]= {0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 static double positionsData[9]={0};
 static double positions_timeoutData[3]={0};
@@ -208,7 +208,7 @@ static void *threadPipeCommunicationToSensor(void *arg){
 			tsAverageAccum/=50;
 			tsAverage=tsAverageAccum;
 			if(timerPrint){
-				printf("Sensor pipe from Communication Read: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
+				//printf("Sensor pipe from Communication Read: tsAverage %lf tsTrue %lf\n", tsAverage, tsTrue);
 			}
 			tsAverageCounter=0;
 			tsAverageAccum=0;
@@ -236,7 +236,7 @@ static void *threadSensorFusion (void *arg){
 	double positions_timeoutBuffer[3];
 	
 	double headingMean[1]={0.0}, heading[1]={0.0}, heading_pred, headingMem[1000]={0.0}, headingAvg=0;
-	double headingGyro=0, gyroAvg=0, gyroMem[1000]={0.0};
+	double headingGyro=0, gyroAvg=0, gyroMem=0;
 	double magRawRot_flat[3]={0.0};
 	float q_mwk_AHRS[4] = {1,0,0,0}, q_mwk_UPDATE[4] = {1,0,0,0};
 	double q_double[4] = {1,0,0,0};
@@ -250,9 +250,9 @@ static void *threadSensorFusion (void *arg){
 	double buffer_omega_x[BUFFER];
 	double buffer_omega_y[BUFFER];
 	double buffer_omega_z[BUFFER];
-	//double buffer_angle_x[BUFFER];
-	//double buffer_angle_y[BUFFER];
-	//double buffer_angle_z[BUFFER];
+	double buffer_angle_x[BUFFER];
+	double buffer_angle_y[BUFFER];
+	double buffer_angle_z[BUFFER];
 	double buffer_thrust[BUFFER];
 	double buffer_tau_x[BUFFER];
 	double buffer_tau_y[BUFFER];
@@ -281,47 +281,47 @@ static void *threadSensorFusion (void *arg){
 	//FILE *fpWrite;
 	
 	// EKF variables
-	double par_att[4]; // par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z 
+	//double par_att[4]; // par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z 
 	
 	//double Pekf9x9_bias[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
 	double Pekf6x6[36]={1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5};
-	//double Pekf9x9[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf8x8[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
+	double Pekf9x9[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	//double Pekf8x8[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
 	//double xhat9x9_bias[9]={0,0,0,0,0,0,0,0,0};
 	double xhat6x6[6]={0,0,0,0,0,0};
-	//double xhat9x9[9]={0,0,0,0,0,0,0,0,-par_g};
-	double xhat8x8[8]={0,0,0,0,0,0,0,-par_g};
+	double xhat9x9[9]={0,0,0,0,0,0,0,0,-par_g};
+	//double xhat8x8[8]={0,0,0,0,0,0,0,-par_g};
 	double uControl[4]={.1,.1,.1,.1};
 	
 	//double Pekf9x9_biasInit[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
 	double Pekf6x6Init[36]={1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,1e-5};
-	//double Pekf9x9Init[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
-	double Pekf8x8Init[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
+	double Pekf9x9Init[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
+	//double Pekf8x8Init[64]={1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5,0,0,0,0,0,0,0,0,1e-5};
 	//double xhat9x9_biasInit[9]={0,0,0,0,0,0,0,0,0};
 	double xhat6x6Init[6]={0,0,0,0,0,0};
-	//double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
-	double xhat8x8Init[8]={0,0,0,0,0,0,0,-par_g};
+	double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
+	//double xhat8x8Init[8]={0,0,0,0,0,0,0,-par_g};
 	double uControlInit[4]={.1,.1,.1,.1};
 	double uControlThrustTorques[4]={0,0,0,0};
 	
 	//double Rekf9x9_bias[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double Rekf6x6[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	//double Rekf9x9[9]={0,0,0,0,0,0,0,0,0};
-	double Rekf8x8[9]={0,0,0,0,0,0,0,0,0};
+	double Rekf9x9[9]={0,0,0,0,0,0,0,0,0};
+	//double Rekf8x8[9]={0,0,0,0,0,0,0,0,0};
 	//double ymeas9x9_bias[6]; // vector for 9x9 EKF attitude - measurement: angles and gyro
 	double ymeas6x6[6];
-	//double ymeas9x9[3]; // vector for 9x9 EKF position - measurement: position
-	double ymeas8x8[3]; // vector for 8x8 EKF position - measurement: position
+	double ymeas9x9[3]; // vector for 9x9 EKF position - measurement: position
+	//double ymeas8x8[3]; // vector for 8x8 EKF position - measurement: position
 
 	//double ekf09x9_bias[6]={0,0,0,0,0,0}, ekfCal9x9_bias[6*CALIBRATION];
 	double ekf06x6[6]={0,0,0,0,0,0}, ekfCal6x6[6*CALIBRATION];
-	//double ekf09x9[3]={0,0,0}, ekfCal9x9[3*CALIBRATION];
-	double ekf08x8[3]={0,0,0}, ekfCal8x8[3*CALIBRATION];
+	double ekf09x9[3]={0,0,0}, ekfCal9x9[3*CALIBRATION];
+	//double ekf08x8[3]={0,0,0}, ekfCal8x8[3*CALIBRATION];
 	
 	//double tuningEkfBuffer9x9_bias[9]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_16,ekf_Q_17,ekf_Q_18}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
 	double tuningEkfBuffer6x6[6]={ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12}; //{phi, theta, psi, omega_x, omega_y, omega_z,bias_taux, bias_tauy,bias_tauz}
-	//double tuningEkfBuffer9x9[9]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_14,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, distx, disty, distz}
-	double tuningEkfBuffer8x8[8]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, yaw, distz}
+	double tuningEkfBuffer9x9[9]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_14,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, distx, disty, distz}
+	//double tuningEkfBuffer8x8[8]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_13,ekf_Q_15}; //{x, y, z, xdot, ydot, zdot, yaw, distz}
 	
 	// Low Pass filter variables(20Hz and 30 for gyr)
 	//double b_acc[25]={1.54791392878543e-06,2.07185488006612e-05,-5.19703972529415e-20,-0.000462086226027071,-0.00215334176418159,-0.00523098435850049,-0.00693485312903388,2.82650148861993e-18,0.0249007529841827,0.0717988692685668,0.131922751556644,0.183873196192904,0.204526858025432,0.183873196192904,0.131922751556644,0.0717988692685668,0.0249007529841827,2.82650148861993e-18,-0.00693485312903388,-0.0052309843585005,-0.00215334176418159,-0.000462086226027072,-5.1970397252942e-20,2.07185488006612e-05,1.54791392878543e-06};
@@ -427,11 +427,11 @@ static void *threadSensorFusion (void *arg){
 					 //memcpy(tuningEkfBuffer9x9_bias, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
 					 //memcpy(tuningEkfBuffer9x9_bias+6, tuningEkfData+15, sizeof(tuningEkfData)*3/18); // ekf states 16-18
 					memcpy(tuningEkfBuffer6x6, tuningEkfData+6, sizeof(tuningEkfData)*6/18); // ekf states 7-12
-					//memcpy(tuningEkfBuffer9x9, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
-					//memcpy(tuningEkfBuffer9x9+6, tuningEkfData+12, sizeof(tuningEkfData)*3/18); // ekf states 13-15
-					memcpy(tuningEkfBuffer8x8, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
-					memcpy(tuningEkfBuffer8x8+6, tuningEkfData+12, sizeof(tuningEkfData)*1/18); // ekf states 13-15
-					memcpy(tuningEkfBuffer8x8+7, tuningEkfData+14, sizeof(tuningEkfData)*1/18); // ekf states 13-15
+					memcpy(tuningEkfBuffer9x9, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
+					memcpy(tuningEkfBuffer9x9+6, tuningEkfData+12, sizeof(tuningEkfData)*3/18); // ekf states 13-15
+					//memcpy(tuningEkfBuffer8x8, tuningEkfData, sizeof(tuningEkfData)*6/18); // ekf states 1-6
+					//memcpy(tuningEkfBuffer8x8+6, tuningEkfData+12, sizeof(tuningEkfData)*1/18); // ekf states 13-15
+					//memcpy(tuningEkfBuffer8x8+7, tuningEkfData+14, sizeof(tuningEkfData)*1/18); // ekf states 13-15
 					memcpy(positionsBuffer, positionsData, sizeof(positionsData));
 					memcpy(positions_timeoutBuffer, positions_timeoutData, sizeof(positions_timeoutData));
 				pthread_mutex_unlock(&mutexKeyboardData);
@@ -525,9 +525,12 @@ static void *threadSensorFusion (void *arg){
 					if(k==1000){
 						beta=0.05;
 						betaCalFlag=1;
+						gyroAvg = gyroMem;
+						gyroAvg /= 1000;
 					}
 					else{
 						printf("SampleFre: %f Sample: %i\n", sampleFreq, k++);
+						gyroMem += gyrRaw[2];
 					}
 						
 					if(betaCalFlag==1){
@@ -560,7 +563,7 @@ static void *threadSensorFusion (void *arg){
 					// Orientation estimation with Madgwick filter
 					//MadgwickAHRSupdate((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2]);
 					//if ( tsTrue < 10*tsSensorsFusion/NSEC_PER_SEC ) {
-						MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
+						MadgwickAHRSupdateIMU((float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2]-(float)gyroAvg, (float)accRaw[0], (float)accRaw[1], (float)accRaw[2]);
 						//MadgwickQuaternionUpdate((float)accRaw[0], (float)accRaw[1], (float)accRaw[2], (float)gyrRaw[0], (float)gyrRaw[1], (float)gyrRaw[2], (float)magRawRot[0], (float)magRawRot[1], (float)magRawRot[2], q, (float)tsTrue);	
 					//}
 
@@ -570,9 +573,9 @@ static void *threadSensorFusion (void *arg){
 					//q_comp[3]=-(double)q[3];
 					
 					q_comp[0]=q0;
-					q_comp[1]=q1;
-					q_comp[2]=q2;
-					q_comp[3]=q3;
+					q_comp[1]=-q1;
+					q_comp[2]=-q2;
+					q_comp[3]=-q3;
 					
 					normMag=sqrt(pow(magRawRot[0],2) + pow(magRawRot[1],2) + pow(magRawRot[2],2));
 					//magRawRot[0] /= normMag;
@@ -745,12 +748,14 @@ static void *threadSensorFusion (void *arg){
 				if (!positions_timeoutBuffer[0])
 					beaconConnected=1;
 				else
-					beaconConnected=0;
+					//beaconConnected=0;
+					beaconConnected=1;
 						
 				if(tsAverageReadyEKF==2 && eulerCalFlag==1){
 					// Check if raw position data is new or old
 					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
-						posRawOldFlag=1;
+						//posRawOldFlag=1;
+						posRawOldFlag=0;
 					}
 					else{
 						posRawOldFlag=0;
@@ -758,13 +763,13 @@ static void *threadSensorFusion (void *arg){
 					}	
 					
 					// Move data from (euler and posRaw) array to ymeas in to EKF's
-					//ymeas9x9[0]=posRaw[0]; // position x
-					//ymeas9x9[1]=posRaw[1]; // position y
-					//ymeas9x9[2]=posRaw[2]; // position z
+					ymeas9x9[0]=posRaw[0]; // position x
+					ymeas9x9[1]=posRaw[1]; // position y
+					ymeas9x9[2]=posRaw[2]; // position z
 					
-					ymeas8x8[0]=posRaw[0]; // position x
-					ymeas8x8[1]=posRaw[1]; // position y
-					ymeas8x8[2]=posRaw[2]; // position z
+					//ymeas8x8[0]=posRaw[0]; // position x
+					//ymeas8x8[1]=posRaw[1]; // position y
+					//ymeas8x8[2]=posRaw[2]; // position z
 					
 					ymeas6x6[0]=euler_comp[2]; // phi (x-axis)
 					ymeas6x6[1]=euler_comp[1]; // theta (y-axis)
@@ -781,16 +786,16 @@ static void *threadSensorFusion (void *arg){
 						printf("EKF Calibration started\n");
 						//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
-						//ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
+						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+						//ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
 						//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 						printf("EKF calibration counter: %i\n", calibrationCounterEKF++);
 					}
 					else if(calibrationCounterEKF<CALIBRATION && beaconConnected && !posRawOldFlag){
 						 //ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
-						//ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
+						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+						//ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
 						//printf("calibrationCounterEKF\n: %i", calibrationCounterEKF);
 						printf("EKF calibration counter: %i\n", calibrationCounterEKF++);
 						
@@ -798,8 +803,8 @@ static void *threadSensorFusion (void *arg){
 					else if(calibrationCounterEKF==CALIBRATION && beaconConnected && !posRawOldFlag){
 						//ekfCalibration9x9_bias(Rekf9x9_bias, ekf09x9_bias, ekfCal9x9_bias, ymeas9x9_bias, calibrationCounterEKF);
 						ekfCalibration6x6(Rekf6x6, ekf06x6, ekfCal6x6, ymeas6x6, calibrationCounterEKF);
-						//ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
-						ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
+						ekfCalibration9x9(Rekf9x9, ekf09x9, ekfCal9x9, ymeas9x9, calibrationCounterEKF);
+						//ekfCalibration9x9(Rekf8x8, ekf08x8, ekfCal8x8, ymeas8x8, calibrationCounterEKF);
 						
 						//// Save calibration in 'settings.txt' if it does not exist
 						////saveSettings(Rekf,"Rekf",sizeof(Rekf)/sizeof(double), &fpWrite);
@@ -827,12 +832,12 @@ static void *threadSensorFusion (void *arg){
 						xhat6x6[5]=0;
 						
 						// Position states initial measurments
-						//xhat9x9[0]=ymeas9x9[0];
-						//xhat9x9[1]=ymeas9x9[1];
-						//xhat9x9[2]=ymeas9x9[2];
-						xhat8x8[0]=ymeas8x8[0];
-						xhat8x8[1]=ymeas8x8[1];
-						xhat8x8[2]=ymeas8x8[2];
+						xhat9x9[0]=ymeas9x9[0];
+						xhat9x9[1]=ymeas9x9[1];
+						xhat9x9[2]=ymeas9x9[2];
+						//xhat8x8[0]=ymeas8x8[0];
+						//xhat8x8[1]=ymeas8x8[1];
+						//xhat8x8[2]=ymeas8x8[2];
 						
 						// Quaternions initial measurments
 						//memcpy(q_init, q, sizeof(q));
@@ -850,29 +855,36 @@ static void *threadSensorFusion (void *arg){
 							EKF_6x6(Pekf6x6,xhat6x6,uControl,ymeas6x6,tuningEkfBuffer6x6,Rekf6x6,tsTrue); // Attitude state estimation
 							
 							// par_att[0]=phi, par_att[1]=theta, par_att[2]=omega_y, par_att[3]=omega_z
-							par_att[0]=xhat6x6[0];
-							par_att[1]=xhat6x6[1];
-							par_att[2]=xhat6x6[2];
-							par_att[3]=xhat6x6[5]; 
-							EKF_8x8(Pekf8x8,xhat8x8,uControl,ymeas8x8,tuningEkfBuffer8x8,Rekf8x8,tsTrue,posRawOldFlag,par_att); // Position state estimation
+							//par_att[0]=xhat6x6[0];
+							//par_att[1]=xhat6x6[1];
+							//par_att[2]=xhat6x6[2];
+							//par_att[3]=xhat6x6[5]; 
+							//EKF_8x8(Pekf8x8,xhat8x8,uControl,ymeas8x8,tuningEkfBuffer8x8,Rekf8x8,tsTrue,posRawOldFlag,par_att); // Position state estimation
 							
-							//EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6); // Position state estimation
+							EKF_9x9(Pekf9x9,xhat9x9,uControl,ymeas9x9,tuningEkfBuffer9x9,Rekf9x9,tsTrue,posRawOldFlag,xhat6x6); // Position state estimation
 							stateDataBuffer[15]=1; // ready flag for MPC to start using the initial conditions given by EKF.
 							
 							if(!triggerFly){ // forcing it estimation of disturbance g not go off when not flying
-								xhat8x8[7]=-par_g;
+								xhat9x9[8]=-par_g;
+								xhat9x9[6]=0;
+								xhat9x9[7]=0;
+								xhat9x9[2]=0;
+								xhat9x9[5]=0;
+								//xhat8x8[7]=-par_g;
+								//xhat8x8[2]=0;
+								//xhat8x8[5]=0;
 							}
 						}
 						// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 						else{
 							//memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));
 							memcpy(Pekf6x6, Pekf6x6, sizeof(Pekf6x6Init));	
-							//memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
-							memcpy(Pekf8x8, Pekf8x8Init, sizeof(Pekf8x8Init));	
+							memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
+							//memcpy(Pekf8x8, Pekf8x8Init, sizeof(Pekf8x8Init));	
 							//memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
 							memcpy(xhat6x6, xhat6x6Init, sizeof(xhat6x6Init));
-							//memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
-							memcpy(xhat8x8, xhat8x8Init, sizeof(xhat8x8Init));
+							memcpy(xhat9x9, xhat9x9Init, sizeof(xhat9x9Init));
+							//memcpy(xhat8x8, xhat8x8Init, sizeof(xhat8x8Init));
 							memcpy(uControl, uControlInit, sizeof(uControlInit));
 							
 							//memcpy(q, q_init, sizeof(q_init));
@@ -888,15 +900,16 @@ static void *threadSensorFusion (void *arg){
 						}
 						
 						// Override disturbance estimation in x and y direction
-						//xhat8x8[6]=0;
+						//xhat9x9[6]=0;
 						//xhat9x9[7]=0;
 						
 						// Torque disturbance saturation
 						//saturation(xhat9x9_bias,6,-0.01,0.01);
 						//saturation(xhat9x9_bias,7,-0.01,0.01);
 						// saturation(xhat9x9_bias,6,0.0,0.0);
-						// saturation(xhat9x9_bias,7,0.0,0.0);
-						// saturation(xhat9x9_bias,8,0.0,0.0);
+						saturation(xhat9x9,6,-0.25,0.25);
+						saturation(xhat9x9,7,-0.25,0.25);
+						saturation(xhat9x9,8,-12,-6);
 				
 						//Check for EKF6x6 failure (isnan)
 						 for (int j=0;j<6;j++){
@@ -908,7 +921,7 @@ static void *threadSensorFusion (void *arg){
 						
 						// Check for EKF8x8 failure (isnan)
 						for (int j=0;j<9;j++){
-							if (isnan(xhat8x8[j])!=0){
+							if (isnan(xhat9x9[j])!=0){
 								isnan_flag=1;
 								break;
 							}						
@@ -924,7 +937,7 @@ static void *threadSensorFusion (void *arg){
 						
 						// Check for EKF8x8 failure (out of bounds)
 						for (int j=0;j<9;j++){
-							if (xhat8x8[j]>1e6){
+							if (xhat9x9[j]>1e6){
 								outofbounds_flag=1;
 								break;
 							}						
@@ -939,36 +952,36 @@ static void *threadSensorFusion (void *arg){
 							printf("EKF xhat=out of bounds\n");
 						}
 						
-						double yaw_bias;
-						yaw_bias=xhat8x8[6]-xhat6x6[2];
+						//double yaw_bias;
+						//yaw_bias=xhat8x8[6]-xhat6x6[2];
 
-						// Move over data to controller.c via pipe
-						//stateDataBuffer[0]=xhat9x9[0]; // position x
-						//stateDataBuffer[1]=xhat9x9[1]; // position y
-						//stateDataBuffer[2]=xhat9x9[2]; // position z
-						//stateDataBuffer[3]=xhat9x9[3]; // velocity x
-						//stateDataBuffer[4]=xhat9x9[4]; // velocity y
-						//stateDataBuffer[5]=xhat9x9[5]; // velocity z
+						 //Move over data to controller.c via pipe
+						stateDataBuffer[0]=xhat9x9[0]; // position x
+						stateDataBuffer[1]=xhat9x9[1]; // position y
+						stateDataBuffer[2]=xhat9x9[2]; // position z
+						stateDataBuffer[3]=xhat9x9[3]; // velocity x
+						stateDataBuffer[4]=xhat9x9[4]; // velocity y
+						stateDataBuffer[5]=xhat9x9[5]; // velocity z
 						
-						stateDataBuffer[0]=xhat8x8[0]; // position x
-						stateDataBuffer[1]=xhat8x8[1]; // position y
-						stateDataBuffer[2]=xhat8x8[2]; // position z
-						stateDataBuffer[3]=xhat8x8[3]; // velocity x
-						stateDataBuffer[4]=xhat8x8[4]; // velocity y
-						stateDataBuffer[5]=xhat8x8[5]; // velocity z
+						//stateDataBuffer[0]=xhat8x8[0]; // position x
+						//stateDataBuffer[1]=xhat8x8[1]; // position y
+						//stateDataBuffer[2]=xhat8x8[2]; // position z
+						//stateDataBuffer[3]=xhat8x8[3]; // velocity x
+						//stateDataBuffer[4]=xhat8x8[4]; // velocity y
+						//stateDataBuffer[5]=xhat8x8[5]; // velocity z
 						
 						stateDataBuffer[6]=xhat6x6[0]; // phi (x-axis)
 						stateDataBuffer[7]=xhat6x6[1]; // theta (y-axis)
-						stateDataBuffer[8]=xhat6x6[2]+yaw_bias; // psi (z-axis) - bias (drift) compensated data
+						stateDataBuffer[8]=xhat6x6[2]; // psi (z-axis)
 						stateDataBuffer[9]=xhat6x6[3]; // omega x (gyro)
 						stateDataBuffer[10]=xhat6x6[4]; // omega y (gyro)
 						stateDataBuffer[11]=xhat6x6[5]; // omega z (gyro)
 						
 						//stateDataBuffer[12]=xhat9x9[6]; // disturbance x
 						//stateDataBuffer[13]=xhat9x9[7]; // disturbance y
-						//stateDataBuffer[14]=xhat9x9[8]; // disturbance z
+						stateDataBuffer[14]=xhat9x9[8]; // disturbance z
 						
-						stateDataBuffer[14]=xhat8x8[7]; // disturbance z
+						//stateDataBuffer[14]=xhat8x8[7]; // disturbance z
 						
 						//stateDataBuffer[16]=0; // bias taux
 						//stateDataBuffer[17]=0; // bias tauy
@@ -978,19 +991,19 @@ static void *threadSensorFusion (void *arg){
 						
 						if(ekfPrint && tSensorFusionCounter % 10 == 0){
 							//double norm_mag = 1/sqrt(magRawRot[0] * magRawRot[0] + magRawRot[1] * magRawRot[1] + magRawRot[2] * magRawRot[2]);
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (yaw) % 1.4f (dist_z) % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f (freq) % 3.1f\n",xhat8x8[0],xhat8x8[1],xhat8x8[2],xhat8x8[3],xhat8x8[4],xhat8x8[5],xhat8x8[6]*(180/PI),xhat8x8[7],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), sampleFreq);
+							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist_xyz) % 1.4f % 1.4f % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9[3],xhat9x9[4],xhat9x9[5],xhat9x9[6],xhat9x9[7],xhat9x9[8],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
 							//printf("(mag) % 1.4f % 1.4f % 1.4f (atan2(y/x)) % 1.4f\n", magRawRot[0]*norm_mag, magRawRot[1]*norm_mag, magRawRot[2]*norm_mag, atan2(magRawRot[1]*norm_mag, magRawRot[0]*norm_mag)*(180/PI));
 						}
 						
 						if(ekfPrint6States && tSensorFusionCounter % 10 == 0){
 							//printf("xhat: % 1.4f % 1.4f % 1.4f % 2.4f % 2.4f % 2.4f (euler_meas) % 2.4f % 2.4f % 2.4f (gyr_meas) % 2.4f % 2.4f % 2.4f (outlier) %i %i (freq) %3.5f u: %3.4f %3.4f %3.4f %3.4f\n",xhat9x9[0],xhat9x9[1],xhat9x9[2],xhat9x9_bias[0]*(180/PI),xhat9x9_bias[1]*(180/PI),xhat9x9_bias[2]*(180/PI), ymeas9x9_bias[0]*(180/PI),ymeas9x9_bias[1]*(180/PI),ymeas9x9_bias[2]*(180/PI), gyrRaw[0], gyrRaw[1], gyrRaw[2], outlierFlag, outlierFlagPercentage, sampleFreq, uControl[0], uControl[1], uControl[2], uControl[3]);
 							//printf("(ang(xhat)) % 2.4f % 2.4f % 2.4f (pos(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), xhat8x8[0],xhat8x8[1],xhat8x8[2], uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
-							printf("(P8x8) % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f (yaw est) % 1.4f (yaw drift) % 1.4f (yaw comp) % 1.4f\n", Pekf8x8[0], Pekf8x8[9], Pekf8x8[18], Pekf8x8[27], Pekf8x8[36], Pekf8x8[45], Pekf8x8[54], Pekf8x8[63], xhat8x8[6]*(180/PI), xhat6x6[2]*(180/PI), stateDataBuffer[8]*(180/PI));
+							//printf("(P8x8) % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f % 1.6f (yaw est) % 1.4f (yaw drift) % 1.4f (yaw comp) % 1.4f\n", Pekf8x8[0], Pekf8x8[9], Pekf8x8[18], Pekf8x8[27], Pekf8x8[36], Pekf8x8[45], Pekf8x8[54], Pekf8x8[63], xhat8x8[6]*(180/PI), xhat6x6[2]*(180/PI), stateDataBuffer[8]*(180/PI));
 							
 							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (OLP) %i %i (L) %f (normMag) %f (rawMag) %f %f %f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), 	xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), 	ioutlierFlagPercentage, outlierFlag[0],		Lmag[0],normMag,	magRawRot[0],magRawRot[1],magRawRot[2],		ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), 	xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
 							//printf("(ang(conj)) % 2.4f % 2.4f % 2.4f (ang) % 2.4f % 2.4f % 2.4f \n",euler[2]*(180/PI),euler[1]*(180/PI),euler[0]*(180/PI),euler2[2]*(180/PI),euler2[1]*(180/PI),euler2[0]*(180/PI));
 							
-							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
+							printf("(ang(m)) % 2.4f % 2.4f % 2.4f (ang(xhat)) % 2.4f % 2.4f % 2.4f (omeg(m)) % 2.4f % 2.4f % 2.4f (omeg(xhat)) % 2.4f % 2.4f % 2.4f (pwm) % 3.4f % 3.4f % 3.4f % 3.4f (thrust) % 1.3f (torque) % 1.5f % 1.5f % 1.5f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI), ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI), xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI), uControl[0], uControl[1], uControl[2], uControl[3], uControlThrustTorques[0], uControlThrustTorques[1], uControlThrustTorques[2], uControlThrustTorques[3]);
 							//printf("(ang(m)) % 2.4f % 2.4f % 2.4f (hdngTrue,gyroAvg,hdngGyro) % 2.4f % 2.4f % 2.4f (OLP) %i %i (L) %2.4f (normMag) %3.2f (hding, hding_pred, predAvg) % 2.4f % 2.4f % 2.4f (rawMag) %f %f %f (omeg(m)) % 2.4f % 2.4f % 2.4f \n",ymeas6x6[0]*(180/PI),ymeas6x6[1]*(180/PI),ymeas6x6[2]*(180/PI), 	(ymeas6x6[2]-headingGyro)*(180/PI),gyroAvg*(180/PI),headingGyro*(180/PI), 	ioutlierFlagPercentage, outlierFlag[0],		Lmag[0],normMag,	heading[0]*180/PI,heading_pred*180/PI,headingAvg*180/PI,		magRawRot[0],magRawRot[1],magRawRot[2],		ymeas6x6[3]*(180/PI),ymeas6x6[4]*(180/PI),ymeas6x6[5]*(180/PI));
 						}
 	
@@ -1013,65 +1026,65 @@ static void *threadSensorFusion (void *arg){
 						if(saveDataTrigger){ // only save data when activated from keyboard
 							//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
 							if(buffer_counter==BUFFER){ // if buffer is full, save to file
-								saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
-								saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
-								saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
-								saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
+								//saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
+								//saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
+								//saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
+								//saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
 								//saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
 								//saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
 								//saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
-								////saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
-								////saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
-								////saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+								saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+								saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+								saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
 								//saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
 								//saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
 								//saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
 								//saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
-								//saveData(buffer_acc_x_filt,"acc_x_filt",sizeof(buffer_acc_x)/sizeof(double));
-								//saveData(buffer_acc_y_filt,"acc_y_filt",sizeof(buffer_acc_y)/sizeof(double));
-								//saveData(buffer_acc_z_filt,"acc_z_filt",sizeof(buffer_acc_z)/sizeof(double));
-								//saveData(buffer_gyr_x_filt,"gyr_x_filt",sizeof(buffer_gyr_x)/sizeof(double));
-								//saveData(buffer_gyr_y_filt,"gyr_y_filt",sizeof(buffer_gyr_y)/sizeof(double));
-								//saveData(buffer_gyr_z_filt,"gyr_z_filt",sizeof(buffer_gyr_z)/sizeof(double));
-								//saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
-								//saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
-								//saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
+								saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
+								saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
+								saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
+								saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
+								saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
+								saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
+								saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
+								saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
+								saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
 								saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
-								saveData(buffer_yaw,"yaw",sizeof(buffer_yaw)/sizeof(double));
-								saveData(buffer_yaw_drift,"yaw_drift",sizeof(buffer_yaw)/sizeof(double));
+								//saveData(buffer_yaw,"yaw",sizeof(buffer_yaw)/sizeof(double));
+								//saveData(buffer_yaw_drift,"yaw_drift",sizeof(buffer_yaw)/sizeof(double));
 								buffer_counter=0;
 							}
 							else{ // else keep saving data to buffer
-								buffer_u1[buffer_counter]=uControl[0];
-								buffer_u2[buffer_counter]=uControl[1];
-								buffer_u3[buffer_counter]=uControl[2];
-								buffer_u4[buffer_counter]=uControl[3];
+								//buffer_u1[buffer_counter]=uControl[0];
+								//buffer_u2[buffer_counter]=uControl[1];
+								//buffer_u3[buffer_counter]=uControl[2];
+								//buffer_u4[buffer_counter]=uControl[3];
 								////buffer_omega_x[buffer_counter]=ymeas9x9_bias[3];
 								////buffer_omega_y[buffer_counter]=ymeas9x9_bias[4];
 								////buffer_omega_z[buffer_counter]=ymeas9x9_bias[5];
 								//buffer_omega_x[buffer_counter]=ymeas6x6[3];
 								//buffer_omega_y[buffer_counter]=ymeas6x6[4];
 								//buffer_omega_z[buffer_counter]=ymeas6x6[5];
-								////buffer_angle_x[buffer_counter]=xhat9x9_bias[0];
-								////buffer_angle_y[buffer_counter]=xhat9x9_bias[1];
-								////buffer_angle_z[buffer_counter]=xhat9x9_bias[2];
+								buffer_angle_x[buffer_counter]=euler_comp[2];
+								buffer_angle_y[buffer_counter]=euler_comp[1];
+								buffer_angle_z[buffer_counter]=euler_comp[0];
 								//buffer_thrust[buffer_counter]=uControlThrustTorques[0];
 								//buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
 								//buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
 								//buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
-								//buffer_acc_x_filt[buffer_counter]=accRaw[0];
-								//buffer_acc_y_filt[buffer_counter]=accRaw[1];
-								//buffer_acc_z_filt[buffer_counter]=accRaw[2];
-								//buffer_gyr_x_filt[buffer_counter]=gyrRaw[0];
-								//buffer_gyr_y_filt[buffer_counter]=gyrRaw[1];
-								//buffer_gyr_z_filt[buffer_counter]=gyrRaw[2];
-								//buffer_mag_x[buffer_counter]=magRaw[0];
-								//buffer_mag_y[buffer_counter]=magRaw[1];
-								//buffer_mag_z[buffer_counter]=magRaw[2];
+								buffer_acc_x[buffer_counter]=accRaw[0];
+								buffer_acc_y[buffer_counter]=accRaw[1];
+								buffer_acc_z[buffer_counter]=accRaw[2];
+								buffer_gyr_x[buffer_counter]=gyrRaw[0];
+								buffer_gyr_y[buffer_counter]=gyrRaw[1];
+								buffer_gyr_z[buffer_counter]=gyrRaw[2];
+								buffer_mag_x[buffer_counter]=magRaw[0];
+								buffer_mag_y[buffer_counter]=magRaw[1];
+								buffer_mag_z[buffer_counter]=magRaw[2];
 								
 								buffer_ts[buffer_counter]=tsTrue;
-								buffer_yaw[buffer_counter]=xhat8x8[6]; // yaw estimate from EKF 8x8
-								buffer_yaw_drift[buffer_counter]=xhat6x6[2]; // yaw filtered through EKF 6x6 drifting
+								//buffer_yaw[buffer_counter]=xhat8x8[6]; // yaw estimate from EKF 8x8
+								//buffer_yaw_drift[buffer_counter]=xhat6x6[2]; // yaw filtered through EKF 6x6 drifting
 								buffer_counter++;
 							}
 						}
@@ -1993,8 +2006,8 @@ void fx_9x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 	xhat[0]=xhat_prev[0] + Ts*xhat_prev[3];
 	xhat[1]=xhat_prev[1] + Ts*xhat_prev[4];
 	xhat[2]=xhat_prev[2] + Ts*xhat_prev[5];
-	xhat[3]=xhat_prev[3] + Ts*(xhat_prev[6] - (par_k_d*xhat_prev[3])/par_mass + (par_c_m*par_k*(sin(par_att[0])*sin(par_att[2]) + cos(par_att[0])*cos(par_att[2])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
-	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass - xhat_prev[7] + (par_c_m*par_k*(cos(par_att[2])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(par_att[2]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[3]=xhat_prev[3] + Ts*(xhat_prev[6]/par_mass - (par_k_d*xhat_prev[3])/par_mass + (par_c_m*par_k*(sin(par_att[0])*sin(par_att[2]) + cos(par_att[0])*cos(par_att[2])*sin(par_att[1]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
+	xhat[4]=xhat_prev[4] - Ts*((par_k_d*xhat_prev[4])/par_mass - xhat_prev[7]/par_mass + (par_c_m*par_k*(cos(par_att[2])*sin(par_att[0]) - cos(par_att[0])*sin(par_att[1])*sin(par_att[2]))*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
 	xhat[5]=xhat_prev[5] + Ts*(xhat_prev[8] - (par_k_d*xhat_prev[5])/par_mass + (par_c_m*par_k*cos(par_att[0])*cos(par_att[1])*(pow(u[0],2) + pow(u[1],2) + pow(u[2],2) + pow(u[3],2)))/par_mass);
 	xhat[6]=xhat_prev[6];
 	xhat[7]=xhat_prev[7];
@@ -2003,7 +2016,8 @@ void fx_9x1(double *xhat, double *xhat_prev, double *u, double Ts, double *par_a
 
 // Jacobian of model for position states (9x9)
 void Jfx_9x9(double *xhat, double *A, double *u, double Ts, double *par_att){
-	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=1;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=0;A[19]=0;A[20]=1;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=Ts;A[28]=0;A[29]=0;A[30]=1 - (Ts*par_k_d)/par_mass;A[31]=0;A[32]=0;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=Ts;A[38]=0;A[39]=0;A[40]=1 - (Ts*par_k_d)/par_mass;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=0;A[46]=0;A[47]=Ts;A[48]=0;A[49]=0;A[50]=1 - (Ts*par_k_d)/par_mass;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=Ts;A[58]=0;A[59]=0;A[60]=1;A[61]=0;A[62]=0;A[63]=0;A[64]=0;A[65]=0;A[66]=0;A[67]=Ts;A[68]=0;A[69]=0;A[70]=1;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1;
+	//A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=1;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=0;A[19]=0;A[20]=1;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=Ts;A[28]=0;A[29]=0;A[30]=1 - (Ts*par_k_d)/par_mass;A[31]=0;A[32]=0;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=Ts;A[38]=0;A[39]=0;A[40]=1 - (Ts*par_k_d)/par_mass;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=0;A[46]=0;A[47]=Ts;A[48]=0;A[49]=0;A[50]=1 - (Ts*par_k_d)/par_mass;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=Ts;A[58]=0;A[59]=0;A[60]=1;A[61]=0;A[62]=0;A[63]=0;A[64]=0;A[65]=0;A[66]=0;A[67]=Ts;A[68]=0;A[69]=0;A[70]=1;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1;
+	A[0]=1;A[1]=0;A[2]=0;A[3]=0;A[4]=0;A[5]=0;A[6]=0;A[7]=0;A[8]=0;A[9]=0;A[10]=1;A[11]=0;A[12]=0;A[13]=0;A[14]=0;A[15]=0;A[16]=0;A[17]=0;A[18]=0;A[19]=0;A[20]=1;A[21]=0;A[22]=0;A[23]=0;A[24]=0;A[25]=0;A[26]=0;A[27]=Ts;A[28]=0;A[29]=0;A[30]=1 - (Ts*par_k_d)/par_mass;A[31]=0;A[32]=0;A[33]=0;A[34]=0;A[35]=0;A[36]=0;A[37]=Ts;A[38]=0;A[39]=0;A[40]=1 - (Ts*par_k_d)/par_mass;A[41]=0;A[42]=0;A[43]=0;A[44]=0;A[45]=0;A[46]=0;A[47]=Ts;A[48]=0;A[49]=0;A[50]=1 - (Ts*par_k_d)/par_mass;A[51]=0;A[52]=0;A[53]=0;A[54]=0;A[55]=0;A[56]=0;A[57]=Ts/par_mass;A[58]=0;A[59]=0;A[60]=1;A[61]=0;A[62]=0;A[63]=0;A[64]=0;A[65]=0;A[66]=0;A[67]=Ts/par_mass;A[68]=0;A[69]=0;A[70]=1;A[71]=0;A[72]=0;A[73]=0;A[74]=0;A[75]=0;A[76]=0;A[77]=Ts;A[78]=0;A[79]=0;A[80]=1;
 }
 
 // Nonlinear Model for position states (8x1) including yaw and disturbance z estimation

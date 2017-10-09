@@ -44,7 +44,7 @@ static void keyReading( void );
 static double controllerData[9]={0,0,0,0,0,0,0,0,0};
 static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
-static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,0,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control, ff attmpc toggle, save data, pid trigger,toggle motor pwm range tuning}
+static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control, ff attmpc toggle, save data, pid trigger,toggle motor pwm range tuning}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
@@ -256,8 +256,9 @@ static void *threadUdpRead(void *arg){
 	
 	// Loop forever reading/waiting for UDP data, calling message decoder and sending data to controller
 	while(1){
-		
-		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_read, &fromlen) == -1){
+		//printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!udp read is running\n\n\n\n\n\n\n\n\n\n\n\n");
+		if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, &addr_read, &fromlen) == -1){
+		//if (recvfrom(fdsocket_read, readBuff, BUFFER_LENGTH, 0, NULL, NULL) == -1){	
 			//perror("read");
 			timeout_UDP_flag[0]=1;
 			timeout_UDP_flag[1]=1;
@@ -265,6 +266,7 @@ static void *threadUdpRead(void *arg){
 		}
 		else{
 			// Call messageDecode
+			//printf("Message: %s\n",readBuff);
 			messageDecode(readBuff, positions, timeout_UDP, timeout_UDP_flag);
 			//printf("Positions: (%f %f %f), (%f %f %f), (%f %f %f) Flag (%i %i %i)\n", positions[0],positions[1],positions[2],positions[3],positions[4],positions[5],positions[6],positions[7], positions[8], timeout_UDP_flag[0], timeout_UDP_flag[1], timeout_UDP_flag[2]);
 					
@@ -440,25 +442,37 @@ static void *threadKeyReading( void *arg ) {
 /****************************FUNCTIONS*****************************/
 /******************************************************************/
 
+    //struct sockaddr_in si_me, si_other;
+     
+    //int s, i, slen = sizeof(si_other) , recv_len;
+    ////char buf[BUFLEN];
+    
+    //static int fdsocket_read, fdsocket_write;
+//static struct sockaddr_in addr_read, addr_write;
+//static socklen_t fromlen = sizeof(addr_read);
+//static int broadcast=1;
+//static char readBuff[BUFFER_LENGTH];
+//static char writeBuff[BUFFER_LENGTH];
+
+
 // Create UDP sockets and bind.
 static void openSocketCommunication(){
 	/// UDP read timeout specification
 	struct timeval t_timout;
 	t_timout.tv_sec=UDP_READ_TIMEOUT;
 	
-	// Create sockets. SOCK_STREAM=TPC. SOCK_DGRAM=UDP. 
 	fdsocket_read = socket(AF_INET, SOCK_DGRAM, 0);
 	fdsocket_write = socket(AF_INET, SOCK_DGRAM, 0);	
 	if (fdsocket_read == -1){
 		perror("socket read");
-		exit(1);
+		//exit(1);
 	}
 	if (fdsocket_write == -1){
 	perror("socket write");
 	exit(1);
 	}
-	
-	// Activate UDP broadcasting
+
+	 //Activate UDP broadcasting
 	if (setsockopt(fdsocket_read, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) == -1){
 		perror("setup read");
 		//exit(1);
@@ -472,7 +486,7 @@ static void openSocketCommunication(){
 		perror("setup read");
 		//exit(1);
 	}
-	
+
 	// Socket settings
 	addr_read.sin_family = AF_INET;
 	addr_read.sin_port = htons(SERVERPORT);
@@ -485,7 +499,7 @@ static void openSocketCommunication(){
 	
 	// Bind socket to port
 	if (bind(fdsocket_read, (struct sockaddr*)&addr_read, sizeof(addr_read)) == -1){
-		perror("bind read");
+		perror("bind read balls");
 	}
 	printf("Socket ready\n");
 	socketReady=1;
@@ -604,6 +618,8 @@ void keyReading( void ) {
 				if ( strcmp(selection, "y" ) == 0 ) {
 				//pthread_mutex_lock(&mutexSensorData);
 					keyboardData[3] = 1;
+					keyboardData[14] = 1;
+					printf(" Feed forward attitude MPC active: %i\n", (int)keyboardData[14]);
 					//keyboardDataBuffer[3] = 1;
 				//pthread_mutex_unlock(&mutexSensorData);
 				printf("Set to FLY now!\n");
@@ -1333,7 +1349,7 @@ static void messageDecode(char *input, double *positions, struct timespec *t_tim
 				flag_position=1;
 			}
 			else{
-				printf("Unknown message received\n");
+				//printf("Unknown message received\n");
 				return;
 			}
 		}

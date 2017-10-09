@@ -67,23 +67,23 @@ Keyboard listening...
 
 
 // Default MPC POSITION weights Q (Qf) and R
-#define mpcPos_Q_1 150.0f
-#define mpcPos_Q_2 1.0f
-#define mpcPos_Q_3 150.0f
-#define mpcPos_Q_4 1.0f
+#define mpcPos_Q_1 80.0f
+#define mpcPos_Q_2 50.0f
+#define mpcPos_Q_3 80.0f
+#define mpcPos_Q_4 50.0f
 #define mpcPos_Q_5 1.0f
 #define mpcPos_Q_6 1.0f
 
-#define mpcPos_R_1 500.0f
-#define mpcPos_R_2 500.0f
+#define mpcPos_R_1 1500.0f
+#define mpcPos_R_2 1500.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
 #define mpcAtt_Q_1 1500.0f
 #define mpcAtt_Q_2 100.0f
 #define mpcAtt_Q_3 1500.0f
 #define mpcAtt_Q_4 100.0f
-#define mpcAtt_Q_5 1.0f
-#define mpcAtt_Q_6 1.0f
+#define mpcAtt_Q_5 500.0f
+#define mpcAtt_Q_6 1500.0f
 
 //Qf for 1500,100,150,10,1,1 and 1,5000,1e10
 //{{17760.1, 406.515, 0., 0., 0., 0.}, 
@@ -120,7 +120,7 @@ Keyboard listening...
 //2000.000000,2000.000000,10000000000000.000000
 #define mpcAtt_R_1 1.0f
 #define mpcAtt_R_2 1.0f
-#define mpcAtt_R_3 100000000000.0f
+#define mpcAtt_R_3 100.0f
 
 // Default MPC ALTITUDE weights Q (Qf) and R
 #define mpcAlt_Q_1 1000.0f
@@ -129,12 +129,12 @@ Keyboard listening...
 #define mpcAlt_R_1 100.0f
 
 // Default EKF weights Q
-#define ekf_Q_1 1.0e-6f
-#define ekf_Q_2 1.0e-6f
-#define ekf_Q_3 1.0e-6f
-#define ekf_Q_4 1.0e-7f
-#define ekf_Q_5 1.0e-7f
-#define ekf_Q_6 1.0e-7f
+#define ekf_Q_1 1.0e-3f
+#define ekf_Q_2 1.0e-3f
+#define ekf_Q_3 1.0e-5f
+#define ekf_Q_4 1.0e-3f
+#define ekf_Q_5 1.0e-3f
+#define ekf_Q_6 1.0e-5f
 
 #define ekf_Q_7 1.0e-4f
 #define ekf_Q_8 1.0e-4f
@@ -143,8 +143,8 @@ Keyboard listening...
 #define ekf_Q_11 1.0e-4f
 #define ekf_Q_12 1.0e-6f
 
-#define ekf_Q_13 1.0e-15f // yaw
-#define ekf_Q_14 1.0f // not used
+#define ekf_Q_13 1.0e-10f // dist x
+#define ekf_Q_14 1.0e-10f // dist y
 #define ekf_Q_15 1.0e-10f // dist z
 
 #define ekf_Q_16 1.0f
@@ -164,9 +164,9 @@ Keyboard listening...
 
 // Agent ID's
 //#define SUPERVISOR "A0"
-#define AGENT1 1601
-#define AGENT2 1602
-#define AGENT3 1603
+#define AGENT1 1017
+#define AGENT2 1016
+#define AGENT3 1015
 #define MYSELF AGENT1
 
 typedef struct _structPipe{
