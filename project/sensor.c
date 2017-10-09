@@ -381,16 +381,16 @@ static void *threadSensorFusion (void *arg){
 		// Try to enable acc, gyr, mag  and bmp sensors
 		pthread_mutex_lock(&mutexI2CBusy);
 			enableMPU9250Flag=enableMPU9250();
-			//enableAK8963Flag=enableAK8963();
+			enableAK8963Flag=enableAK8963();
 		pthread_mutex_unlock(&mutexI2CBusy);
 		
 		// Check that I2C sensors have been enabled
 		if(enableMPU9250Flag==-1){
 			printf("MPU9250 failed to be enabled\n");
 		}
-		//else if(enableAK8963Flag==-1){
-			//printf("AK8963 failed to be enabled\n");
-		//}
+		else if(enableAK8963Flag==-1){
+			printf("AK8963 failed to be enabled\n");
+		}
 		else{
 			// Loop for ever
 			while(1){
