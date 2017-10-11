@@ -67,9 +67,9 @@ Keyboard listening...
 
 
 // Default MPC POSITION weights Q (Qf) and R
-#define mpcPos_Q_1 80.0f
+#define mpcPos_Q_1 100.0f
 #define mpcPos_Q_2 50.0f
-#define mpcPos_Q_3 80.0f
+#define mpcPos_Q_3 100.0f
 #define mpcPos_Q_4 50.0f
 #define mpcPos_Q_5 1.0f
 #define mpcPos_Q_6 1.0f
@@ -82,8 +82,8 @@ Keyboard listening...
 #define mpcAtt_Q_2 100.0f
 #define mpcAtt_Q_3 1500.0f
 #define mpcAtt_Q_4 100.0f
-#define mpcAtt_Q_5 500.0f
-#define mpcAtt_Q_6 1500.0f
+#define mpcAtt_Q_5 100.0f
+#define mpcAtt_Q_6 200.0f
 
 //Qf for 1500,100,150,10,1,1 and 1,5000,1e10
 //{{17760.1, 406.515, 0., 0., 0., 0.}, 
@@ -145,7 +145,7 @@ Keyboard listening...
 
 #define ekf_Q_13 1.0e-10f // dist x
 #define ekf_Q_14 1.0e-10f // dist y
-#define ekf_Q_15 1.0e-10f // dist z
+#define ekf_Q_15 1.0f // dist z
 
 #define ekf_Q_16 1.0f
 #define ekf_Q_17 1.0f
@@ -159,8 +159,12 @@ Keyboard listening...
 #define pid_angle_ki 3.0e-1f
 #define pid_angle_kd 0.0f
 
+// Default MPC integral gains
+#define mpcAtt_ki_def 3.0e-1f
+#define mpcPos_ki_def 3.0e-2f
+
 // pid_angle_ki 6.0e-1f for PID controller!
- //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries
+//{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries
 
 // Agent ID's
 //#define SUPERVISOR "A0"

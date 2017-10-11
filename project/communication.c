@@ -49,7 +49,7 @@ static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpc
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
-static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
+static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,mpcAtt_ki_def,pid_angle_kp,pid_angle_ki,mpcPos_ki_def}; // PID gains
 static double manualThrustData[1]={manualThrust};
 static double communicationData[84]={0}; // variable that is sent to sensor.c and communication.c
 
@@ -975,7 +975,7 @@ void keyReading( void ) {
 					// PID tuning gains
 					else if ( strcmp(selection, "p" ) == 0 ) {
 						while (tuningFlag){
-							printf("PID gains attitude {gyro_kp,gyro_ki,gyro_kd,angle_kp,angle_ki,angle_kd}\n Old: {%f,%f,%f,%f,%f,%f}\n New: ", tuningPidData[0], tuningPidData[1], tuningPidData[2], tuningPidData[3], tuningPidData[4], tuningPidData[5]);
+							printf("PID gains attitude {gyro_kp,gyro_ki,mpcAtt_ki,angle_kp,angle_ki,mpcPos_ki}\n Old: {%f,%f,%f,%f,%f,%f}\n New: ", tuningPidData[0], tuningPidData[1], tuningPidData[2], tuningPidData[3], tuningPidData[4], tuningPidData[5]);
 							scanf("%s", input_char);
 							pt = strtok(input_char, ",");
 							while (pt != NULL){

@@ -59,11 +59,11 @@ static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
-static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,pid_gyro_kd,pid_angle_kp,pid_angle_ki,pid_angle_kd}; // PID gains
+static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,mpcAtt_ki_def,pid_angle_kp,pid_angle_ki,mpcPos_ki_def}; // PID gains
 static double manualThrustData[1]={manualThrust};
 static double positionsData[9]={0};
 static double positions_timeoutData[3]={1};
-static double theta_ref_comp, phi_ref_comp, dx_comp, dy_comp;
+static double theta_ref_comp, phi_ref_comp; // dx_comp, dy_comp;
 
 static double PWM[4] = { 0, 0, 0, 0 };
 //static int globalWatchdog=0;
@@ -133,8 +133,8 @@ static double AltTsSec = 0.05;
 static void *threadUpdateMeasurements(void*);
 static void *threadController(void*);
 static void *threadUpdateConstraintsSettingsReferences(void*);
-static void controllerPos( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist);
-static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double *dist, int, double, double);
+static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *error_integral, int mpcPos_ff, double ki, double ts );
+static void controllerAtt( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all, double *meas, double *ref, double* error_integral, int mpcAtt_ff, double ki, double ts);
 static void controllerAlt( struct AltParams *, struct AltInputs *, double *altX_all, double *altU_all, double *attU_all, double *meas, double *ref, double *dist);
 static void posFmpc( struct PosParams *, struct PosInputs *, double *posX_all, double *posU_all );
 static void attFmpc( struct AttParams *, struct AttInputs *, double *attX_all, double *attU_all );
@@ -161,7 +161,6 @@ static void resdresp(double *rd, double *rp, int T, int n, int nz, double *resd,
 static void dnudz(double *A, double *B, double *At, double *Bt, double *eyen, 
         double *eyem, double *Q, double *R, double *Qf, double *hp, double *rd, 
         double *rp, int T, int n, int m, int nz, double kappa, double *dnu, double *dz);
-
 
 // Predeclare thread mutexes
 static pthread_mutex_t mutexSensorData = PTHREAD_MUTEX_INITIALIZER;
@@ -367,7 +366,7 @@ void *threadController( void *arg ) {
 
 	// Local variables to store global data in to using mutexes
 	double measBuffer[12], refBuffer[12], ref_formBuffer[2]={0}, distBuffer[3], distBufferTau[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.5, alpha = -1;	
-	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint, mpcAtt_ff; // feed forward activation trigger for attitude mpc;
+	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint, mpcAtt_ff, mpcPos_ff; // feed forward activation trigger for attitude mpc;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc
 	int i;
@@ -380,40 +379,51 @@ void *threadController( void *arg ) {
 	double manualThrustBuffer[1]={manualThrust};
 	double positionsBuffer[9]; // positions of all directly from 'gps'
 	double positions_timeoutBuffer[3]; // timeout data
-	double positions_agents[6]; // position of other agents used for formation flying
-	double positions_self_prev[3]; // previous self position used in case positioning system has time out
+	//double positions_agents[6]; // position of other agents used for formation flying
+	//double positions_self_prev[3]; // previous self position used in case positioning system has time out
 	
 	// PID variables
-	double pid_gyro_error_integral[1]={0};
-	double pid_gyro_error_prev[1]={0};
-	double pid_gyro_kp_local=pid_gyro_kp;
-	double pid_gyro_ki_local=pid_gyro_ki;
-	double pid_gyro_kd_local=pid_gyro_kd;
+	//double pid_gyro_error_integral[1]={0};
+	//double pid_gyro_error_prev[1]={0};
+	//double pid_gyro_kp_local=pid_gyro_kp;
+	//double pid_gyro_ki_local=pid_gyro_ki;
+	//double pid_gyro_kd_local=pid_gyro_kd;
 	
-	double pid_angle_error_integral[2]={0};
-	double pid_angle_error_prev[1]={0};
-	double pid_angle_u=0;
-	double pid_angle_kp_local=pid_angle_kp;
-	double pid_angle_ki_local=pid_angle_ki;
-	double pid_angle_kd_local=pid_angle_kd;
+	double mpcAtt_integral_error[2]={0};
+	double mpcPos_integral_error[2]={0};
 	
-	double pid_gyro_theta_error_integral[1]={0};
-	double pid_gyro_theta_error_prev[1]={0};
-	double pid_gyro_theta_kp_local=pid_gyro_kp;
-	double pid_gyro_theta_ki_local=pid_gyro_ki;
-	double pid_gyro_theta_kd_local=pid_gyro_kd;
 	
-	double pid_angle_theta_error_integral[1]={0};
-	double pid_angle_theta_error_prev[1]={0};
-	double pid_angle_theta_kp_local=pid_angle_kp;
-	double pid_angle_theta_ki_local=pid_angle_ki;
-	double pid_angle_theta_kd_local=pid_angle_kd;
 	
-	double pid_gyro_psi_error_integral[1]={0};
-	double pid_gyro_psi_error_prev[1]={0};
-	double pid_gyro_psi_kp_local=0.02;
-	double pid_gyro_psi_ki_local=0.0;
-	double pid_gyro_psi_kd_local=0.0;
+	//double pid_angle_error_integral[1]={0};
+	//double pid_angle_error_prev[1]={0};
+	//double pid_angle_kp_local=pid_angle_kp;
+	//double pid_angle_ki_local=pid_angle_ki;
+	//double pid_angle_kd_local=pid_angle_kd;
+	
+	//double pid_gyro_theta_error_integral[1]={0};
+	//double pid_gyro_theta_error_prev[1]={0};
+	//double pid_gyro_theta_kp_local=pid_gyro_kp;
+	//double pid_gyro_theta_ki_local=pid_gyro_ki;
+	//double pid_gyro_theta_kd_local=pid_gyro_kd;
+	
+	//double pid_angle_theta_error_integral[1]={0};
+	//double pid_angle_theta_error_prev[1]={0};
+	
+	
+	
+	//double pid_angle_theta_kp_local=pid_angle_kp;
+	
+	
+	double mpcAtt_ki=mpcAtt_ki_def;
+	double mpcPos_ki=mpcPos_ki_def;
+	
+	//double pid_angle_theta_kd_local=pid_angle_kd;
+	
+	//double pid_gyro_psi_error_integral[1]={0};
+	//double pid_gyro_psi_error_prev[1]={0};
+	//double pid_gyro_psi_kp_local=0.02;
+	//double pid_gyro_psi_ki_local=0.0;
+	//double pid_gyro_psi_kd_local=0.0;
 	
 	int pid_trigger;
 	int controllerCounter=0;
@@ -460,6 +470,7 @@ void *threadController( void *arg ) {
 			timerPrint=(int)keyboardData[5];
 			keyRampRef=(int)keyboardData[10];
 			mpcAtt_ff=(int)keyboardData[14];
+			mpcPos_ff=(int)keyboardData[14];
 			pid_trigger=(int)keyboardData[16];
 			memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
 			memcpy(tuningMpcQfBuffer, tuningMpcQfData, sizeof(tuningMpcQfData));
@@ -543,12 +554,12 @@ void *threadController( void *arg ) {
 		altParams.R[0]=tuningMpcBufferControl[5];
 		
 		// Update controller PID gains
-		pid_gyro_theta_kp_local=tuningPidBuffer[0];
-		pid_gyro_theta_ki_local=tuningPidBuffer[1];
-		pid_gyro_theta_kd_local=tuningPidBuffer[2];
-		pid_angle_theta_kp_local=tuningPidBuffer[3];
-		pid_angle_theta_ki_local=tuningPidBuffer[4];
-		pid_angle_theta_kd_local=tuningPidBuffer[5];
+		//pid_gyro_theta_kp_local=tuningPidBuffer[0];
+		//pid_gyro_theta_ki_local=tuningPidBuffer[1];
+		mpcAtt_ki=tuningPidBuffer[2];
+		//pid_angle_theta_kp_local=tuningPidBuffer[3];
+		//pid_angle_theta_ki_local=tuningPidBuffer[4];
+		mpcPos_ki=tuningPidBuffer[5];
 	
 		//// Formation flying *********************
 		// Copy over other 2 agents to buffer
@@ -620,11 +631,11 @@ void *threadController( void *arg ) {
 				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 	
 				//printf("(xyz) %f %f %f\n", measBuffer[0], measBuffer[1], measBuffer[2]);
 				
-				//printf("%f\n", pid_angle_ki_local);
+				printf("mpcAtt_ki % 1.4f mpcPos_ki % 1.4f\n", mpcAtt_ki, mpcPos_ki);
 				
 				// Run controllers 
-				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, distBuffer);
-				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, pid_angle_error_integral, mpcAtt_ff, pid_angle_theta_ki_local, tsTrue);
+				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, mpcPos_integral_error, mpcPos_ff, mpcPos_ki, tsTrue);
+				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, mpcAtt_integral_error, mpcAtt_ff, mpcAtt_ki, tsTrue);
 				//tau_x=0; tau_y=0; tau_z=0;
 				 if (manualThrustBuffer[0] >= 0) {
 					thrust = manualThrustBuffer[0];
@@ -636,34 +647,34 @@ void *threadController( void *arg ) {
 				 }
 
 				 if (pid_trigger) {
-					 //printf("PID\n");
-					 // angle controller
-					 pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
-					 // gyro controller
-					 tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
+					 ////printf("PID\n");
+					 //// angle controller
+					 //pid_angle_u = controllerPID((measBuffer[6]-phi_dist),pid_angle_error_integral,pid_angle_error_prev,pid_angle_kp_local,pid_angle_ki_local,pid_angle_kd_local, tsTrue);
+					 //// gyro controller
+					 //tau_x = controllerPID((measBuffer[9]-pid_angle_u),pid_gyro_error_integral,pid_gyro_error_prev,pid_gyro_kp_local,pid_gyro_ki_local,pid_gyro_kd_local, tsTrue);
 					 
-					 // angle controller
-					 pid_angle_u = controllerPID((measBuffer[7] - theta_dist),pid_angle_theta_error_integral,pid_angle_theta_error_prev,pid_angle_theta_kp_local,pid_angle_theta_ki_local,pid_angle_theta_kd_local, tsTrue);
-					 pid_angle_u *= -1;
-					 //pid_angle_u = 0;
-					 // gyro controller
-					 tau_y = controllerPID((measBuffer[10] - pid_angle_u),pid_gyro_theta_error_integral,pid_gyro_theta_error_prev,pid_gyro_theta_kp_local,pid_gyro_theta_ki_local,pid_gyro_theta_kd_local, tsTrue);
-					 //tau_y = pid_angle_u;
-					 tau_y *= -1;
+					 //// angle controller
+					 //pid_angle_u = controllerPID((measBuffer[7] - theta_dist),pid_angle_theta_error_integral,pid_angle_theta_error_prev,pid_angle_theta_kp_local,pid_angle_theta_ki_local,pid_angle_theta_kd_local, tsTrue);
+					 //pid_angle_u *= -1;
+					 ////pid_angle_u = 0;
+					 //// gyro controller
+					 //tau_y = controllerPID((measBuffer[10] - pid_angle_u),pid_gyro_theta_error_integral,pid_gyro_theta_error_prev,pid_gyro_theta_kp_local,pid_gyro_theta_ki_local,pid_gyro_theta_kd_local, tsTrue);
+					 ////tau_y = pid_angle_u;
+					 //tau_y *= -1;
 					 
-					 tau_z = controllerPID((measBuffer[11] - refBuffer[11]),pid_gyro_psi_error_integral,pid_gyro_psi_error_prev,pid_gyro_psi_kp_local,pid_gyro_psi_ki_local,pid_gyro_psi_kd_local, tsTrue);
-					 tau_z *= -1;
+					 //tau_z = controllerPID((measBuffer[11] - refBuffer[11]),pid_gyro_psi_error_integral,pid_gyro_psi_error_prev,pid_gyro_psi_kp_local,pid_gyro_psi_ki_local,pid_gyro_psi_kd_local, tsTrue);
+					 //tau_z *= -1;
 					 
-					 //tau_x=0;
-					 //tau_y=0;
-					 //tau_z=0;
+					 ////tau_x=0;
+					 ////tau_y=0;
+					 ////tau_z=0;
 					
-					 if (tau_x > .1) {tau_x = .1;}
-					 else if (tau_x < -.1) {tau_x = -.1;}	
-					 if (tau_y > .1) {tau_y = .1;}
-					 else if (tau_y < -.1) {tau_y = -.1;}	
-					 if (tau_z > .1) {tau_z = .1;}
-					 else if (tau_z < -.1) {tau_z = -.1;}	 				
+					 //if (tau_x > .1) {tau_x = .1;}
+					 //else if (tau_x < -.1) {tau_x = -.1;}	
+					 //if (tau_y > .1) {tau_y = .1;}
+					 //else if (tau_y < -.1) {tau_y = -.1;}	
+					 //if (tau_z > .1) {tau_z = .1;}
+					 //else if (tau_z < -.1) {tau_z = -.1;}	 				
 				 }
 				 
 				 //// Inertia identification using sin wave with white noise
@@ -728,12 +739,17 @@ void *threadController( void *arg ) {
 				}
 								
 				memcpy(PWM, PWM0, sizeof(PWM));
+				mpcAtt_integral_error[0]=0;
+				mpcAtt_integral_error[1]=0;
+				mpcPos_integral_error[0]=0;
+				mpcPos_integral_error[1]=0;
+				
 				//tau_x = 0;
-				pid_gyro_error_integral[0]=0;
-				pid_gyro_error_prev[0]=0;
-				pid_angle_error_integral[0]=0.0;
-				pid_angle_error_integral[1]=0.0;
-				pid_angle_error_prev[0]=0.0;		
+				//pid_gyro_error_integral[0]=0;
+				//pid_gyro_error_prev[0]=0;
+				//pid_angle_error_integral[0]=0.0;
+				//pid_angle_error_integral[1]=0.0;
+				//pid_angle_error_prev[0]=0.0;		
 			}
 		
 			// Print PWM signal sent to motors
@@ -905,7 +921,7 @@ static void getAltitudeInputConstraints( double *dist , struct AltParams *altPar
 }
 
 /* The same as threadControllerPos but here as a function and not a thread with sample rate */
-static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *dist ) {
+static void controllerPos( struct PosParams *posParams, struct PosInputs *posInputs, double *posX_all, double *posU_all, double *meas, double *ref, double *ref_form, double *error_integral, int mpcPos_ff, double ki, double ts ) {
 	int i;
 	// Warm start before running the controller - MEMCPY IS NOT NEEDED IN SIMULINK
 	memcpy(&posInputs->X0_all[0], &posX_all[posParams->n], sizeof(double)*posParams->n*posParams->T-posParams->n); 	
@@ -917,11 +933,31 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 		posInputs->U0_all[i] = 0;
 		}
 		
+	// Integrator for position error x and y
+	if(mpcPos_ff){
+		error_integral[0] += ki*((posInputs->x0[0])*ts);
+		error_integral[1] += ki*((posInputs->x0[2])*ts);
+		
+		// Integrator saturation at equivalent of -2 and +2 degrees
+		 if (error_integral[0] > 2*PI/180) {error_integral[0] = 2*PI/180;}
+		 else if (error_integral[0] < -2*PI/180) {error_integral[0] = -2*PI/180;}	
+		 if (error_integral[1] > 2*PI/180) {error_integral[1] = 2*PI/180;}
+		 else if (error_integral[1] < -2*PI/180) {error_integral[1] = -2*PI/180;}		
+	}
+	else{
+		error_integral[0]=0;
+		error_integral[1]=0;
+	}
+		
 	// Update controller input contraints [umin/umax] to compensate for disturbances
-	posParams->umax[0]=6*PI/180-(dist[0]*mdl_param.mass)/(dist[2]);
-	posParams->umin[0]=-6*PI/180-(dist[0]*mdl_param.mass)/(dist[2]);
-	posParams->umax[1]=6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
-	posParams->umin[1]=-6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
+	//posParams->umax[0]=6*PI/180-(dist[0]*mdl_param.mass)/(dist[2]);
+	//posParams->umin[0]=-6*PI/180-(dist[0]*mdl_param.mass)/(dist[2]);
+	//posParams->umax[1]=6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
+	//posParams->umin[1]=-6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
+	posParams->umax[0]=6*PI/180+error_integral[0];
+	posParams->umin[0]=-6*PI/180+error_integral[0];
+	posParams->umax[1]=6*PI/180+error_integral[1];
+	posParams->umin[1]=-6*PI/180+error_integral[1];
 	
 	// Get measurements and references from global data
 	posInputs->x0[0] = meas[0] - ref[0];		// x
@@ -940,8 +976,17 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 	theta_dist = posU_all[0];		//theta with disturbance compensation
 	phi_dist = posU_all[1];			//phi with disturbance compensation
 	
-	dx_comp=(dist[0]*mdl_param.mass)/dist[2];
-	dy_comp=(dist[1]*mdl_param.mass)/dist[2];
+	// Feed forward disturbance compensation
+	if(mpcPos_ff){
+		theta_dist -= error_integral[0];
+		phi_dist -= error_integral[1];
+	}
+	
+	printf("mpcPos (x,umax/umin/int) % 1.4f % 1.4f % 1.4f (y,umax/umin/int) % 1.4f % 1.4f % 1.4f (theta/phi) % 1.4f % 1.4f (theta/phi_ff) % 1.4f % 1.4f\n", posParams->umax[0]*180/PI,posParams->umin[0]*180/PI, error_integral[0]*180/PI, posParams->umax[1]*180/PI, posParams->umin[1]*180/PI, error_integral[1]*180/PI, posU_all[0]*180/PI, posU_all[1]*180/PI, theta_dist*180/PI, phi_dist*180/PI);
+
+	
+	//dx_comp=(dist[0]*mdl_param.mass)/dist[2];
+	//dy_comp=(dist[1]*mdl_param.mass)/dist[2];
 }
 	
 /* The same as threadControllerAtt but here as a function and not a thread with sample rate */
@@ -976,8 +1021,8 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	theta_ref_comp=cos(meas[8])*theta_dist - phi_dist*sin(meas[8]);
 	phi_ref_comp=cos(meas[8])*phi_dist + sin(meas[8])*theta_dist;
 	
-	theta_ref_comp+=dx_comp;
-	phi_ref_comp+=dy_comp;
+	//theta_ref_comp+=dx_comp;
+	//phi_ref_comp+=dy_comp;
 	
 	// Get measurements and references from global data
 	//attInputs->x0[0] = meas[6] - phi_dist;			//phi - coming from the pos controller
@@ -1021,9 +1066,6 @@ static void controllerAtt( struct AttParams *attParams, struct AttInputs *attInp
 	if(mpcAtt_ff){
 		tau_x -= error_integral[0];
 		tau_y -= error_integral[1];
-		// attU_all[0] -= dist[0];
-		// attU_all[1] -= dist[1];
-		// attU_all[2] -= dist[2];
 	}
 
 	for ( i = 0; i < attParams->m*attParams->T; i++ ) {
