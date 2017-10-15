@@ -41,15 +41,15 @@ static void *threadKeyReading( void* );
 static void keyReading( void );
 
 // Static variables for threads
-static double controllerData[9]={0,0,0,0,0,0,0,0,0};
-static double sensorData[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static double controllerData[9]={0};
+static double sensorData[29]={0};
 
 static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control, ff attmpc toggle, save data, pid trigger,toggle motor pwm range tuning}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
-static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,mpcAtt_ki_def,pid_angle_kp,pid_angle_ki,mpcPos_ki_def}; // PID gains
+static double tuningPidData[6]={pid_pos_x_kp_def,pid_pos_x_ki_def,mpcAtt_ki_def,pid_pos_y_kp_def,pid_pos_y_ki_def,mpcPos_ki_def}; // PID gains
 static double manualThrustData[1]={manualThrust};
 static double communicationData[84]={0}; // variable that is sent to sensor.c and communication.c
 
@@ -92,7 +92,7 @@ void startCommunication(void *arg1, void *arg2){
 	threadPID1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
 	threadPID2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
 	threadPID3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
-	//threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
 	threadPID5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
 	
 	// Set up thread scheduler priority for real time tasks
@@ -100,20 +100,20 @@ void startCommunication(void *arg1, void *arg2){
 	paramThread1.sched_priority = PRIORITY_COMMUNICATION_PIPE_CONTROLLER; // set priorities
 	paramThread2.sched_priority = PRIORITY_COMMUNICATION_PIPE_SENSOR;
 	paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
-	//paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
+	paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
 	paramThread5.sched_priority = PRIORITY_COMMUNICATION_KEYBOARD;
 	
 	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
 	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
 	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
-	//if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	if(sched_setscheduler(threadPID5, SCHED_FIFO, &paramThread5)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	
 	// If threads created successful, start them
 	if (!threadPID1) pthread_join( threadPipeCtrlToComm, NULL);
 	if (!threadPID2) pthread_join( threadPipeSensorToComm, NULL);
 	if (!threadPID3) pthread_join( threadUdpR, NULL);
-	//if (!threadPID4) pthread_join( threadUdpW, NULL);
+	if (!threadPID4) pthread_join( threadUdpW, NULL);
 	if (!threadPID5) pthread_join( threadkeyRead, NULL);
 }
 
@@ -183,7 +183,7 @@ static void *threadPipeControllerToComm(void *arg){
 static void *threadPipeSensorToCommunication(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double sensorDataBuffer[19];
+	double sensorDataBuffer[29];
 	
 	/// Setup timer variables for real time performance check
 	struct timespec t_start,t_stop;
@@ -300,7 +300,7 @@ static void *threadUdpRead(void *arg){
 // UDP write thread
 static void *threadUdpWrite(){
 	// Local variables
-	double agentData[19];
+	double agentData[29];
 		
 	/// Setup timer variables for real time performance check
 	struct timespec t, t_start,t_stop;
@@ -339,7 +339,7 @@ static void *threadUdpWrite(){
 			
 			
 				
-			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18]);
+			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18], agentData[19] ,agentData[20] ,agentData[21] ,agentData[22],agentData[23] ,agentData[24] ,agentData[25], agentData[26] ,agentData[27] ,agentData[28]);
 			//printf("%s\n", writeBuff);
 			
 			 //Send data over UDP
@@ -975,7 +975,7 @@ void keyReading( void ) {
 					// PID tuning gains
 					else if ( strcmp(selection, "p" ) == 0 ) {
 						while (tuningFlag){
-							printf("PID gains attitude {gyro_kp,gyro_ki,mpcAtt_ki,angle_kp,angle_ki,mpcPos_ki}\n Old: {%f,%f,%f,%f,%f,%f}\n New: ", tuningPidData[0], tuningPidData[1], tuningPidData[2], tuningPidData[3], tuningPidData[4], tuningPidData[5]);
+							printf("PID gains attitude {pos_x_kp,pos_x_ki,mpcAtt_ki,pos_y_kp,pos_y_ki,mpcPos_ki}\n Old: {%f,%f,%f,%f,%f,%f}\n New: ", tuningPidData[0], tuningPidData[1], tuningPidData[2], tuningPidData[3], tuningPidData[4], tuningPidData[5]);
 							scanf("%s", input_char);
 							pt = strtok(input_char, ",");
 							while (pt != NULL){

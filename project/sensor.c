@@ -89,7 +89,7 @@ void saturation(double*, int, double, double);
 
 // Static variables for threads
 static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c to communicate between IMU read and angle fusion threads
-static double controlData[8]={.1,.1,.1,.1,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
+static double controlData[19]={.1,.1,.1,.1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
 static double keyboardData[18]= {0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
 static double positionsData[9]={0};
@@ -310,7 +310,7 @@ static void *threadSensorFusion (void *arg){
 	//double xhat9x9Init[9]={0,0,0,0,0,0,0,0,-par_g};
 	//double xhat8x8Init[8]={0,0,0,0,0,0,0,-par_g};
 	double uControlInit[4]={.1,.1,.1,.1};
-	double uControlThrustTorques[4]={0,0,0,0};
+	double uControlThrustTorques[15]={0};
 	
 	//double Rekf9x9_bias[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double Rekf6x6[36]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -732,28 +732,7 @@ static void *threadSensorFusion (void *arg){
 						memcpy(posRaw, positionsBuffer+6, sizeof(positionsBuffer)*3/9); // agents 3
 						break;
 				}
-										
-				// Move over data to communication.c via pipe
-				sensorDataBuffer[0]=gyrRaw[0];
-				sensorDataBuffer[1]=gyrRaw[1];
-				sensorDataBuffer[2]=gyrRaw[2];
-				sensorDataBuffer[3]=accRaw[0];
-				sensorDataBuffer[4]=accRaw[1];
-				sensorDataBuffer[5]=accRaw[2];
-				sensorDataBuffer[6]=magRawRot[0];
-				sensorDataBuffer[7]=magRawRot[1];
-				sensorDataBuffer[8]=magRawRot[2];
-				sensorDataBuffer[9]=euler_comp[0];
-				sensorDataBuffer[10]=euler_comp[1];
-				sensorDataBuffer[11]=euler_comp[2];
-				sensorDataBuffer[12]=q_comp[0];
-				sensorDataBuffer[13]=q_comp[1];
-				sensorDataBuffer[14]=q_comp[2];
-				sensorDataBuffer[15]=q_comp[3];
-				//sensorDataBuffer[16]=posRaw[0];
-				//sensorDataBuffer[17]=posRaw[1];
-				//sensorDataBuffer[18]=posRaw[2];
-				
+														
 				// Write to Communication process
 				if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
 				//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
@@ -762,14 +741,14 @@ static void *threadSensorFusion (void *arg){
 				if (!positions_timeoutBuffer[0])
 					beaconConnected=1;
 				else
-					//beaconConnected=0;
-					beaconConnected=1;
+					beaconConnected=0;
+					//beaconConnected=1;
 						
 				if(tsAverageReadyEKF==2 && eulerCalFlag==1){
 					// Check if raw position data is new or old
 					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
-						//posRawOldFlag=1;
-						posRawOldFlag=0;
+						posRawOldFlag=1;
+						//posRawOldFlag=0;
 					}
 					else{
 						posRawOldFlag=0;
@@ -904,8 +883,8 @@ static void *threadSensorFusion (void *arg){
 						// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 						else{
 							//memcpy(Pekf9x9_bias, Pekf9x9_biasInit, sizeof(Pekf9x9_biasInit));
-							memcpy(Pekf6x6, Pekf6x6, sizeof(Pekf6x6Init));	
-							memcpy(Pekf7x7, Pekf7x7Init, sizeof(Pekf7x7Init));	
+							//memcpy(Pekf6x6, Pekf6x6, sizeof(Pekf6x6Init));	
+							//memcpy(Pekf7x7, Pekf7x7Init, sizeof(Pekf7x7Init));	
 							//memcpy(Pekf9x9, Pekf9x9Init, sizeof(Pekf9x9Init));	
 							//memcpy(Pekf8x8, Pekf8x8Init, sizeof(Pekf8x8Init));	
 							//memcpy(xhat9x9_bias, xhat9x9_biasInit, sizeof(xhat9x9_biasInit));
@@ -1048,6 +1027,60 @@ static void *threadSensorFusion (void *arg){
 						if (write(ptrPipe1->child[1], stateDataBuffer, sizeof(stateDataBuffer)) != sizeof(stateDataBuffer)) printf("pipe write error in Sensor to Controller\n");
 						//else printf("Sensor ID: %d, Sent: %f to Controller\n", (int)getpid(), stateDataBuffer[15]);
 						
+						// Move over data to communication.c via pipe
+						sensorDataBuffer[0]=gyrRaw[0];
+						sensorDataBuffer[1]=gyrRaw[1];
+						sensorDataBuffer[2]=gyrRaw[2];
+						sensorDataBuffer[3]=accRaw[0];
+						sensorDataBuffer[4]=accRaw[1];
+						sensorDataBuffer[5]=accRaw[2];
+						sensorDataBuffer[6]=magRawRot[0];
+						sensorDataBuffer[7]=magRawRot[1];
+						sensorDataBuffer[8]=magRawRot[2];
+						sensorDataBuffer[9]=euler_comp[0];
+						sensorDataBuffer[10]=euler_comp[1];
+						sensorDataBuffer[11]=euler_comp[2];
+						//sensorDataBuffer[12]=q_comp[0];
+						//sensorDataBuffer[13]=q_comp[1];
+						//sensorDataBuffer[14]=q_comp[2];
+						//sensorDataBuffer[15]=q_comp[3];
+						//sensorDataBuffer[16]=posRaw[0];
+						//sensorDataBuffer[17]=posRaw[1];
+						//sensorDataBuffer[18]=posRaw[2];
+						sensorDataBuffer[12]=posRaw[0];
+						sensorDataBuffer[13]=posRaw[1];
+						sensorDataBuffer[14]=posRaw[2];
+						sensorDataBuffer[15]=stateDataBuffer[0]; // x
+						sensorDataBuffer[16]=stateDataBuffer[1]; // y
+						sensorDataBuffer[17]=stateDataBuffer[2]; // z
+						sensorDataBuffer[18]=stateDataBuffer[3]; // vx
+						sensorDataBuffer[15]=stateDataBuffer[4]; // vy
+						sensorDataBuffer[16]=stateDataBuffer[5]; // vz
+						sensorDataBuffer[17]=stateDataBuffer[6]; // phi
+						sensorDataBuffer[18]=stateDataBuffer[7]; // theta
+						sensorDataBuffer[15]=stateDataBuffer[8]; // psi
+						sensorDataBuffer[16]=stateDataBuffer[9]; // omega_phi
+						sensorDataBuffer[17]=stateDataBuffer[10]; // omega_theta
+						sensorDataBuffer[18]=stateDataBuffer[11]; // omega_psi
+						sensorDataBuffer[15]=stateDataBuffer[14]; // tilde_dz
+						sensorDataBuffer[16]=uControlThrustTorques[0]; // thrust
+						sensorDataBuffer[17]=uControlThrustTorques[1]; // tau_phi with integrator
+						sensorDataBuffer[18]=uControlThrustTorques[2]; // tau_theta with integrator
+						sensorDataBuffer[19]=uControlThrustTorques[3]; // tau_z
+						sensorDataBuffer[20]=uControlThrustTorques[4]; // G
+						sensorDataBuffer[21]=uControlThrustTorques[5]; // mpcPos_U_theta
+						sensorDataBuffer[22]=uControlThrustTorques[6]; // mpcPos_U_phi
+						sensorDataBuffer[23]=uControlThrustTorques[7]; // mpcPos_U_theta_comp
+						sensorDataBuffer[24]=uControlThrustTorques[8]; // mpcPos_U_phi_comp
+						sensorDataBuffer[25]=uControlThrustTorques[9]; // attU_all_taux
+						sensorDataBuffer[26]=uControlThrustTorques[10]; // attU_all_tauy
+						sensorDataBuffer[27]=uControlThrustTorques[14]; // tsTrue controller
+						//sensorDataBuffer[28]=uControlThrustTorques[12];
+						//sensorDataBuffer[29]=uControlThrustTorques[13];
+						//sensorDataBuffer[30]=uControlThrustTorques[14];
+						sensorDataBuffer[28]=tsTrue; // tsTrue sensor
+																						
+						
 						// Restart sensor fusion and EKF calibration
 						if(sensorCalibrationRestart){
 							// calibrationCounter=0; // forces sensor fusion to restart calibration
@@ -1150,7 +1183,7 @@ static void *threadSensorFusion (void *arg){
 static void *threadPWMControl(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double pwmValueBuffer[8], tsTrue;
+	double pwmValueBuffer[19], tsTrue;
 
 	// Initialize I2C connection to the PWM board and define PWM frequency
 	pthread_mutex_lock(&mutexI2CBusy);
@@ -1960,14 +1993,14 @@ void EKF_9x9(double *Phat, double *xhat, double *u, double *ymeas, double *Q, do
 // State Observer - Extended Kalman Filter for 6 position states + disturbance z estimation
 void EKF_7x7(double *Phat, double *xhat, double *u, double *ymeas, double *Q, double *R, double Ts, int flag, double *par_att){
 	// Local variables
-	double xhat_pred[7]={0};
+	double xhat_pred[7]={0,0,0,0,0,0,0};
 	//double C[27]={1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double C[21]={1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0};
 	//double eye9[81]={1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1};
 	double eye7[49]={1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1};
 	double S_inv[9];
 	double A[49], S[9], C_temp[21], Jfx_temp[49], Phat_pred[49], K_temp[21], K[21], V[3], xhat_temp[3], x_temp[7], fone=1, fzero=0;
-	int n=9, k=9, m=9, ione=1;
+	int n=7, k=7, m=7, ione=1;
 	
 	// Prediction step
 	fx_7x1(xhat_pred, xhat, u, Ts, par_att); // state 

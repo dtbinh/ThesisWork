@@ -59,7 +59,7 @@ static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
 static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
 static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
-static double tuningPidData[6]={pid_gyro_kp,pid_gyro_ki,mpcAtt_ki_def,pid_angle_kp,pid_angle_ki,mpcPos_ki_def}; // PID gains
+static double tuningPidData[6]={pid_pos_x_kp_def,pid_pos_x_ki_def,mpcAtt_ki_def,pid_pos_y_kp_def,pid_pos_y_ki_def,mpcPos_ki_def}; // PID gains
 static double manualThrustData[1]={manualThrust};
 static double positionsData[9]={0};
 static double positions_timeoutData[3]={1};
@@ -318,9 +318,9 @@ void *threadController( void *arg ) {
 		//.Qf = { mpcPos_Qf_1,mpcPos_Qf_1_2,0,0,0,0,	mpcPos_Qf_1_2,mpcPos_Qf_2,0,0,0,0,	0,0,mpcPos_Qf_3,mpcPos_Qf_3_4,0,0,	0,0,mpcPos_Qf_3_4,mpcPos_Qf_4,0,0,	0,0,0,0,mpcPos_Qf_5,mpcPos_Qf_5_6,	0,0,0,0,mpcPos_Qf_5_6,mpcPos_Qf_6 },
 		.Qf = { mpcPos_Q_1,0,0,0,0,0,	0,mpcPos_Q_2,0,0,0,0,	0,0,mpcPos_Q_3,0,0,0,	0,0,0,mpcPos_Q_4,0,0,	0,0,0,0,mpcPos_Q_5,0,	0,0,0,0,0,mpcPos_Q_6 },
 		.R = { mpcPos_R_1,0,		0,mpcPos_R_2 },
-		.umax = { 6*PI/180, 6*PI/180 },
-		.umin = { -6*PI/180, -6*PI/180 },
-		.n = 6, .m = 2, .T = 10, .niters = 5, .kappa = 1e-1
+		.umax = { 15*PI/180, 15*PI/180 },
+		.umin = { -15*PI/180, -15*PI/180 },
+		.n = 6, .m = 2, .T = 20, .niters = 5, .kappa = 1e-3
 	};	
 	
 	posX_all = calloc(posParams.n*posParams.T, sizeof(double));
@@ -374,7 +374,7 @@ void *threadController( void *arg ) {
 	double tuningMpcBuffer[14];		//Q - 14 states
 	double tuningMpcQfBuffer[9];		//Qf
 	double tuningMpcBufferControl[6];	//R - 1 for alt, 2 for pos,  3 for att
-	double controllerBuffer[8]; // {PWM, thrust, torques} to be sent over to sensor.c
+	double controllerBuffer[19]; // {PWM, thrust, torques} to be sent over to sensor.c
 	double tuningPidBuffer[6];
 	double manualThrustBuffer[1]={manualThrust};
 	double positionsBuffer[9]; // positions of all directly from 'gps'
@@ -394,21 +394,22 @@ void *threadController( void *arg ) {
 	
 	
 	
-	//double pid_angle_error_integral[1]={0};
-	//double pid_angle_error_prev[1]={0};
-	//double pid_angle_kp_local=pid_angle_kp;
-	//double pid_angle_ki_local=pid_angle_ki;
+	double pid_pos_x_integral_error[1]={0};
+	double pid_pos_x_prev_error[1]={0};
+	double pid_pos_x_kp=pid_pos_x_kp_def;
+	double pid_pos_x_ki=pid_pos_x_ki_def;
 	//double pid_angle_kd_local=pid_angle_kd;
 	
 	//double pid_gyro_theta_error_integral[1]={0};
 	//double pid_gyro_theta_error_prev[1]={0};
-	//double pid_gyro_theta_kp_local=pid_gyro_kp;
-	//double pid_gyro_theta_ki_local=pid_gyro_ki;
+	double pid_pos_y_integral_error[1]={0};
+	double pid_pos_y_prev_error[1]={0};
+	double pid_pos_y_kp=pid_pos_y_kp_def;
+	double pid_pos_y_ki=pid_pos_y_ki_def;
 	//double pid_gyro_theta_kd_local=pid_gyro_kd;
 	
 	//double pid_angle_theta_error_integral[1]={0};
 	//double pid_angle_theta_error_prev[1]={0};
-	
 	
 	
 	//double pid_angle_theta_kp_local=pid_angle_kp;
@@ -560,6 +561,14 @@ void *threadController( void *arg ) {
 		//pid_angle_theta_kp_local=tuningPidBuffer[3];
 		//pid_angle_theta_ki_local=tuningPidBuffer[4];
 		mpcPos_ki=tuningPidBuffer[5];
+		
+		pid_pos_x_kp=tuningPidBuffer[0]; // x
+		pid_pos_x_ki=tuningPidBuffer[1]; // x
+		//mpcAtt_ki=tuningPidBuffer[2];
+		pid_pos_y_kp=tuningPidBuffer[3]; // y
+		pid_pos_y_ki=tuningPidBuffer[4]; // y
+		//mpcPos_ki=tuningPidBuffer[5];
+	
 	
 		//// Formation flying *********************
 		// Copy over other 2 agents to buffer
@@ -631,10 +640,19 @@ void *threadController( void *arg ) {
 				//printf("Ref pos: %1.2f %1.2f %1.2f\n", refBuffer[0], refBuffer[1], refBuffer[2]); 	
 				//printf("(xyz) %f %f %f\n", measBuffer[0], measBuffer[1], measBuffer[2]);
 				
-				printf("mpcAtt_ki % 1.4f mpcPos_ki % 1.4f\n", mpcAtt_ki, mpcPos_ki);
+				//printf("mpcAtt_ki % 1.4f mpcPos_ki % 1.4f\n", mpcAtt_ki, mpcPos_ki);
 				
 				// Run controllers 
+				
 				controllerPos( &posParams, &posInputs, posX_all, posU_all, measBuffer, refBuffer, ref_formBuffer, mpcPos_integral_error, mpcPos_ff, mpcPos_ki, tsTrue);
+				
+				//theta_dist = controllerPID((measBuffer[0]-refBuffer[0]),pid_pos_x_integral_error,pid_pos_x_prev_error,pid_pos_x_kp,pid_pos_x_ki,0, tsTrue);
+				//phi_dist = controllerPID((measBuffer[1]-refBuffer[1]),pid_pos_y_integral_error,pid_pos_y_prev_error,pid_pos_y_kp,pid_pos_y_ki,0, tsTrue);
+				//phi_dist *= -1;
+				
+				
+				
+				
 				controllerAtt( &attParams, &attInputs, attX_all, attU_all, measBuffer, refBuffer, mpcAtt_integral_error, mpcAtt_ff, mpcAtt_ki, tsTrue);
 				//tau_x=0; tau_y=0; tau_z=0;
 				 if (manualThrustBuffer[0] >= 0) {
@@ -744,6 +762,11 @@ void *threadController( void *arg ) {
 				mpcPos_integral_error[0]=0;
 				mpcPos_integral_error[1]=0;
 				
+				pid_pos_x_integral_error[0]=0;
+				pid_pos_y_integral_error[0]=0;
+				pid_pos_x_prev_error[0]=0;
+				pid_pos_y_prev_error[0]=0;
+				
 				//tau_x = 0;
 				//pid_gyro_error_integral[0]=0;
 				//pid_gyro_error_prev[0]=0;
@@ -754,7 +777,7 @@ void *threadController( void *arg ) {
 		
 			// Print PWM signal sent to motors
 			if(pwmPrint){
-				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcPos_comp) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (u_mpcAlt) % 3.5f (ref_alt) % 2.4f (ref_pos) % 2.4f % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist, phi_dist, theta_ref_comp, phi_ref_comp, tau_x, tau_y, tau_z, thrust, refBuffer[2], refBuffer[0], refBuffer[1]);
+				printf("PWM: %3.4f %3.4f %3.4f %3.4f (u_mpcPos) % 2.5f % 2.5f (u_mpcPos_comp) % 2.5f % 2.5f (u_mpcAtt) % 2.4f % 2.4f % 2.4f (err_pos) % 2.4f % 2.4f\n", PWM[0], PWM[1], PWM[2], PWM[3], theta_dist*180/PI, phi_dist*180/PI, theta_ref_comp*180/PI, phi_ref_comp*180/PI, tau_x, tau_y, tau_z, measBuffer[0]-refBuffer[0], measBuffer[1]-refBuffer[1]);
 			}
 			
 			// Copy data over to common controller buffer before sending it to sensor.c
@@ -766,6 +789,17 @@ void *threadController( void *arg ) {
 			controllerBuffer[5]=tau_x;
 			controllerBuffer[6]=tau_y;
 			controllerBuffer[7]=tau_z;
+			controllerBuffer[8]=altU_all[0]; // G
+			controllerBuffer[9]=theta_dist;
+			controllerBuffer[10]=phi_dist;
+			controllerBuffer[11]=theta_ref_comp;
+			controllerBuffer[12]=phi_ref_comp;
+			controllerBuffer[13]=attU_all[0]; // taux
+			controllerBuffer[14]=attU_all[1]; // tauy
+			controllerBuffer[15]=tau_x; // taux with integrator
+			controllerBuffer[16]=tau_y; // tauy with integrator
+			controllerBuffer[17]=tau_z;
+			controllerBuffer[18]=tsTrue;
 			
 			// Set motor PWM signals by writing to the sensor.c process which applies the changes over I2C.
 			if (write(ptrPipe1->parent[1], controllerBuffer, sizeof(controllerBuffer)) != sizeof(controllerBuffer)) printf("write error in controller to sensor\n");
@@ -939,10 +973,10 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 		error_integral[1] += ki*((posInputs->x0[2])*ts);
 		
 		// Integrator saturation at equivalent of -2 and +2 degrees
-		 if (error_integral[0] > 2*PI/180) {error_integral[0] = 2*PI/180;}
-		 else if (error_integral[0] < -2*PI/180) {error_integral[0] = -2*PI/180;}	
-		 if (error_integral[1] > 2*PI/180) {error_integral[1] = 2*PI/180;}
-		 else if (error_integral[1] < -2*PI/180) {error_integral[1] = -2*PI/180;}		
+		 if (error_integral[0] > 1*PI/180) {error_integral[0] = 1*PI/180;}
+		 else if (error_integral[0] < -1*PI/180) {error_integral[0] = -1*PI/180;}	
+		 if (error_integral[1] > 1*PI/180) {error_integral[1] = 1*PI/180;}
+		 else if (error_integral[1] < -1*PI/180) {error_integral[1] = -1*PI/180;}		
 	}
 	else{
 		error_integral[0]=0;
@@ -954,10 +988,15 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 	//posParams->umin[0]=-6*PI/180-(dist[0]*mdl_param.mass)/(dist[2]);
 	//posParams->umax[1]=6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
 	//posParams->umin[1]=-6*PI/180-(dist[1]*mdl_param.mass)/(dist[2]);
-	posParams->umax[0]=6*PI/180+error_integral[0];
-	posParams->umin[0]=-6*PI/180+error_integral[0];
-	posParams->umax[1]=6*PI/180+error_integral[1];
-	posParams->umin[1]=-6*PI/180+error_integral[1];
+	//posParams->umax[0]=6*PI/180+error_integral[0];
+	//posParams->umin[0]=-6*PI/180+error_integral[0];
+	//posParams->umax[1]=6*PI/180-error_integral[1];
+	//posParams->umin[1]=-6*PI/180-error_integral[1];
+	
+	posParams->umax[0]=15*PI/180+error_integral[0];
+	posParams->umin[0]=-15*PI/180+error_integral[0];
+	posParams->umax[1]=15*PI/180-error_integral[1];
+	posParams->umin[1]=-15*PI/180-error_integral[1];
 	
 	// Get measurements and references from global data
 	posInputs->x0[0] = meas[0] - ref[0];		// x
@@ -978,11 +1017,11 @@ static void controllerPos( struct PosParams *posParams, struct PosInputs *posInp
 	
 	// Feed forward disturbance compensation
 	if(mpcPos_ff){
-		theta_dist -= error_integral[0];
-		phi_dist -= error_integral[1];
+		theta_dist -= error_integral[0]; // deducting error_integral since the model of x control has g in B matrix.
+		phi_dist += error_integral[1]; // adding error_integral since the model of y control has -g in B matrix.
 	}
 	
-	printf("mpcPos (x,umax/umin/int) % 1.4f % 1.4f % 1.4f (y,umax/umin/int) % 1.4f % 1.4f % 1.4f (theta/phi) % 1.4f % 1.4f (theta/phi_ff) % 1.4f % 1.4f\n", posParams->umax[0]*180/PI,posParams->umin[0]*180/PI, error_integral[0]*180/PI, posParams->umax[1]*180/PI, posParams->umin[1]*180/PI, error_integral[1]*180/PI, posU_all[0]*180/PI, posU_all[1]*180/PI, theta_dist*180/PI, phi_dist*180/PI);
+	//printf("mpcPos (x,umax/umin/int) % 1.4f % 1.4f % 1.4f (y,umax/umin/int) % 1.4f % 1.4f % 1.4f (theta/phi) % 1.4f % 1.4f (theta/phi_ff) % 1.4f % 1.4f\n", posParams->umax[0]*180/PI,posParams->umin[0]*180/PI, error_integral[0]*180/PI, posParams->umax[1]*180/PI, posParams->umin[1]*180/PI, error_integral[1]*180/PI, posU_all[0]*180/PI, posU_all[1]*180/PI, theta_dist*180/PI, phi_dist*180/PI);
 
 	
 	//dx_comp=(dist[0]*mdl_param.mass)/dist[2];

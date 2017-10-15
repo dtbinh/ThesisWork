@@ -67,15 +67,15 @@ Keyboard listening...
 
 
 // Default MPC POSITION weights Q (Qf) and R
-#define mpcPos_Q_1 100.0f
-#define mpcPos_Q_2 50.0f
-#define mpcPos_Q_3 100.0f
-#define mpcPos_Q_4 50.0f
+#define mpcPos_Q_1 10.0f
+#define mpcPos_Q_2 1.0f
+#define mpcPos_Q_3 10.0f
+#define mpcPos_Q_4 1.0f
 #define mpcPos_Q_5 1.0f
 #define mpcPos_Q_6 1.0f
 
-#define mpcPos_R_1 1500.0f
-#define mpcPos_R_2 1500.0f
+#define mpcPos_R_1 10.0f
+#define mpcPos_R_2 10.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
 #define mpcAtt_Q_1 1500.0f
@@ -83,7 +83,7 @@ Keyboard listening...
 #define mpcAtt_Q_3 1500.0f
 #define mpcAtt_Q_4 100.0f
 #define mpcAtt_Q_5 100.0f
-#define mpcAtt_Q_6 200.0f
+#define mpcAtt_Q_6 300.0f
 
 //Qf for 1500,100,150,10,1,1 and 1,5000,1e10
 //{{17760.1, 406.515, 0., 0., 0., 0.}, 
@@ -129,11 +129,11 @@ Keyboard listening...
 #define mpcAlt_R_1 100.0f
 
 // Default EKF weights Q
-#define ekf_Q_1 1.0e-3f
-#define ekf_Q_2 1.0e-3f
+#define ekf_Q_1 1.0e-2f
+#define ekf_Q_2 1.0e-2f
 #define ekf_Q_3 1.0e-5f
-#define ekf_Q_4 1.0e-3f
-#define ekf_Q_5 1.0e-3f
+#define ekf_Q_4 1.0e-2f
+#define ekf_Q_5 1.0e-2f
 #define ekf_Q_6 1.0e-5f
 
 #define ekf_Q_7 1.0e-4f
@@ -145,23 +145,27 @@ Keyboard listening...
 
 #define ekf_Q_13 1.0e-10f // dist x
 #define ekf_Q_14 1.0e-10f // dist y
-#define ekf_Q_15 1.0f // dist z
+#define ekf_Q_15 1.0e-10f // dist z
 
 #define ekf_Q_16 1.0f
 #define ekf_Q_17 1.0f
 #define ekf_Q_18 1.0f
 
 // Default PID gains
-#define pid_gyro_kp 2e-2f
-#define pid_gyro_ki 0.0f
-#define pid_gyro_kd 0.0f
-#define pid_angle_kp 4.0f
-#define pid_angle_ki 3.0e-1f
-#define pid_angle_kd 0.0f
+//#define pid_gyro_kp 2e-2f
+//#define pid_gyro_ki 0.0f
+//#define pid_gyro_kd 0.0f
+//#define pid_angle_kp 4.0f
+//#define pid_angle_ki 3.0e-1f
+//#define pid_angle_kd 0.0f
+#define pid_pos_x_kp_def 5e-2f
+#define pid_pos_x_ki_def 1e-3f
+#define pid_pos_y_kp_def 5e-2f
+#define pid_pos_y_ki_def 1e-3f
 
 // Default MPC integral gains
 #define mpcAtt_ki_def 3.0e-1f
-#define mpcPos_ki_def 3.0e-2f
+#define mpcPos_ki_def 0.0f
 
 // pid_angle_ki 6.0e-1f for PID controller!
 //{0.045000,0.000000,0.000000,1.500000,1.000000,0.000000} for c_m=23... and without batteries
