@@ -738,14 +738,14 @@ static void *threadSensorFusion (void *arg){
 				if (!positions_timeoutBuffer[0])
 					beaconConnected=1;
 				else
-					beaconConnected=0;
-					//beaconConnected=1;
+					//beaconConnected=0;
+					beaconConnected=1;
 						
 				if(tsAverageReadyEKF==2 && eulerCalFlag==1){
 					// Check if raw position data is new or old
 					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
-						posRawOldFlag=1;
-						//posRawOldFlag=0;
+						//posRawOldFlag=1;
+						posRawOldFlag=0;
 					}
 					else{
 						posRawOldFlag=0;

@@ -344,7 +344,7 @@ static void *threadUdpWrite(){
 			
 			 //Send data over UDP
 			if (sendto(fdsocket_write, writeBuff, BUFFER_LENGTH, 0, (struct sockaddr*) &addr_write, sizeof(addr_write)) == -1){
-				perror("write");
+				//perror("write");
 			}
 		}
 		
