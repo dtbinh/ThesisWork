@@ -42,7 +42,7 @@ static void keyReading( void );
 
 // Static variables for threads
 static double controllerData[9]={0};
-static double sensorData[29]={0};
+static double sensorData[41]={0};
 
 static double keyboardData[18]={0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref, alpha, beta, enable/disable position control, ff attmpc toggle, save data, pid trigger,toggle motor pwm range tuning}
 static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
@@ -183,7 +183,7 @@ static void *threadPipeControllerToComm(void *arg){
 static void *threadPipeSensorToCommunication(void *arg){
 	// Get pipe and define local variables
 	structPipe *ptrPipe = arg;
-	double sensorDataBuffer[29];
+	double sensorDataBuffer[41];
 	
 	/// Setup timer variables for real time performance check
 	struct timespec t_start,t_stop;
@@ -300,7 +300,7 @@ static void *threadUdpRead(void *arg){
 // UDP write thread
 static void *threadUdpWrite(){
 	// Local variables
-	double agentData[29];
+	double agentData[41];
 		
 	/// Setup timer variables for real time performance check
 	struct timespec t, t_start,t_stop;
@@ -339,7 +339,7 @@ static void *threadUdpWrite(){
 			
 			
 				
-			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18], agentData[19] ,agentData[20] ,agentData[21] ,agentData[22],agentData[23] ,agentData[24] ,agentData[25], agentData[26] ,agentData[27] ,agentData[28]);
+			sprintf(writeBuff,"A1A6DA%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f,%08.3f",agentData[0] ,agentData[1] ,agentData[2], agentData[3] ,agentData[4] ,agentData[5], agentData[6] ,agentData[7] ,agentData[8], agentData[9] ,agentData[10] ,agentData[11] ,agentData[12] ,agentData[13] ,agentData[14] ,agentData[15],agentData[16] ,agentData[17] ,agentData[18], agentData[19] ,agentData[20] ,agentData[21] ,agentData[22],agentData[23] ,agentData[24] ,agentData[25], agentData[26] ,agentData[27] ,agentData[28], agentData[29] ,agentData[30] ,agentData[31], agentData[32] ,agentData[33] ,agentData[34], agentData[35] ,agentData[36] ,agentData[37], agentData[38] ,agentData[39] ,agentData[40]);
 			//printf("%s\n", writeBuff);
 			
 			 //Send data over UDP

@@ -67,15 +67,15 @@ Keyboard listening...
 
 
 // Default MPC POSITION weights Q (Qf) and R
-#define mpcPos_Q_1 10.0f
-#define mpcPos_Q_2 1.0f
-#define mpcPos_Q_3 10.0f
-#define mpcPos_Q_4 1.0f
+#define mpcPos_Q_1 1000.0f
+#define mpcPos_Q_2 750.0f
+#define mpcPos_Q_3 1000.0f
+#define mpcPos_Q_4 750.0f
 #define mpcPos_Q_5 1.0f
 #define mpcPos_Q_6 1.0f
 
-#define mpcPos_R_1 10.0f
-#define mpcPos_R_2 10.0f
+#define mpcPos_R_1 3000.0f
+#define mpcPos_R_2 3000.0f
 
 // Default MPC ATTITUDE weights Q (Qf) and R
 #define mpcAtt_Q_1 1500.0f

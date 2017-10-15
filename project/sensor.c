@@ -231,7 +231,7 @@ static void *threadSensorFusion (void *arg){
 	
 	// Define local variables
 	double accRaw[3]={0,0,0}, gyrRaw[3]={0,0,0}, magRaw[3]={0,0,0}, mag0[3]={0.0}, magRawRot[3]={0}, tempRaw=0, euler[3]={0.0}, magCal[3*CALIBRATION];
-	double Lmag[1]={1}, normMag=0, Rmag[9]={0.0}, sensorDataBuffer[19]={0.0};
+	double Lmag[1]={1}, normMag=0, Rmag[9]={0.0}, sensorDataBuffer[41]={0};
 	double Pmag[16]={1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f};
 	double posRaw[3]={0,0,0}, posRawPrev[3]={0,0,0}, stateDataBuffer[19]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	double tsTrue=tsSensorsFusion;
@@ -732,10 +732,7 @@ static void *threadSensorFusion (void *arg){
 						memcpy(posRaw, positionsBuffer+6, sizeof(positionsBuffer)*3/9); // agents 3
 						break;
 				}
-														
-				// Write to Communication process
-				if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
-				//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
+													
 						
 				// Check that positioning system is connected
 				if (!positions_timeoutBuffer[0])
@@ -1040,13 +1037,6 @@ static void *threadSensorFusion (void *arg){
 						sensorDataBuffer[9]=euler_comp[0];
 						sensorDataBuffer[10]=euler_comp[1];
 						sensorDataBuffer[11]=euler_comp[2];
-						//sensorDataBuffer[12]=q_comp[0];
-						//sensorDataBuffer[13]=q_comp[1];
-						//sensorDataBuffer[14]=q_comp[2];
-						//sensorDataBuffer[15]=q_comp[3];
-						//sensorDataBuffer[16]=posRaw[0];
-						//sensorDataBuffer[17]=posRaw[1];
-						//sensorDataBuffer[18]=posRaw[2];
 						sensorDataBuffer[12]=posRaw[0];
 						sensorDataBuffer[13]=posRaw[1];
 						sensorDataBuffer[14]=posRaw[2];
@@ -1054,31 +1044,35 @@ static void *threadSensorFusion (void *arg){
 						sensorDataBuffer[16]=stateDataBuffer[1]; // y
 						sensorDataBuffer[17]=stateDataBuffer[2]; // z
 						sensorDataBuffer[18]=stateDataBuffer[3]; // vx
-						sensorDataBuffer[15]=stateDataBuffer[4]; // vy
-						sensorDataBuffer[16]=stateDataBuffer[5]; // vz
-						sensorDataBuffer[17]=stateDataBuffer[6]; // phi
-						sensorDataBuffer[18]=stateDataBuffer[7]; // theta
-						sensorDataBuffer[15]=stateDataBuffer[8]; // psi
-						sensorDataBuffer[16]=stateDataBuffer[9]; // omega_phi
-						sensorDataBuffer[17]=stateDataBuffer[10]; // omega_theta
-						sensorDataBuffer[18]=stateDataBuffer[11]; // omega_psi
-						sensorDataBuffer[15]=stateDataBuffer[14]; // tilde_dz
-						sensorDataBuffer[16]=uControlThrustTorques[0]; // thrust
-						sensorDataBuffer[17]=uControlThrustTorques[1]; // tau_phi with integrator
-						sensorDataBuffer[18]=uControlThrustTorques[2]; // tau_theta with integrator
-						sensorDataBuffer[19]=uControlThrustTorques[3]; // tau_z
-						sensorDataBuffer[20]=uControlThrustTorques[4]; // G
-						sensorDataBuffer[21]=uControlThrustTorques[5]; // mpcPos_U_theta
-						sensorDataBuffer[22]=uControlThrustTorques[6]; // mpcPos_U_phi
-						sensorDataBuffer[23]=uControlThrustTorques[7]; // mpcPos_U_theta_comp
-						sensorDataBuffer[24]=uControlThrustTorques[8]; // mpcPos_U_phi_comp
-						sensorDataBuffer[25]=uControlThrustTorques[9]; // attU_all_taux
-						sensorDataBuffer[26]=uControlThrustTorques[10]; // attU_all_tauy
-						sensorDataBuffer[27]=uControlThrustTorques[14]; // tsTrue controller
+						sensorDataBuffer[19]=stateDataBuffer[4]; // vy
+						sensorDataBuffer[20]=stateDataBuffer[5]; // vz
+						sensorDataBuffer[21]=stateDataBuffer[6]; // phi
+						sensorDataBuffer[22]=stateDataBuffer[7]; // theta
+						sensorDataBuffer[23]=stateDataBuffer[8]; // psi
+						sensorDataBuffer[24]=stateDataBuffer[9]; // omega_phi
+						sensorDataBuffer[25]=stateDataBuffer[10]; // omega_theta
+						sensorDataBuffer[26]=stateDataBuffer[11]; // omega_psi
+						sensorDataBuffer[27]=stateDataBuffer[14]; // tilde_dz
+						sensorDataBuffer[28]=uControlThrustTorques[0]; // thrust
+						sensorDataBuffer[29]=uControlThrustTorques[1]; // tau_phi with integrator
+						sensorDataBuffer[30]=uControlThrustTorques[2]; // tau_theta with integrator
+						sensorDataBuffer[31]=uControlThrustTorques[3]; // tau_z
+						sensorDataBuffer[32]=uControlThrustTorques[4]; // G
+						sensorDataBuffer[33]=uControlThrustTorques[5]; // mpcPos_U_theta
+						sensorDataBuffer[34]=uControlThrustTorques[6]; // mpcPos_U_phi
+						sensorDataBuffer[35]=uControlThrustTorques[7]; // mpcPos_U_theta_comp
+						sensorDataBuffer[36]=uControlThrustTorques[8]; // mpcPos_U_phi_comp
+						sensorDataBuffer[37]=uControlThrustTorques[9]; // attU_all_taux
+						sensorDataBuffer[38]=uControlThrustTorques[10]; // attU_all_tauy
+						sensorDataBuffer[39]=uControlThrustTorques[14]; // tsTrue controller
 						//sensorDataBuffer[28]=uControlThrustTorques[12];
 						//sensorDataBuffer[29]=uControlThrustTorques[13];
 						//sensorDataBuffer[30]=uControlThrustTorques[14];
-						sensorDataBuffer[28]=tsTrue; // tsTrue sensor
+						sensorDataBuffer[40]=tsTrue; // tsTrue sensor
+								
+						// Write to Communication process
+						if (write(ptrPipe2->parent[1], sensorDataBuffer, sizeof(sensorDataBuffer)) != sizeof(sensorDataBuffer)) printf("pipe write error in Sensor ot Communicaiont\n");
+						//else printf("Sensor ID: %d, Sent: %f to Communication\n", (int)getpid(), sensorDataBuffer[0]);
 																						
 						
 						// Restart sensor fusion and EKF calibration
