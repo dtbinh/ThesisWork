@@ -92,7 +92,7 @@ void startCommunication(void *arg1, void *arg2){
 	threadPID1=pthread_create(&threadPipeCtrlToComm, NULL, &threadPipeControllerToComm, arg1);
 	threadPID2=pthread_create(&threadPipeSensorToComm, NULL, &threadPipeSensorToCommunication, arg2);
 	threadPID3=pthread_create(&threadUdpR, NULL, &threadUdpRead, &pipeArray1);
-	threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
+	//threadPID4=pthread_create(&threadUdpW, NULL, &threadUdpWrite, NULL);
 	threadPID5=pthread_create(&threadkeyRead, NULL, &threadKeyReading, &pipeArray1);
 	
 	// Set up thread scheduler priority for real time tasks
@@ -100,20 +100,20 @@ void startCommunication(void *arg1, void *arg2){
 	paramThread1.sched_priority = PRIORITY_COMMUNICATION_PIPE_CONTROLLER; // set priorities
 	paramThread2.sched_priority = PRIORITY_COMMUNICATION_PIPE_SENSOR;
 	paramThread3.sched_priority = PRIORITY_COMMUNICATION_UDP_READ;
-	paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
+	//paramThread4.sched_priority = PRIORITY_COMMUNICATION_UDP_WRITE;
 	paramThread5.sched_priority = PRIORITY_COMMUNICATION_KEYBOARD;
 	
 	if(sched_setscheduler(threadPID1, SCHED_FIFO, &paramThread1)==-1) {perror("sched_setscheduler failed for threadPID1");exit(-1);}
 	if(sched_setscheduler(threadPID2, SCHED_FIFO, &paramThread2)==-1) {perror("sched_setscheduler failed for threadPID2");exit(-1);}
 	if(sched_setscheduler(threadPID3, SCHED_FIFO, &paramThread3)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
-	if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
+	//if(sched_setscheduler(threadPID4, SCHED_FIFO, &paramThread4)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	if(sched_setscheduler(threadPID5, SCHED_FIFO, &paramThread5)==-1) {perror("sched_setscheduler failed for threadPID3");exit(-1);}
 	
 	// If threads created successful, start them
 	if (!threadPID1) pthread_join( threadPipeCtrlToComm, NULL);
 	if (!threadPID2) pthread_join( threadPipeSensorToComm, NULL);
 	if (!threadPID3) pthread_join( threadUdpR, NULL);
-	if (!threadPID4) pthread_join( threadUdpW, NULL);
+	//if (!threadPID4) pthread_join( threadUdpW, NULL);
 	if (!threadPID5) pthread_join( threadkeyRead, NULL);
 }
 
