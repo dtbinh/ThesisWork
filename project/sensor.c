@@ -31,7 +31,7 @@
 #define PI 3.141592653589793
 #define CALIBRATION 1000
 #define MAG_CALIBRATION 1000
-#define BUFFER 100
+#define BUFFER 25
 
 /******************************************************************/
 /*******************VARIABLES & PREDECLARATIONS********************/
@@ -247,21 +247,9 @@ static void *threadSensorFusion (void *arg){
 	
 	
 	// Save to file buffer variable
-	double buffer_u1[BUFFER];
-	double buffer_u2[BUFFER];
-	double buffer_u3[BUFFER];
-	double buffer_u4[BUFFER];
-	double buffer_omega_x[BUFFER];
-	double buffer_omega_y[BUFFER];
-	double buffer_omega_z[BUFFER];
-	double buffer_angle_x[BUFFER];
-	double buffer_angle_y[BUFFER];
-	double buffer_angle_z[BUFFER];
-	double buffer_thrust[BUFFER];
-	double buffer_tau_x[BUFFER];
-	double buffer_tau_y[BUFFER];
-	double buffer_tau_z[BUFFER];
-	double buffer_ts[BUFFER];
+	double data_tick=0;
+	double ts_sensor_t=0;
+	double ts_controller_t=0;
 	
 	double buffer_acc_x[BUFFER];
 	double buffer_acc_y[BUFFER];
@@ -272,15 +260,55 @@ static void *threadSensorFusion (void *arg){
 	double buffer_mag_x[BUFFER];
 	double buffer_mag_y[BUFFER];
 	double buffer_mag_z[BUFFER];
-	double buffer_acc_x_filt[BUFFER];
-	double buffer_acc_y_filt[BUFFER];
-	double buffer_acc_z_filt[BUFFER];
-	double buffer_gyr_x_filt[BUFFER];
-	double buffer_gyr_y_filt[BUFFER];
-	double buffer_gyr_z_filt[BUFFER];
-	double buffer_yaw[BUFFER];
-	double buffer_yaw_drift[BUFFER];
 	
+	double buffer_angle_x[BUFFER];
+	double buffer_angle_y[BUFFER];
+	double buffer_angle_z[BUFFER];
+	
+	double buffer_pos_x[BUFFER];
+	double buffer_pos_y[BUFFER];
+	double buffer_pos_z[BUFFER];
+	
+	double buffer_omega_x[BUFFER];
+	double buffer_omega_y[BUFFER];
+	double buffer_omega_z[BUFFER];
+	
+	double buffer_ekf_x[BUFFER];
+	double buffer_ekf_y[BUFFER];
+	double buffer_ekf_z[BUFFER];
+	double buffer_ekf_vx[BUFFER];
+	double buffer_ekf_vy[BUFFER];
+	double buffer_ekf_vz[BUFFER];
+	double buffer_ekf_phi[BUFFER];
+	double buffer_ekf_theta[BUFFER];
+	double buffer_ekf_psi[BUFFER];
+	double buffer_ekf_omega_phi[BUFFER];
+	double buffer_ekf_omega_theta[BUFFER];
+	double buffer_ekf_omega_psi[BUFFER];
+	double buffer_ekf_dist_x[BUFFER];
+	double buffer_ekf_dist_y[BUFFER];
+	double buffer_ekf_dist_z[BUFFER];
+	
+	double buffer_mpc_alt_G[BUFFER];
+	double buffer_mpc_alt_thrust[BUFFER];
+	double buffer_mpc_pos_theta[BUFFER];
+	double buffer_mpc_pos_phi[BUFFER];
+	double buffer_mpc_pos_theta_comp[BUFFER];
+	double buffer_mpc_pos_phi_comp[BUFFER];
+	double buffer_mpc_att_tau_x_int[BUFFER];
+	double buffer_mpc_att_tau_y_int[BUFFER];
+	double buffer_mpc_att_tau_x[BUFFER];
+	double buffer_mpc_att_tau_y[BUFFER];
+	double buffer_mpc_att_tau_z[BUFFER];
+	
+	double buffer_ts_sensor[BUFFER];
+	double buffer_ts_controller[BUFFER];
+	
+	//double buffer_u1[BUFFER];
+	//double buffer_u2[BUFFER];
+	//double buffer_u3[BUFFER];
+	//double buffer_u4[BUFFER];
+
 	int buffer_counter=0;
 	//FILE *fpWrite;
 	
@@ -738,14 +766,14 @@ static void *threadSensorFusion (void *arg){
 				if (!positions_timeoutBuffer[0])
 					beaconConnected=1;
 				else
-					//beaconConnected=0;
-					beaconConnected=1;
+					beaconConnected=0;
+					//beaconConnected=1;
 						
 				if(tsAverageReadyEKF==2 && eulerCalFlag==1){
 					// Check if raw position data is new or old
 					if(posRaw[0]==posRawPrev[0] && posRaw[1]==posRawPrev[1] && posRaw[2]==posRawPrev[2]){
-						//posRawOldFlag=1;
-						posRawOldFlag=0;
+						posRawOldFlag=1;
+						//posRawOldFlag=0;
 					}
 					else{
 						posRawOldFlag=0;
@@ -1089,67 +1117,130 @@ static void *threadSensorFusion (void *arg){
 						//// Save buffered data to file
 						if(saveDataTrigger){ // only save data when activated from keyboard
 							//clock_gettime(CLOCK_MONOTONIC ,&t_start_buffer); /// start elapsed time clock for buffering procedure
-							if(buffer_counter==BUFFER){ // if buffer is full, save to file
-								//saveData(buffer_u1,"u1",sizeof(buffer_u1)/sizeof(double));
-								//saveData(buffer_u2,"u2",sizeof(buffer_u2)/sizeof(double));
-								//saveData(buffer_u3,"u3",sizeof(buffer_u3)/sizeof(double));
-								//saveData(buffer_u4,"u4",sizeof(buffer_u4)/sizeof(double));
-								//saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
-								//saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
-								//saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
-								saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
-								saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
-								saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
-								//saveData(buffer_thrust,"thrust",sizeof(buffer_thrust)/sizeof(double));
-								//saveData(buffer_tau_x,"tau_x",sizeof(buffer_tau_x)/sizeof(double));
-								//saveData(buffer_tau_y,"tau_y",sizeof(buffer_tau_y)/sizeof(double));
-								//saveData(buffer_tau_z,"tau_z",sizeof(buffer_tau_z)/sizeof(double));
-								saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
-								saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
-								saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
-								saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
-								saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
-								saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
-								saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
-								saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
-								saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
-								saveData(buffer_ts,"ts",sizeof(buffer_ts)/sizeof(double));
-								//saveData(buffer_yaw,"yaw",sizeof(buffer_yaw)/sizeof(double));
-								//saveData(buffer_yaw_drift,"yaw_drift",sizeof(buffer_yaw)/sizeof(double));
-								buffer_counter=0;
+							if(data_tick==4){
+								data_tick=0;
+								if(buffer_counter==BUFFER){ // if buffer is full, save to file
+									saveData(buffer_acc_x,"acc_x",sizeof(buffer_acc_x)/sizeof(double));
+									saveData(buffer_acc_y,"acc_y",sizeof(buffer_acc_y)/sizeof(double));
+									saveData(buffer_acc_z,"acc_z",sizeof(buffer_acc_z)/sizeof(double));
+									saveData(buffer_gyr_x,"gyr_x",sizeof(buffer_gyr_x)/sizeof(double));
+									saveData(buffer_gyr_y,"gyr_y",sizeof(buffer_gyr_y)/sizeof(double));
+									saveData(buffer_gyr_z,"gyr_z",sizeof(buffer_gyr_z)/sizeof(double));
+									saveData(buffer_mag_x,"mag_x",sizeof(buffer_mag_x)/sizeof(double));
+									saveData(buffer_mag_y,"mag_y",sizeof(buffer_mag_y)/sizeof(double));
+									saveData(buffer_mag_z,"mag_z",sizeof(buffer_mag_z)/sizeof(double));	
+									
+									saveData(buffer_angle_x,"angle_x",sizeof(buffer_angle_x)/sizeof(double));
+									saveData(buffer_angle_y,"angle_y",sizeof(buffer_angle_y)/sizeof(double));
+									saveData(buffer_angle_z,"angle_z",sizeof(buffer_angle_z)/sizeof(double));
+									saveData(buffer_pos_x,"pos_x",sizeof(buffer_pos_x)/sizeof(double));
+									saveData(buffer_pos_y,"pos_y",sizeof(buffer_pos_y)/sizeof(double));
+									saveData(buffer_pos_z,"pos_z",sizeof(buffer_pos_z)/sizeof(double));
+									saveData(buffer_omega_x,"omega_x",sizeof(buffer_omega_x)/sizeof(double));
+									saveData(buffer_omega_y,"omega_y",sizeof(buffer_omega_y)/sizeof(double));
+									saveData(buffer_omega_z,"omega_z",sizeof(buffer_omega_z)/sizeof(double));
+									
+									saveData(buffer_ekf_x,"ekf_x",sizeof(buffer_ekf_x)/sizeof(double));
+									saveData(buffer_ekf_y,"ekf_y",sizeof(buffer_ekf_y)/sizeof(double));
+									saveData(buffer_ekf_z,"ekf_z",sizeof(buffer_ekf_z)/sizeof(double));
+									saveData(buffer_ekf_vx,"ekf_vx",sizeof(buffer_ekf_vx)/sizeof(double));
+									saveData(buffer_ekf_vy,"ekf_vy",sizeof(buffer_ekf_vy)/sizeof(double));
+									saveData(buffer_ekf_vz,"ekf_vz",sizeof(buffer_ekf_vz)/sizeof(double));
+									saveData(buffer_ekf_phi,"ekf_phi",sizeof(buffer_ekf_phi)/sizeof(double));
+									saveData(buffer_ekf_theta,"ekf_theta",sizeof(buffer_ekf_theta)/sizeof(double));
+									saveData(buffer_ekf_psi,"ekf_psi",sizeof(buffer_ekf_psi)/sizeof(double));
+									
+									saveData(buffer_ekf_omega_phi,"ekf_omega_phi",sizeof(buffer_ekf_omega_phi)/sizeof(double));
+									saveData(buffer_ekf_omega_theta,"ekf_omega_theta",sizeof(buffer_ekf_omega_theta)/sizeof(double));
+									saveData(buffer_ekf_omega_psi,"ekf_omega_psi",sizeof(buffer_ekf_omega_psi)/sizeof(double));
+									saveData(buffer_ekf_dist_x,"ekf_dist_x",sizeof(buffer_ekf_dist_x)/sizeof(double));
+									saveData(buffer_ekf_dist_y,"ekf_dist_y",sizeof(buffer_ekf_dist_y)/sizeof(double));
+									saveData(buffer_ekf_dist_z,"ekf_dist_z",sizeof(buffer_ekf_dist_z)/sizeof(double));
+									
+									saveData(buffer_mpc_alt_G,"mpc_alt_G",sizeof(buffer_mpc_alt_G)/sizeof(double));
+									saveData(buffer_mpc_alt_thrust,"mpc_alt_thrust",sizeof(buffer_mpc_alt_thrust)/sizeof(double));
+									saveData(buffer_mpc_pos_theta,"mpc_pos_theta",sizeof(buffer_mpc_pos_theta)/sizeof(double));
+									saveData(buffer_mpc_pos_phi,"mpc_pos_phi",sizeof(buffer_mpc_pos_phi)/sizeof(double));
+									saveData(buffer_mpc_pos_theta_comp,"mpc_pos_theta_comp",sizeof(buffer_mpc_pos_theta_comp)/sizeof(double));
+									saveData(buffer_mpc_pos_phi_comp,"mpc_pos_phi_comp",sizeof(buffer_mpc_pos_phi_comp)/sizeof(double));
+									saveData(buffer_mpc_att_tau_x_int,"mpc_att_tau_x_int",sizeof(buffer_mpc_att_tau_x_int)/sizeof(double));
+									saveData(buffer_mpc_att_tau_y_int,"mpc_att_tau_y_int",sizeof(buffer_mpc_att_tau_y_int)/sizeof(double));
+									saveData(buffer_mpc_att_tau_x,"mpc_att_tau_x",sizeof(buffer_mpc_att_tau_x)/sizeof(double));
+									saveData(buffer_mpc_att_tau_y,"mpc_att_tau_y",sizeof(buffer_mpc_att_tau_y)/sizeof(double));
+									saveData(buffer_mpc_att_tau_z,"mpc_att_tau_z",sizeof(buffer_mpc_att_tau_z)/sizeof(double));
+									saveData(buffer_ts_sensor,"ts_sensor",sizeof(buffer_ts_sensor)/sizeof(double));
+									saveData(buffer_ts_controller,"ts_controller",sizeof(buffer_ts_controller)/sizeof(double));
+									buffer_counter=0;
 							}
-							else{ // else keep saving data to buffer
-								//buffer_u1[buffer_counter]=uControl[0];
-								//buffer_u2[buffer_counter]=uControl[1];
-								//buffer_u3[buffer_counter]=uControl[2];
-								//buffer_u4[buffer_counter]=uControl[3];
-								////buffer_omega_x[buffer_counter]=ymeas9x9_bias[3];
-								////buffer_omega_y[buffer_counter]=ymeas9x9_bias[4];
-								////buffer_omega_z[buffer_counter]=ymeas9x9_bias[5];
-								//buffer_omega_x[buffer_counter]=ymeas6x6[3];
-								//buffer_omega_y[buffer_counter]=ymeas6x6[4];
-								//buffer_omega_z[buffer_counter]=ymeas6x6[5];
-								buffer_angle_x[buffer_counter]=euler_comp[2];
-								buffer_angle_y[buffer_counter]=euler_comp[1];
-								buffer_angle_z[buffer_counter]=euler_comp[0];
-								//buffer_thrust[buffer_counter]=uControlThrustTorques[0];
-								//buffer_tau_x[buffer_counter]=uControlThrustTorques[1];
-								//buffer_tau_y[buffer_counter]=uControlThrustTorques[2];
-								//buffer_tau_z[buffer_counter]=uControlThrustTorques[3];
-								buffer_acc_x[buffer_counter]=accRaw[0];
-								buffer_acc_y[buffer_counter]=accRaw[1];
-								buffer_acc_z[buffer_counter]=accRaw[2];
-								buffer_gyr_x[buffer_counter]=gyrRaw[0];
-								buffer_gyr_y[buffer_counter]=gyrRaw[1];
-								buffer_gyr_z[buffer_counter]=gyrRaw[2];
-								buffer_mag_x[buffer_counter]=magRaw[0];
-								buffer_mag_y[buffer_counter]=magRaw[1];
-								buffer_mag_z[buffer_counter]=magRaw[2];
-								
-								buffer_ts[buffer_counter]=tsTrue;
-								//buffer_yaw[buffer_counter]=xhat8x8[6]; // yaw estimate from EKF 8x8
-								//buffer_yaw_drift[buffer_counter]=xhat6x6[2]; // yaw filtered through EKF 6x6 drifting
-								buffer_counter++;
+								else{ // else keep saving data to buffer
+									buffer_acc_x[buffer_counter]=accRaw[0];
+									buffer_acc_y[buffer_counter]=accRaw[1];
+									buffer_acc_z[buffer_counter]=accRaw[2];
+									buffer_gyr_x[buffer_counter]=gyrRaw[0];
+									buffer_gyr_y[buffer_counter]=gyrRaw[1];
+									buffer_gyr_z[buffer_counter]=gyrRaw[2];
+									buffer_mag_x[buffer_counter]=magRawRot[0];
+									buffer_mag_y[buffer_counter]=magRawRot[1];
+									buffer_mag_z[buffer_counter]=magRawRot[2];
+									
+									buffer_angle_x[buffer_counter]=euler_comp[0];
+									buffer_angle_y[buffer_counter]=euler_comp[1];
+									buffer_angle_z[buffer_counter]=euler_comp[2];
+									buffer_pos_x[buffer_counter]=posRaw[0];
+									buffer_pos_y[buffer_counter]=posRaw[1];
+									buffer_pos_z[buffer_counter]=posRaw[2];
+									//buffer_omega_x[buffer_counter],"omega_x",sizeof(buffer_omega_x)/sizeof(double));
+									//buffer_omega_y[buffer_counter],"omega_y",sizeof(buffer_omega_y)/sizeof(double));
+									//buffer_omega_z[buffer_counter],"omega_z",sizeof(buffer_omega_z)/sizeof(double));
+									
+									buffer_ekf_x[buffer_counter]=stateDataBuffer[0];
+									buffer_ekf_y[buffer_counter]=stateDataBuffer[1];
+									buffer_ekf_z[buffer_counter]=stateDataBuffer[2];
+									buffer_ekf_vx[buffer_counter]=stateDataBuffer[3];
+									buffer_ekf_vy[buffer_counter]=stateDataBuffer[4];
+									buffer_ekf_vz[buffer_counter]=stateDataBuffer[5];
+									buffer_ekf_phi[buffer_counter]=stateDataBuffer[6];
+									buffer_ekf_theta[buffer_counter]=stateDataBuffer[7];
+									buffer_ekf_psi[buffer_counter]=stateDataBuffer[8];
+									
+									buffer_ekf_omega_phi[buffer_counter]=stateDataBuffer[9];
+									buffer_ekf_omega_theta[buffer_counter]=stateDataBuffer[10];
+									buffer_ekf_omega_psi[buffer_counter]=stateDataBuffer[11];
+									//buffer_ekf_dist_x[buffer_counter]=stateDataBuffer[12];
+									//buffer_ekf_dist_y[buffer_counter]=stateDataBuffer[13];
+									buffer_ekf_dist_z[buffer_counter]=stateDataBuffer[14];
+									
+						
+						sensorDataBuffer[33]=uControlThrustTorques[5]; // mpcPos_U_theta
+						sensorDataBuffer[34]=uControlThrustTorques[6]; // mpcPos_U_phi
+						sensorDataBuffer[35]=uControlThrustTorques[7]; // mpcPos_U_theta_comp
+						sensorDataBuffer[36]=uControlThrustTorques[8]; // mpcPos_U_phi_comp
+						sensorDataBuffer[37]=uControlThrustTorques[9]; // attU_all_taux
+						sensorDataBuffer[38]=uControlThrustTorques[10]; // attU_all_tauy
+						sensorDataBuffer[39]=uControlThrustTorques[14]; // tsTrue controller
+									
+									buffer_mpc_alt_G[buffer_counter]=uControlThrustTorques[4];
+									buffer_mpc_alt_thrust[buffer_counter]=uControlThrustTorques[0];
+									buffer_mpc_pos_theta[buffer_counter]=uControlThrustTorques[5];
+									buffer_mpc_pos_phi[buffer_counter]=uControlThrustTorques[6];
+									buffer_mpc_pos_theta_comp[buffer_counter]=uControlThrustTorques[7];
+									buffer_mpc_pos_phi_comp[buffer_counter]=uControlThrustTorques[8];
+									buffer_mpc_att_tau_x_int[buffer_counter]=uControlThrustTorques[1];
+									buffer_mpc_att_tau_y_int[buffer_counter]=uControlThrustTorques[2];
+									buffer_mpc_att_tau_x[buffer_counter]=uControlThrustTorques[9];
+									buffer_mpc_att_tau_y[buffer_counter]=uControlThrustTorques[10];
+									buffer_mpc_att_tau_z[buffer_counter]=uControlThrustTorques[3];
+									buffer_ts_sensor[buffer_counter]=ts_sensor_t;
+									buffer_ts_controller[buffer_counter]=ts_controller_t;
+									buffer_counter++;
+									ts_sensor_t=0;
+									ts_controller_t=0;
+							}
+							}
+							else{
+								data_tick++;
+								ts_sensor_t+=tsTrue;
+								ts_controller_t+=uControlThrustTorques[14];
 							}
 						}
 					}
