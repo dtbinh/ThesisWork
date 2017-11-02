@@ -365,7 +365,7 @@ void *threadController( void *arg ) {
 	//structPipe *ptrPipe2 = pipeArrayStruct->pipe2;
 
 	// Local variables to store global data in to using mutexes
-	double measBuffer[12], refBuffer[12], ref_formBuffer[2]={0}, distBuffer[3], distBufferTau[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.5, alpha = -1;	
+	double measBuffer[12], refBuffer[12], ref_formBuffer[2]={0}, distBuffer[3], distBufferTau[3], point_1[3], point_2[3], p3[3], distance = -1, step_size=0.05, alpha = -1;	
 	int triggerFly, sensorReady, pwmPrint, keyRampRef, triggerMpcPos,timerPrint, mpcAtt_ff, mpcPos_ff; // feed forward activation trigger for attitude mpc;
 	const double PWM0[4] = { 0.1,0.1,0.1,0.1 };
 	double Lbc_mk4 = 4*mdl_param.L*mdl_param.b*mdl_param.c_m*mdl_param.k;	// common denominator for all lines of forces2PWM calc

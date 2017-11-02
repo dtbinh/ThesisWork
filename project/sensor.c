@@ -92,6 +92,11 @@ static double sensorRawDataPosition[3]={0,0,0}; // Global variable in sensor.c t
 static double controlData[19]={.1,.1,.1,.1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Global variable in sensor.c to pass control signal u from controller.c to EKF in sensor fusion {pwm0,pwm1,pwm2,pwm3,thrust,taux,tauy,tauz};
 static double keyboardData[18]= {0,0,0,0,0,0,0,0,0,0,1,0.01,0.05,1,0,0,0,0}; // {ref_x,ref_y,ref_z, switch [0=STOP, 1=FLY], PWM print, Timer print, EKF print, reset ekf/mpc, EKF print 6 states, restart calibration, ramp ref, alpha, beta, mpc position toggle, ff toggle mpAtt, save data, PID trigger, PWM range setting}
 static double tuningEkfData[18]={ekf_Q_1,ekf_Q_2,ekf_Q_3,ekf_Q_4,ekf_Q_5,ekf_Q_6,ekf_Q_7,ekf_Q_8,ekf_Q_9,ekf_Q_10,ekf_Q_11,ekf_Q_12,ekf_Q_13,ekf_Q_14,ekf_Q_15,ekf_Q_16,ekf_Q_17,ekf_Q_18};
+static double tuningMpcData[14]={mpcPos_Q_1,mpcPos_Q_2,mpcPos_Q_3,mpcPos_Q_4,mpcPos_Q_5,mpcPos_Q_6,mpcAtt_Q_1,mpcAtt_Q_2,mpcAtt_Q_3,mpcAtt_Q_4,mpcAtt_Q_5,mpcAtt_Q_6,mpcAlt_Q_1,mpcAlt_Q_2}; // Q and Qf mpc {x,xdot,y,ydot,xform,yform,phi,phidot,theta,thetadot,psi,psidot,z,zdot}
+static double tuningMpcQfData[9]={mpcAtt_Qf_1,mpcAtt_Qf_2,mpcAtt_Qf_3,mpcAtt_Qf_4,mpcAtt_Qf_5,mpcAtt_Qf_6,mpcAtt_Qf_1_2,mpcAtt_Qf_3_4,mpcAtt_Qf_5_6};
+static double tuningMpcDataControl[6]={mpcPos_R_1,mpcPos_R_2,mpcAtt_R_1,mpcAtt_R_2,mpcAtt_R_3,mpcAlt_R_1}; // R mpc {pos,pos,taux,tauy,tauz,alt}
+static double tuningPidData[6]={pid_pos_x_kp_def,pid_pos_x_ki_def,mpcAtt_ki_def,pid_pos_y_kp_def,pid_pos_y_ki_def,mpcPos_ki_def}; // PID gains
+
 static double positionsData[9]={0};
 static double positions_timeoutData[3]={0};
 
@@ -161,6 +166,17 @@ static void *threadPipeCommunicationToSensor(void *arg){
 	double positionsBuffer[9];
 	double positions_timeoutBuffer[3];
 	
+		//double communicationDataBuffer[84];
+	//double keyboardDataBuffer[18];
+	double tuningMpcBuffer[14];
+	double tuningMpcQfBuffer[9];
+	double tuningMpcBufferControl[6];
+	double tuningPidBuffer[6];
+	//double manualThrustBuffer[1];
+	//double positionsBuffer[9];
+	//double positions_timeoutBuffer[3];
+	
+	
 	/// Setup timer variables for real time performance check
 	struct timespec t_start,t_stop;
 	
@@ -188,9 +204,32 @@ static void *threadPipeCommunicationToSensor(void *arg){
 		memcpy(tuningEkfBuffer, communicationDataBuffer+38, sizeof(communicationDataBuffer)*18/84);
 		memcpy(positionsBuffer, communicationDataBuffer+72, sizeof(communicationDataBuffer)*9/84);
 		memcpy(positions_timeoutBuffer, communicationDataBuffer+81, sizeof(communicationDataBuffer)*3/84);
-		
+
+		//memcpy(keyboardDataBuffer, communicationDataBuffer, sizeof(communicationDataBuffer)*18/84);
+		memcpy(tuningMpcBuffer, communicationDataBuffer+18, sizeof(communicationDataBuffer)*14/84);
+		memcpy(tuningMpcBufferControl, communicationDataBuffer+32, sizeof(communicationDataBuffer)*6/84);
+		memcpy(tuningPidBuffer, communicationDataBuffer+56, sizeof(communicationDataBuffer)*6/84);
+		memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/84);	
+		//memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/84);
+		//memcpy(tuningMpcQfBuffer, communicationDataBuffer+62, sizeof(communicationDataBuffer)*9/84);	
+		//memcpy(manualThrustBuffer, communicationDataBuffer+71, sizeof(communicationDataBuffer)*1/84);
+		//memcpy(positionsBuffer, communicationDataBuffer+72, sizeof(communicationDataBuffer)*9/84);	
+		//memcpy(positions_timeoutBuffer, communicationDataBuffer+81, sizeof(communicationDataBuffer)*3/84);
+	
+
 		// Put new data in to global variable in communication.c
 		pthread_mutex_lock(&mutexKeyboardData);
+
+			//memcpy(references, keyboardDataBuffer, sizeof(keyboardDataBuffer)*3/18); // {ref_x,ref_y,ref_z}
+			//memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer)); // {ref_x,ref_y,ref_z, switch[0=STOP, 1=FLY], pwm_print, timer_print,ekf_print,reset ekf/mpc, EKF print 6 states, reset calibration sensor.c, ramp ref}
+			memcpy(tuningMpcData, tuningMpcBuffer, sizeof(tuningMpcBuffer));
+			memcpy(tuningMpcQfData, tuningMpcQfBuffer, sizeof(tuningMpcQfBuffer));
+			memcpy(tuningMpcDataControl, tuningMpcBufferControl, sizeof(tuningMpcBufferControl));
+			memcpy(tuningPidData, tuningPidBuffer, sizeof(tuningPidBuffer));
+			//memcpy(manualThrustData, manualThrustBuffer, sizeof(manualThrustBuffer));
+			//memcpy(positionsData, positionsBuffer, sizeof(positionsBuffer));
+			//memcpy(positions_timeoutData, positions_timeoutBuffer, sizeof(positions_timeoutBuffer));
+
 			memcpy(keyboardData, keyboardDataBuffer, sizeof(keyboardDataBuffer));
 			memcpy(tuningEkfData, tuningEkfBuffer, sizeof(tuningEkfBuffer));
 			timerPrint=(int)keyboardData[5];
@@ -304,6 +343,9 @@ static void *threadSensorFusion (void *arg){
 	double buffer_ts_sensor[BUFFER];
 	double buffer_ts_controller[BUFFER];
 	
+	double buffer_ref_x[BUFFER];
+	double buffer_ref_y[BUFFER];
+	
 	//double buffer_u1[BUFFER];
 	//double buffer_u2[BUFFER];
 	//double buffer_u3[BUFFER];
@@ -377,6 +419,16 @@ static void *threadSensorFusion (void *arg){
 	//double accRawMem[75]={0}; // memory buffer where elements 0-24=x-axis, 25-49=y-axis and 50-74=z-axis
 	double gyrRawMem[75]={0};
 	
+	double tuningMpcBuffer[14];		//Q - 14 states
+	double tuningMpcQfBuffer[9];		//Qf
+	double tuningMpcBufferControl[6];	//R - 1 for alt, 2 for pos,  3 for att
+	//double controllerBuffer[19]; // {PWM, thrust, torques} to be sent over to sensor.c
+	double tuningPidBuffer[6];
+	//double manualThrustBuffer[1]={manualThrust};
+	//double positionsBuffer[9]; // positions of all directly from 'gps'
+	//double positions_timeoutBuffer[3]; // timeout data
+	//double positions_agents[6]; // position of other agents used for formation flying
+	//double positions_self_prev[3]; // previous self position used in case positioning system has time out
 	
 	// Random variables
 	//double L_temp;
@@ -393,9 +445,11 @@ static void *threadSensorFusion (void *arg){
 	float beta_keyboard;
 	int isnan_flag=0, outofbounds_flag=0;
 	int triggerFly=0;
+	double ref_x_keyboard=0;
+	double ref_y_keyboard=0;
 
 	// Keyboard control variables
-	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0,saveDataTrigger=0;
+	int timerPrint=0, ekfPrint=0, ekfReset=0, ekfPrint6States=0, sensorCalibrationRestart=0,saveDataTrigger=0,flag_save_weights=0;
 	int outlierFlag[1], ioutlierFlagPercentage, outlierFlagMem[1000];
 	int tSensorFusionCounter=0;
 	
@@ -455,6 +509,8 @@ static void *threadSensorFusion (void *arg){
 				
 				// Get keyboard input data
 				pthread_mutex_lock(&mutexKeyboardData);
+					ref_x_keyboard=keyboardData[0];
+					ref_y_keyboard=keyboardData[1];
 					triggerFly=(int)keyboardData[3];
 					timerPrint=(int)keyboardData[5];
 					ekfPrint=(int)keyboardData[6];
@@ -476,6 +532,11 @@ static void *threadSensorFusion (void *arg){
 					//memcpy(tuningEkfBuffer8x8+7, tuningEkfData+14, sizeof(tuningEkfData)*1/18); // ekf states 13-15
 					memcpy(positionsBuffer, positionsData, sizeof(positionsData));
 					memcpy(positions_timeoutBuffer, positions_timeoutData, sizeof(positions_timeoutData));
+					
+					memcpy(tuningMpcBuffer, tuningMpcData, sizeof(tuningMpcData));
+					memcpy(tuningMpcQfBuffer, tuningMpcQfData, sizeof(tuningMpcQfData));
+					memcpy(tuningMpcBufferControl, tuningMpcDataControl, sizeof(tuningMpcDataControl));
+					memcpy(tuningPidBuffer, tuningPidData, sizeof(tuningPidData));
 				pthread_mutex_unlock(&mutexKeyboardData);
 				
 				// Convert sensor data to correct (filter) units:
@@ -903,7 +964,21 @@ static void *threadSensorFusion (void *arg){
 								//xhat8x8[7]=-par_g;
 								//xhat8x8[2]=0;
 								//xhat8x8[5]=0;
+								flag_save_weights=0;
 							}
+							else{
+								if(flag_save_weights==0){						
+									//// Save buffered data to file
+									if(saveDataTrigger){ // only save data when activated from keyboard
+										saveData(tuningMpcBuffer,"mpc_Q",sizeof(tuningMpcBuffer)/sizeof(double));
+										saveData(tuningMpcQfBuffer,"mpc_Qf",sizeof(tuningMpcQfBuffer)/sizeof(double));
+										saveData(tuningMpcBufferControl,"mpc_R",sizeof(tuningMpcBufferControl)/sizeof(double));
+										saveData(tuningPidBuffer,"pid_k",sizeof(tuningPidBuffer)/sizeof(double));
+									}
+									flag_save_weights=1;
+								}
+							}
+							
 						}
 						// Reset EKF with initial Phat, xhat and uControl as long as ekfReset keyboard input is true
 						else{
@@ -1032,7 +1107,7 @@ static void *threadSensorFusion (void *arg){
 						
 						if(ekfPrint && tSensorFusionCounter % 10 == 0){
 							//double norm_mag = 1/sqrt(magRawRot[0] * magRawRot[0] + magRawRot[1] * magRawRot[1] + magRawRot[2] * magRawRot[2]);
-							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist_z) % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f\n",xhat7x7[0],xhat7x7[1],xhat7x7[2],xhat7x7[3],xhat7x7[4],xhat7x7[5],xhat7x7[6],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI));
+							printf("xhat: (pos) % 1.4f % 1.4f % 1.4f (vel) % 1.4f % 1.4f % 1.4f (dist_z) % 1.4f (ang_e) % 2.4f % 2.4f % 2.4f (omeg_e) % 2.4f % 2.4f % 2.4f ref: % 2.1f % 2.1f\n",xhat7x7[0],xhat7x7[1],xhat7x7[2],xhat7x7[3],xhat7x7[4],xhat7x7[5],xhat7x7[6],xhat6x6[0]*(180/PI),xhat6x6[1]*(180/PI),xhat6x6[2]*(180/PI),xhat6x6[3]*(180/PI),xhat6x6[4]*(180/PI),xhat6x6[5]*(180/PI),ref_x_keyboard,ref_y_keyboard);
 							//printf("(mag) % 1.4f % 1.4f % 1.4f (atan2(y/x)) % 1.4f\n", magRawRot[0]*norm_mag, magRawRot[1]*norm_mag, magRawRot[2]*norm_mag, atan2(magRawRot[1]*norm_mag, magRawRot[0]*norm_mag)*(180/PI));
 						}
 						
@@ -1170,6 +1245,9 @@ static void *threadSensorFusion (void *arg){
 									saveData(buffer_mpc_att_tau_z,"mpc_att_tau_z",sizeof(buffer_mpc_att_tau_z)/sizeof(double));
 									saveData(buffer_ts_sensor,"ts_sensor",sizeof(buffer_ts_sensor)/sizeof(double));
 									saveData(buffer_ts_controller,"ts_controller",sizeof(buffer_ts_controller)/sizeof(double));
+									saveData(buffer_ref_x,"ref_x",sizeof(buffer_ref_x)/sizeof(double));
+									saveData(buffer_ref_y,"ref_y",sizeof(buffer_ref_y)/sizeof(double));
+									
 									buffer_counter=0;
 							}
 								else{ // else keep saving data to buffer
@@ -1209,16 +1287,7 @@ static void *threadSensorFusion (void *arg){
 									//buffer_ekf_dist_x[buffer_counter]=stateDataBuffer[12];
 									//buffer_ekf_dist_y[buffer_counter]=stateDataBuffer[13];
 									buffer_ekf_dist_z[buffer_counter]=stateDataBuffer[14];
-									
-						
-						sensorDataBuffer[33]=uControlThrustTorques[5]; // mpcPos_U_theta
-						sensorDataBuffer[34]=uControlThrustTorques[6]; // mpcPos_U_phi
-						sensorDataBuffer[35]=uControlThrustTorques[7]; // mpcPos_U_theta_comp
-						sensorDataBuffer[36]=uControlThrustTorques[8]; // mpcPos_U_phi_comp
-						sensorDataBuffer[37]=uControlThrustTorques[9]; // attU_all_taux
-						sensorDataBuffer[38]=uControlThrustTorques[10]; // attU_all_tauy
-						sensorDataBuffer[39]=uControlThrustTorques[14]; // tsTrue controller
-									
+										
 									buffer_mpc_alt_G[buffer_counter]=uControlThrustTorques[4];
 									buffer_mpc_alt_thrust[buffer_counter]=uControlThrustTorques[0];
 									buffer_mpc_pos_theta[buffer_counter]=uControlThrustTorques[5];
@@ -1232,6 +1301,8 @@ static void *threadSensorFusion (void *arg){
 									buffer_mpc_att_tau_z[buffer_counter]=uControlThrustTorques[3];
 									buffer_ts_sensor[buffer_counter]=ts_sensor_t;
 									buffer_ts_controller[buffer_counter]=ts_controller_t;
+									buffer_ref_x[buffer_counter]=ref_x_keyboard;
+									buffer_ref_y[buffer_counter]=ref_y_keyboard;
 									buffer_counter++;
 									ts_sensor_t=0;
 									ts_controller_t=0;
